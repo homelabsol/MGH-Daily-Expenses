@@ -77,6 +77,7 @@
                 <button class="tab-btn active" data-tab="cash-expenses">Cash Expenses</button>
                 <button class="tab-btn" data-tab="gcash-expenses">Gcash Expenses</button>
                 <button class="tab-btn" data-tab="gcash-receivable">Gcash Receivable</button>
+                <button class="tab-btn" data-tab="cash-on-hand">Daily Cash on Hand</button>
                 <button class="tab-btn" data-tab="remitted-amount">Remitted Amount</button>
             </div>
 
@@ -191,6 +192,16 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="r-customer-name">Customer Name <span style="color: red;">*</span></label>
+                        <input type="text" id="r-customer-name" name="customerName" required placeholder="Enter customer name">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="r-no-of-hours">No of Hours <span style="color: red;">*</span></label>
+                        <input type="number" id="r-no-of-hours" name="noOfHours" required placeholder="0" step="0.5">
+                    </div>
+
+                    <div class="form-group">
                         <label for="r-payment-method">Payment Method</label>
                         <select id="r-payment-method" name="paymentMethod" required>
                             <option value="" disabled selected>Select Payment Method</option>
@@ -257,6 +268,37 @@
                 </form>
 
                 <div id="remit-status-message" class="hidden"></div>
+            </div>
+
+            <div class="tab-content" id="cash-on-hand">
+                <h2>Add Daily Cash on Hand</h2>
+                <form id="cash-on-hand-form">
+                    <div class="form-group">
+                        <label for="coh-branch">Branch</label>
+                        <select id="coh-branch" name="branch" required>
+                            <option value="" disabled selected>Select a branch</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="coh-date">Date</label>
+                        <input type="date" id="coh-date" name="date" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="coh-amount">Amount Per Shift (₱)</label>
+                        <input type="number" id="coh-amount" name="amount" step="0.01" required placeholder="0.00">
+                    </div>
+
+                    <button type="submit" class="submit-btn" id="coh-submit-btn">
+                        <span class="btn-text">Save Cash on Hand</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </form>
+
+                <div id="coh-status-message" class="hidden"></div>
             </div>
 
             </div>
@@ -411,6 +453,7 @@
                         <option value="Cash Expense">Cash Expenses</option>
                         <option value="Gcash Expense">Gcash Expenses</option>
                         <option value="Gcash Receivable">Gcash Receivable</option>
+                        <option value="Cash on Hand">Daily Cash on Hand</option>
                         <option value="Remitted Amount">Remitted Amount (Cash on)</option>
                     </select>
                 </div>
@@ -454,6 +497,7 @@
                         <option value="Cash Expense">Cash Expenses</option>
                         <option value="Gcash Expense">Gcash Expenses</option>
                         <option value="Gcash Receivable">Gcash Receivable</option>
+                        <option value="Cash on Hand">Daily Cash on Hand</option>
                         <option value="Remitted Amount">Remitted Amount (Cash on)</option>
                     </select>
                 </div>

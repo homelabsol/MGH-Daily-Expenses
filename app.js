@@ -517,6 +517,8 @@ document.addEventListener('DOMContentLoaded', () => {
             action: 'addGcashReceivable',
             branch: document.getElementById('r-branch').value,
             date: document.getElementById('r-date').value,
+            customerName: document.getElementById('r-customer-name').value,
+            noOfHours: document.getElementById('r-no-of-hours').value,
             paymentMethod: document.getElementById('r-payment-method').value,
             reference: document.getElementById('r-reference').value,
             amount: document.getElementById('r-amount').value,
@@ -643,6 +645,64 @@ document.addEventListener('DOMContentLoaded', () => {
             showMessage(remitStatusMessage, 'Error uploading data. Make sure file is not too large and network is stable.', 'error');
         } finally {
             remitSubmitBtn.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    });
+
+    // Handle Cash on Hand Form Submission
+    const cohForm = document.getElementById('cash-on-hand-form');
+    const cohSubmitBtn = document.getElementById('coh-submit-btn');
+    const cohStatusMessage = document.getElementById('coh-status-message');
+
+    cohForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        if (SCRIPT_URL === 'PASTE_YOUR_URL_HERE' || SCRIPT_URL === '') {
+            showMessage(cohStatusMessage, 'Please set your Google Apps Script URL in app.js', 'error');
+            return;
+        }
+
+        const formData = {
+            action: 'addCashOnHand',
+            branch: document.getElementById('coh-branch').value,
+            date: document.getElementById('coh-date').value,
+            amount: document.getElementById('coh-amount').value,
+            encodedBy: sessionStorage.getItem('loggedInUser')
+        };
+
+        const btnText = cohSubmitBtn.querySelector('.btn-text');
+        const spinner = cohSubmitBtn.querySelector('.spinner');
+        cohSubmitBtn.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        cohStatusMessage.classList.add('hidden');
+
+        try {
+            const urlEncodedData = new URLSearchParams(formData).toString();
+
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: urlEncodedData
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                showMessage(cohStatusMessage, 'Daily Cash on Hand saved successfully!', 'success');
+                cohForm.reset();
+                document.getElementById('coh-date').valueAsDate = new Date();
+            } else {
+                showMessage(cohStatusMessage, 'Error saving to Sheets: ' + result.message, 'error');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showMessage(cohStatusMessage, 'Error submitting data. Make sure network is stable.', 'error');
+        } finally {
+            cohSubmitBtn.disabled = false;
             btnText.classList.remove('hidden');
             spinner.classList.add('hidden');
         }
@@ -860,8 +920,9 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (reportType === 'Cash Expense') { dateIdx = 1; amountIdx = 3; }
         if (reportType === 'Gcash Expense') { dateIdx = 1; amountIdx = 4; }
-        if (reportType === 'Gcash Receivable') { dateIdx = 1; amountIdx = 4; }
+        if (reportType === 'Gcash Receivable') { dateIdx = 1; amountIdx = 6; }
         if (reportType === 'Remitted Amount') { dateIdx = 0; amountIdx = 2; }
+        if (reportType === 'Cash on Hand') { dateIdx = 1; amountIdx = 2; }
 
         // Group by Date
         const grouped = {};
@@ -900,9 +961,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (reportType === 'Gcash Expense') {
             tableHeader = `<th>Branch</th><th>Payment Method</th><th>Reference</th><th style="text-align: center;">Amount</th><th>Encoded By</th>`;
         } else if (reportType === 'Gcash Receivable') {
-            tableHeader = `<th>Branch</th><th>Payment Method</th><th>Reference</th><th style="text-align: center;">Amount</th><th>Encoded By</th>`;
+            tableHeader = `<th>Branch</th><th>Customer</th><th>Hrs</th><th>Payment Method</th><th>Reference</th><th style="text-align: center;">Amount</th><th>Encoded By</th>`;
         } else if (reportType === 'Remitted Amount') {
             tableHeader = `<th>Bank Name</th><th style="text-align: center;">Amount</th><th>Encoded By</th>`;
+        } else if (reportType === 'Cash on Hand') {
+            tableHeader = `<th>Branch</th><th style="text-align: center;">Amount Per Shift</th><th>Encoded By</th>`;
         }
 
         let html = `
@@ -942,14 +1005,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[7] || ''}</td>`;
                 } else if (reportType === 'Gcash Receivable') {
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[0]}</td>`;
-                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[2]}</td>`;
-                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[3]}</td>`;
-                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-family: monospace;">₱${formatCurrency(row[4])}</td>`;
-                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[6] || ''}</td>`;
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[2] || ''}</td>`;
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[3] || ''}</td>`;
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[4] || ''}</td>`;
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[5] || ''}</td>`;
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-family: monospace;">₱${formatCurrency(row[6])}</td>`;
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[8] || ''}</td>`;
                 } else if (reportType === 'Remitted Amount') {
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[1]}</td>`;
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-family: monospace;">₱${formatCurrency(row[2])}</td>`;
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[4] || ''}</td>`;
+                } else if (reportType === 'Cash on Hand') {
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[0]}</td>`;
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-family: monospace;">₱${formatCurrency(row[2])}</td>`;
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[3] || ''}</td>`;
                 }
                 html += `</tr>`;
             });
@@ -957,7 +1026,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Subtotal
             html += `
                 <tr style="background-color: #f9fafb; font-weight: 600; color: #111;">
-                    <td colspan="${reportType === 'Remitted Amount' ? 1 : (reportType === 'Cash Expense' ? 2 : 3)}" style="padding: 8px; border: 1px solid #e5e7eb; text-align: center;">Sub-total for ${date}:</td>
+                    <td colspan="${reportType === 'Remitted Amount' || reportType === 'Cash on Hand' ? 1 : (reportType === 'Cash Expense' ? 2 : (reportType === 'Gcash Receivable' ? 5 : 3))}" style="padding: 8px; border: 1px solid #e5e7eb; text-align: center;">Sub-total for ${date}:</td>
                     <td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-family: monospace; color: #2563eb;">₱${formatCurrency(grouped[date].total)}</td>
                     <td style="padding: 8px; border: 1px solid #e5e7eb;"></td>
                 </tr>
