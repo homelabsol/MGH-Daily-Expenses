@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MGH Daily Expenses</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="container" id="login-container">
+        <header>
+            <h1>MGH Daily Expenses</h1>
+            <p>Please login to continue</p>
+        </header>
+        <main class="glass-panel">
+            <h2>Welcome Back</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-username">Account Name</label>
+                    <input type="text" id="login-username" name="username" required placeholder="Enter your Account Name">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" name="password" required placeholder="Enter your Password">
+                </div>
+                <button type="submit" class="submit-btn" id="login-btn">
+                    <span class="btn-text">Login</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div id="login-status-message" class="hidden"></div>
+        </main>
+    </div>
+
+    <div class="container hidden" id="main-menu-container">
+        <header>
+            <h1 id="welcome-message">MGH Daily Expenses</h1>
+            <p>What would you like to do today?</p>
+            <button id="logout-btn" class="logout-btn">Logout</button>
+        </header>
+
+        <main class="glass-panel main-menu">
+            <button class="menu-action-btn" id="menu-admin-btn">
+                <span class="icon">⚙️</span>
+                Admin
+            </button>
+            <button class="menu-action-btn" id="menu-expenses-btn">
+                <span class="icon">💰</span>
+                Expenses
+            </button>
+            <button class="menu-action-btn" id="menu-report-btn">
+                <span class="icon">📊</span>
+                Report
+            </button>
+        </main>
+    </div>
+
+    <div class="container hidden" id="expenses-container">
+        <header>
+            <h1>Expenses</h1>
+            <p>Record your expenses directly to Google Sheets</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+        </header>
+
+        <main class="glass-panel">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="cash-expenses">Cash Expenses</button>
+                <button class="tab-btn" data-tab="gcash-expenses">Gcash Expenses</button>
+                <button class="tab-btn" data-tab="gcash-receivable">Gcash Receivable</button>
+                <button class="tab-btn" data-tab="remitted-amount">Remitted Amount</button>
+            </div>
+
+            <div class="tab-content active" id="cash-expenses">
+                <h2>Add Cash Expense</h2>
+                <form id="cash-expense-form">
+                    <div class="form-group">
+                        <label for="branch">Branch</label>
+                        <select id="branch" name="branch" required>
+                            <option value="" disabled selected>Select a branch</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="date">Date</label>
+                        <input type="date" id="date" name="date" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Item Description</label>
+                        <input type="text" id="description" name="description" required placeholder="What did you pay for?">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="amount">Amount (₱)</label>
+                        <input type="number" id="amount" name="amount" step="0.01" required placeholder="0.00">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="receipt">Receipt (Ref / No.)</label>
+                        <input type="text" id="receipt" name="receipt" placeholder="Receipt Number or Reference">
+                    </div>
+
+                    <button type="submit" class="submit-btn" id="cash-submit-btn">
+                        <span class="btn-text">Save Expense</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </form>
+
+                <div id="cash-status-message" class="hidden"></div>
+            </div>
+
+            <div class="tab-content" id="gcash-expenses">
+                <h2>Add Gcash Expense</h2>
+                <form id="gcash-expense-form">
+                    <div class="form-group">
+                        <label for="g-branch">Branch</label>
+                        <select id="g-branch" name="branch" required>
+                            <option value="" disabled selected>Select a branch</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="g-date">Date</label>
+                        <input type="date" id="g-date" name="date" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="g-payment-method">Payment Method</label>
+                        <select id="g-payment-method" name="paymentMethod" required>
+                            <option value="" disabled selected>Select Payment Method</option>
+                            <option value="BPI Transfer">BPI Transfer</option>
+                            <option value="BDO Transfer">BDO Transfer</option>
+                            <option value="Gcash 09560140450">Gcash 09560140450</option>
+                            <option value="Maya Transfer">Maya Transfer</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="g-amount">Amount (₱)</label>
+                        <input type="number" id="g-amount" name="amount" step="0.01" required placeholder="0.00">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="g-reference">Reference# <span style="color: red;">*</span></label>
+                        <input type="text" id="g-reference" name="reference" required placeholder="Gcash Reference Number">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="g-receipt">Receipt</label>
+                        <input type="text" id="g-receipt" name="receipt" placeholder="Receipt details (optional)">
+                    </div>
+
+                    <button type="submit" class="submit-btn" id="gcash-submit-btn">
+                        <span class="btn-text">Save Gcash Expense</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </form>
+
+                <div id="gcash-status-message" class="hidden"></div>
+            </div>
+
+            <div class="tab-content" id="gcash-receivable">
+                <h2>Add Gcash Receivable</h2>
+                <form id="gcash-receivable-form">
+                    <div class="form-group">
+                        <label for="r-branch">Branch</label>
+                        <select id="r-branch" name="branch" required>
+                            <option value="" disabled selected>Select a branch</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="r-date">Date</label>
+                        <input type="date" id="r-date" name="date" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="r-payment-method">Payment Method</label>
+                        <select id="r-payment-method" name="paymentMethod" required>
+                            <option value="" disabled selected>Select Payment Method</option>
+                            <option value="BPI Transfer">BPI Transfer</option>
+                            <option value="BDO Transfer">BDO Transfer</option>
+                            <option value="Gcash 09560140450">Gcash 09560140450</option>
+                            <option value="Maya Transfer">Maya Transfer</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="r-reference">Reference# <span style="color: red;">*</span></label>
+                        <input type="text" id="r-reference" name="reference" required placeholder="Gcash Reference Number">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="r-amount">Amount (₱)</label>
+                        <input type="number" id="r-amount" name="amount" step="0.01" required placeholder="0.00">
+                    </div>
+
+                    <button type="submit" class="submit-btn" id="receivable-submit-btn">
+                        <span class="btn-text">Save Receivable</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </form>
+
+                <div id="receivable-status-message" class="hidden"></div>
+            </div>
+
+            <div class="tab-content" id="remitted-amount">
+                <h2>Add Daily Remittance</h2>
+                <form id="remitted-amount-form">
+                    <div class="form-group">
+                        <label for="remit-date">Date</label>
+                        <input type="date" id="remit-date" name="date" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="remit-bank">Bank Name</label>
+                        <select id="remit-bank" name="bankName" required>
+                            <option value="" disabled selected>Select Bank</option>
+                            <option value="Metrobank">Metrobank</option>
+                            <option value="BDO">BDO</option>
+                            <option value="BPI">BPI</option>
+                            <option value="Other Bank">Other Bank</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="remit-amount">Amount (₱)</label>
+                        <input type="number" id="remit-amount" name="amount" step="0.01" required placeholder="0.00">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="remit-screenshot">Screenshot / Receipt (Required)</label>
+                        <input type="file" id="remit-screenshot" name="screenshot" accept="image/*" required>
+                        <small style="color: var(--text-muted); font-size: 0.8rem; display: block; margin-top: 5px;">Upload the receipt image here.</small>
+                    </div>
+
+                    <button type="submit" class="submit-btn" id="remit-submit-btn">
+                        <span class="btn-text">Upload & Save Remittance</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </form>
+
+                <div id="remit-status-message" class="hidden"></div>
+            </div>
+
+            </div>
+        </main>
+    </div>
+
+    <div class="container hidden" id="admin-container">
+        <header>
+            <h1>Admin Panel</h1>
+            <p>Manage users and settings</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+        </header>
+        <main class="glass-panel">
+            <div id="admin-login-section">
+                <h2>Admin Verification</h2>
+                <p style="color: var(--text-muted); margin-bottom: 20px;">Please re-enter your credentials to verify your identity.</p>
+                <form id="admin-login-form">
+                    <div class="form-group">
+                        <label for="admin-login-username">Account Name</label>
+                        <input type="text" id="admin-login-username" name="username" required placeholder="Enter your Account Name">
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-login-password">Password</label>
+                        <input type="password" id="admin-login-password" name="password" required placeholder="Enter your Password">
+                    </div>
+                    <button type="submit" class="submit-btn" id="admin-login-btn">
+                        <span class="btn-text">Verify Identity</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </form>
+                <div id="admin-error-message" class="hidden error" style="margin-top: 20px;"></div>
+            </div>
+
+            <div id="admin-content" class="hidden">
+                <h2>Create Account</h2>
+                <form id="create-account-form">
+                    <div class="form-group">
+                        <label for="acc-date">Date</label>
+                        <input type="date" id="acc-date" name="date" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="acc-name">Name</label>
+                        <input type="text" id="acc-name" name="name" required placeholder="Full Name">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="acc-account-name">Account Name (Auto-generated)</label>
+                        <input type="text" id="acc-account-name" name="accountName" disabled placeholder="Username or Account Name">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="acc-password">Password</label>
+                        <input type="password" id="acc-password" name="password" required placeholder="Password">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="acc-role">Role</label>
+                        <select id="acc-role" name="role" required>
+                            <option value="" disabled selected>Select a role</option>
+                            <option value="Staff">Staff</option>
+                            <option value="Manager">Manager</option>
+                            <option value="Auditor">Auditor</option>
+                            <option value="Owner">Owner</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="submit-btn" id="acc-submit-btn">
+                        <span class="btn-text">Create Account</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </form>
+
+                <div id="acc-status-message" class="hidden"></div>
+            </div>
+        </main>
+    </div>
+
+    <div class="container hidden" id="report-container">
+        <header>
+            <h1>Reports</h1>
+            <p>View financial summaries</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+        </header>
+        <main class="glass-panel" id="report-main-menu">
+            <div class="main-menu" style="padding: 0;">
+                <button class="menu-action-btn" id="btn-staff-report">
+                    <div class="btn-icon">📊</div>
+                    <div class="btn-text">
+                        <h3>Staff Report</h3>
+                        <p>View general sales and expenses</p>
+                    </div>
+                </button>
+
+                <button class="menu-action-btn" id="btn-admin-report">
+                    <div class="btn-icon">🔒</div>
+                    <div class="btn-text">
+                        <h3>Admin Report</h3>
+                        <p>View restricted financial reports</p>
+                    </div>
+                </button>
+            </div>
+        </main>
+
+        <main class="glass-panel hidden" id="report-admin-login-section">
+            <h2>Admin Verification</h2>
+            <p style="color: var(--text-muted); margin-bottom: 20px;">Please re-enter your credentials to view Admin Reports. Only Owners are allowed.</p>
+            <form id="report-admin-login-form">
+                <div class="form-group">
+                    <label for="report-admin-username">Account Name</label>
+                    <input type="text" id="report-admin-username" name="username" required placeholder="Enter your Account Name">
+                </div>
+                <div class="form-group">
+                    <label for="report-admin-password">Password</label>
+                    <input type="password" id="report-admin-password" name="password" required placeholder="Enter your Password">
+                </div>
+                <button type="submit" class="submit-btn" id="report-admin-login-btn">
+                    <span class="btn-text">Verify Identity</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div id="report-admin-error-message" class="hidden error" style="margin-top: 20px;"></div>
+            <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">Cancel</button>
+        </main>
+
+        <main class="glass-panel hidden" id="staff-report-content">
+            <h2>Staff Report</h2>
+            
+            <!-- Filters -->
+            <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; margin: 20px 0; display: flex; flex-direction: column; gap: 10px; text-align: left;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="staff-start-date">Start Date</label>
+                    <input type="date" id="staff-start-date" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="staff-end-date">End Date</label>
+                    <input type="date" id="staff-end-date" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="staff-branch">Branch</label>
+                    <select id="staff-branch" required>
+                        <option value="All">All Branches</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="staff-report-type">Report Type</label>
+                    <select id="staff-report-type" required>
+                        <option value="Cash Expense">Cash Expenses</option>
+                        <option value="Gcash Expense">Gcash Expenses</option>
+                        <option value="Gcash Receivable">Gcash Receivable</option>
+                        <option value="Remitted Amount">Remitted Amount (Cash on)</option>
+                    </select>
+                </div>
+                <button class="submit-btn" id="btn-generate-staff-report" style="margin-top: 10px;">
+                    <span class="btn-text">Generate Report</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div id="staff-report-results" style="margin-top: 20px; min-height: 100px; text-align: center;">
+                <p style="color: var(--text-muted);">Please select a date range and click Generate.</p>
+            </div>
+
+            <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Reports Menu</button>
+        </main>
+
+        <main class="glass-panel hidden" id="admin-report-content">
+            <h2>Admin Report</h2>
+            
+            <!-- Filters -->
+            <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; margin: 20px 0; display: flex; flex-direction: column; gap: 10px; text-align: left;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="admin-start-date">Start Date</label>
+                    <input type="date" id="admin-start-date" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="admin-end-date">End Date</label>
+                    <input type="date" id="admin-end-date" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="admin-branch">Branch</label>
+                    <select id="admin-branch" required>
+                        <option value="All">All Branches</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="admin-report-type">Report Type</label>
+                    <select id="admin-report-type" required>
+                        <option value="Cash Expense">Cash Expenses</option>
+                        <option value="Gcash Expense">Gcash Expenses</option>
+                        <option value="Gcash Receivable">Gcash Receivable</option>
+                        <option value="Remitted Amount">Remitted Amount (Cash on)</option>
+                    </select>
+                </div>
+                <button class="submit-btn" id="btn-generate-admin-report" style="margin-top: 10px;">
+                    <span class="btn-text">Generate Admin Report</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div id="admin-report-results" style="margin-top: 20px; min-height: 100px; text-align: center;">
+                <p style="color: var(--text-muted);">Please select a date range and click Generate.</p>
+            </div>
+
+            <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Reports Menu</button>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
