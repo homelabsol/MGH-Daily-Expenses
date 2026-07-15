@@ -140,6 +140,11 @@
                     </div>
                     
                     <div class="form-group">
+                        <label for="g-details">Details</label>
+                        <input type="text" id="g-details" name="details" placeholder="What did you pay for? (Optional)">
+                    </div>
+                    
+                    <div class="form-group">
                         <label for="g-payment-method">Payment Method</label>
                         <select id="g-payment-method" name="paymentMethod" required>
                             <option value="" disabled selected>Select Payment Method</option>
@@ -470,8 +475,57 @@
             <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Reports Menu</button>
         </main>
 
+        <main class="glass-panel hidden" id="admin-reports-dashboard">
+            <h2>Admin Reports Menu</h2>
+            <p style="color: var(--text-muted); margin-bottom: 20px;">Select a report to view</p>
+            
+            <div class="main-menu" style="padding: 0;">
+                <button class="menu-action-btn" id="btn-admin-general-report">
+                    <div class="btn-icon">📑</div>
+                    <div class="btn-text">
+                        <h3>General Report</h3>
+                        <p>View daily sales and expenses</p>
+                    </div>
+                </button>
+
+                <button class="menu-action-btn" id="btn-admin-statistics-report">
+                    <div class="btn-icon">📈</div>
+                    <div class="btn-text">
+                        <h3>Statistics Report</h3>
+                        <p>Graphical overview</p>
+                    </div>
+                </button>
+
+                <button class="menu-action-btn" id="btn-admin-audit-report">
+                    <div class="btn-icon">🔍</div>
+                    <div class="btn-text">
+                        <h3>Audit Report</h3>
+                        <p>Detailed system logs and edits</p>
+                    </div>
+                </button>
+
+                <button class="menu-action-btn" id="btn-admin-salary-expenses">
+                    <div class="btn-icon">👥</div>
+                    <div class="btn-text">
+                        <h3>Weekly Salary Branch Expenses</h3>
+                        <p>Employee payroll and advances</p>
+                    </div>
+                </button>
+
+                <button class="menu-action-btn" id="btn-admin-monthly-income">
+                    <div class="btn-icon">💰</div>
+                    <div class="btn-text">
+                        <h3>Monthly Income Report</h3>
+                        <p>Consolidated monthly profit</p>
+                    </div>
+                </button>
+            </div>
+
+            <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 25px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Main Reports</button>
+        </main>
+
         <main class="glass-panel hidden" id="admin-report-content">
-            <h2>Admin Report</h2>
+            <h2>General Report</h2>
             
             <!-- Filters -->
             <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; margin: 20px 0; display: flex; flex-direction: column; gap: 10px; text-align: left;">
@@ -491,27 +545,117 @@
                         <option value="MGH Concepcion">MGH Concepcion</option>
                     </select>
                 </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="admin-report-type">Report Type</label>
-                    <select id="admin-report-type" required>
-                        <option value="Cash Expense">Cash Expenses</option>
-                        <option value="Gcash Expense">Gcash Expenses</option>
-                        <option value="Gcash Receivable">Gcash Receivable</option>
-                        <option value="Cash on Hand">Daily Cash on Hand</option>
-                        <option value="Remitted Amount">Remitted Amount (Cash on)</option>
-                    </select>
-                </div>
-                <button class="submit-btn" id="btn-generate-admin-report" style="margin-top: 10px;">
-                    <span class="btn-text">Generate Admin Report</span>
+                <button class="submit-btn" id="btn-generate-admin-report" style="margin-top: 10px; background: linear-gradient(135deg, #10b981, #059669);">
+                    <span class="btn-text">Reconcile Income & Expenses</span>
                     <div class="spinner hidden"></div>
                 </button>
             </div>
 
-            <div id="admin-report-results" style="margin-top: 20px; min-height: 100px; text-align: center;">
-                <p style="color: var(--text-muted);">Please select a date range and click Generate.</p>
+            <div id="admin-report-results" style="margin-top: 20px; text-align: left;">
+                <!-- Box 1: Expenses & Cash on Hand -->
+                <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+                    <h3 style="margin-bottom: 15px; font-size: 1.1em; color: var(--text-muted); text-align: center;">Breakdown</h3>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0;">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>Cash Expense</label>
+                            <input type="text" id="recon-cash-expense" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.2); font-family: monospace; color: var(--text-color);">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>Gcash Expenses</label>
+                            <input type="text" id="recon-gcash-expense" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.2); font-family: monospace; color: var(--text-color);">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>Gcash Receivable</label>
+                            <input type="text" id="recon-gcash-receivable" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.2); font-family: monospace; color: var(--text-color);">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>Cash on Hand</label>
+                            <input type="text" id="recon-cash-on-hand" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.2); font-family: monospace; color: var(--text-color);">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Box 1.5: Pondo Amount -->
+                <div style="background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(59, 130, 246, 0.3);">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="color: #3b82f6; font-weight: bold;">Pondo Amount</label>
+                        <input type="number" id="recon-pondo-amount" step="0.01" placeholder="0.00" style="background: rgba(0,0,0,0.3); font-family: monospace; color: #3b82f6; font-weight: bold; font-size: 1.1em; width: 100%; padding: 10px; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px;">
+                    </div>
+                </div>
+
+                <!-- Box 2: Total Income -->
+                <div style="background: rgba(16, 185, 129, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(16, 185, 129, 0.3);">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="color: #10b981; font-weight: bold;">Total Income</label>
+                        <input type="text" id="recon-total-income" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.3); font-family: monospace; color: #10b981; font-weight: bold; font-size: 1.1em; -webkit-text-fill-color: currentcolor;">
+                    </div>
+                </div>
+                
+                <!-- Box 3: Discrepancy -->
+                <div style="background: rgba(239, 68, 68, 0.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3);">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="color: #ef4444; font-weight: bold;">Discrepancy</label>
+                        <input type="text" id="recon-discrepancy" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.3); font-family: monospace; color: #ef4444; font-weight: bold; font-size: 1.1em; -webkit-text-fill-color: currentcolor;">
+                    </div>
+                </div>
             </div>
 
-            <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Reports Menu</button>
+            <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Dashboard</button>
+        </main>
+
+        <main class="glass-panel hidden" id="admin-statistics-report-content">
+            <h2>Statistics Report</h2>
+            <p style="color: var(--text-muted); text-align: center; padding: 40px 0;">Coming Soon</p>
+            <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Dashboard</button>
+        </main>
+
+        <main class="glass-panel hidden" id="admin-audit-report-content">
+            <h2>Audit Report</h2>
+            <p style="color: var(--text-muted); text-align: center; padding: 40px 0;">Coming Soon</p>
+            <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Dashboard</button>
+        </main>
+
+        <main class="glass-panel hidden" id="admin-salary-expenses-content">
+            <h2>Weekly Salary Branch Expenses</h2>
+            <form id="salary-expense-form" style="margin-top: 20px; text-align: left;">
+                <div class="form-group">
+                    <label for="salary-start-date">Start Date</label>
+                    <input type="date" id="salary-start-date" name="startDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="salary-end-date">End Date</label>
+                    <input type="date" id="salary-end-date" name="endDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="salary-branch">Branch</label>
+                    <select id="salary-branch" name="branch" required>
+                        <option value="" disabled selected>Select a branch</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="salary-amount">Amount (₱)</label>
+                    <input type="number" id="salary-amount" name="amount" step="0.01" required placeholder="0.00">
+                </div>
+
+                <button type="submit" class="submit-btn" id="salary-submit-btn">
+                    <span class="btn-text">Save Salary Expense</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div id="salary-status-message" class="hidden" style="margin-top: 15px;"></div>
+            <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Dashboard</button>
+        </main>
+
+        <main class="glass-panel hidden" id="admin-monthly-income-content">
+            <h2>Monthly Income Report</h2>
+            <p style="color: var(--text-muted); text-align: center; padding: 40px 0;">Coming Soon</p>
+            <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Dashboard</button>
         </main>
     </div>
 

@@ -1,6 +1,10 @@
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE:
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyD4bJL8y0K0Kb3cKFA2Dm_OlDoPeTeo6MtiRzB_B8WBeX7GiU0gU2EBVAwd31BMPWV/exec';
 
+function formatCurrency(amount) {
+    return Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const cashForm = document.getElementById('cash-expense-form');
     const cashSubmitBtn = document.getElementById('cash-submit-btn');
@@ -114,6 +118,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetId = e.target.getAttribute('data-target');
             hideAllContainers();
             document.getElementById(targetId).classList.remove('hidden');
+            
+            // Clear general report boxes when backing out to dashboard
+            if (targetId === 'admin-reports-dashboard' || targetId === 'report-main-menu') {
+                document.getElementById('recon-cash-expense').value = '₱0.00';
+                document.getElementById('recon-gcash-expense').value = '₱0.00';
+                document.getElementById('recon-gcash-receivable').value = '₱0.00';
+                document.getElementById('recon-cash-on-hand').value = '₱0.00';
+                document.getElementById('recon-pondo-amount').value = '';
+                document.getElementById('recon-total-income').value = '₱0.00';
+                document.getElementById('recon-discrepancy').value = '₱0.00';
+                document.getElementById('recon-discrepancy').style.color = '#ef4444';
+                
+                // Reset internal calculation totals
+                if (typeof currentReconTotals !== 'undefined') {
+                    currentReconTotals.cashExpense = 0;
+                    currentReconTotals.gcashExpense = 0;
+                    currentReconTotals.gcashReceivable = 0;
+                    currentReconTotals.cashOnHand = 0;
+                }
+            }
         });
     });
 
@@ -239,6 +263,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const reportMainMenu = document.getElementById('report-main-menu');
     const staffReportContent = document.getElementById('staff-report-content');
     const adminReportContent = document.getElementById('admin-report-content');
+    const adminReportsDashboard = document.getElementById('admin-reports-dashboard');
+    const adminStatisticsContent = document.getElementById('admin-statistics-report-content');
+    const adminAuditContent = document.getElementById('admin-audit-report-content');
+    const adminSalaryContent = document.getElementById('admin-salary-expenses-content');
+    const adminMonthlyContent = document.getElementById('admin-monthly-income-content');
+    
     const reportAdminLoginSection = document.getElementById('report-admin-login-section');
     const reportBackBtns = document.querySelectorAll('.report-back-btn');
     
@@ -250,6 +280,11 @@ document.addEventListener('DOMContentLoaded', () => {
         reportMainMenu.classList.add('hidden');
         staffReportContent.classList.add('hidden');
         adminReportContent.classList.add('hidden');
+        adminReportsDashboard.classList.add('hidden');
+        adminStatisticsContent.classList.add('hidden');
+        adminAuditContent.classList.add('hidden');
+        adminSalaryContent.classList.add('hidden');
+        adminMonthlyContent.classList.add('hidden');
         reportAdminLoginSection.classList.add('hidden');
     }
 
@@ -314,9 +349,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.status === 'success') {
                 const verifiedRole = result.role;
                 if (verifiedRole === 'Owner') {
-                    // Success! Show admin report content
+                    // Success! Show admin report dashboard
                     reportAdminLoginSection.classList.add('hidden');
-                    adminReportContent.classList.remove('hidden');
+                    adminReportsDashboard.classList.remove('hidden');
                 } else {
                     // Valid credentials, but not owner
                     reportAdminErrorMessage.textContent = 'Access Denied: Only the Owner can access Admin Reports.';
@@ -337,6 +372,52 @@ document.addEventListener('DOMContentLoaded', () => {
             spinner.classList.add('hidden');
             reportAdminLoginBtn.disabled = false;
         }
+    });
+
+    // Admin Dashboard Button Handlers
+    document.getElementById('btn-admin-general-report').addEventListener('click', () => {
+        hideAllReportSections();
+        adminReportContent.classList.remove('hidden');
+        
+        // FOOLPROOF CLEAR: Always reset everything when entering this screen
+        document.getElementById('admin-start-date').value = '';
+        document.getElementById('admin-end-date').value = '';
+        document.getElementById('admin-branch').value = 'All';
+        document.getElementById('recon-cash-expense').value = '₱0.00';
+        document.getElementById('recon-gcash-expense').value = '₱0.00';
+        document.getElementById('recon-gcash-receivable').value = '₱0.00';
+        document.getElementById('recon-cash-on-hand').value = '₱0.00';
+        document.getElementById('recon-pondo-amount').value = '';
+        document.getElementById('recon-total-income').value = '₱0.00';
+        document.getElementById('recon-discrepancy').value = '₱0.00';
+        document.getElementById('recon-discrepancy').style.color = '#ef4444';
+        
+        if (typeof currentReconTotals !== 'undefined') {
+            currentReconTotals.cashExpense = 0;
+            currentReconTotals.gcashExpense = 0;
+            currentReconTotals.gcashReceivable = 0;
+            currentReconTotals.cashOnHand = 0;
+        }
+    });
+
+    document.getElementById('btn-admin-statistics-report').addEventListener('click', () => {
+        hideAllReportSections();
+        adminStatisticsContent.classList.remove('hidden');
+    });
+
+    document.getElementById('btn-admin-audit-report').addEventListener('click', () => {
+        hideAllReportSections();
+        adminAuditContent.classList.remove('hidden');
+    });
+
+    document.getElementById('btn-admin-salary-expenses').addEventListener('click', () => {
+        hideAllReportSections();
+        adminSalaryContent.classList.remove('hidden');
+    });
+
+    document.getElementById('btn-admin-monthly-income').addEventListener('click', () => {
+        hideAllReportSections();
+        adminMonthlyContent.classList.remove('hidden');
     });
 
     // Tab Switching Logic
@@ -433,13 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const referenceValue = document.getElementById('g-reference').value.trim();
         if (!referenceValue) {
-            showMessage(gcashStatusMessage, 'Reference# is STRICTLY REQUIRED for GCash expenses.', 'error');
-            return;
-        }
-        
-        // Ensure reference has a minimum length to prevent fake entries
-        if (referenceValue.length < 6) {
-            showMessage(gcashStatusMessage, 'Invalid Reference#! It seems too short. Please enter the full reference number.', 'error');
+            showMessage(gcashStatusMessage, 'Reference# is REQUIRED for GCash expenses.', 'error');
             return;
         }
 
@@ -447,7 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
             action: 'addGcashExpense',
             branch: document.getElementById('g-branch').value,
             date: document.getElementById('g-date').value,
-            employee: '', // Removed from UI
+            employee: document.getElementById('g-details').value, // Used to be employee, now details
             paymentMethod: document.getElementById('g-payment-method').value,
             amount: document.getElementById('g-amount').value,
             reference: document.getElementById('g-reference').value,
@@ -503,13 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const referenceValue = document.getElementById('r-reference').value.trim();
         if (!referenceValue) {
-            showMessage(receivableStatusMessage, 'Reference# is STRICTLY REQUIRED for GCash receivables.', 'error');
-            return;
-        }
-
-        // Ensure reference has a minimum length to prevent fake entries
-        if (referenceValue.length < 6) {
-            showMessage(receivableStatusMessage, 'Invalid Reference#! It seems too short. Please enter the full reference number.', 'error');
+            showMessage(receivableStatusMessage, 'Reference# is REQUIRED for GCash receivables.', 'error');
             return;
         }
 
@@ -708,6 +777,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Handle Salary Expense Form Submission
+    const salaryForm = document.getElementById('salary-expense-form');
+    if (salaryForm) {
+        const salarySubmitBtn = document.getElementById('salary-submit-btn');
+        const salaryStatusMessage = document.getElementById('salary-status-message');
+
+        salaryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (SCRIPT_URL === 'PASTE_YOUR_URL_HERE' || SCRIPT_URL === '') {
+                showMessage(salaryStatusMessage, 'Please set your Google Apps Script URL in app.js', 'error');
+                return;
+            }
+
+            const formData = {
+                action: 'addSalaryExpense',
+                startDate: document.getElementById('salary-start-date').value,
+                endDate: document.getElementById('salary-end-date').value,
+                branch: document.getElementById('salary-branch').value,
+                amount: document.getElementById('salary-amount').value,
+                encodedBy: sessionStorage.getItem('loggedInUser')
+            };
+
+            const btnText = salarySubmitBtn.querySelector('.btn-text');
+            const spinner = salarySubmitBtn.querySelector('.spinner');
+            salarySubmitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            salaryStatusMessage.classList.add('hidden');
+
+            try {
+                const urlEncodedData = new URLSearchParams(formData).toString();
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: urlEncodedData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showMessage(salaryStatusMessage, 'Salary Expense saved successfully!', 'success');
+                    salaryForm.reset();
+                } else {
+                    showMessage(salaryStatusMessage, 'Error saving to Sheets: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage(salaryStatusMessage, 'Error submitting data. Make sure network is stable.', 'error');
+            } finally {
+                salarySubmitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
     // Auto-generate Account Name based on Name
     const accNameInput = document.getElementById('acc-name');
     const accAccountNameInput = document.getElementById('acc-account-name');
@@ -905,8 +1034,103 @@ document.addEventListener('DOMContentLoaded', () => {
         generateReport('Staff', 'staff');
     });
 
-    document.getElementById('btn-generate-admin-report').addEventListener('click', () => {
-        generateReport('Owner', 'admin');
+    // Store current totals for calculation
+    let currentReconTotals = {
+        cashExpense: 0,
+        gcashExpense: 0,
+        gcashReceivable: 0,
+        cashOnHand: 0
+    };
+    
+    function calculateDiscrepancy() {
+        const pondoInput = document.getElementById('recon-pondo-amount');
+        const incomeInput = document.getElementById('recon-total-income');
+        const discInput = document.getElementById('recon-discrepancy');
+        
+        const pondo = parseFloat(pondoInput.value) || 0;
+        
+        // Total Income = Cash on hand + Gcash Receivable + Cash Expense - Gcash Expenses
+        const income = currentReconTotals.cashOnHand + currentReconTotals.gcashReceivable + currentReconTotals.cashExpense - currentReconTotals.gcashExpense;
+        
+        // Discrepancy = Total Income - Pondo Amount
+        const discrepancy = income - pondo;
+        
+        incomeInput.value = `₱${formatCurrency(income)}`;
+        discInput.value = `₱${formatCurrency(discrepancy)}`;
+        
+        if (discrepancy < 0) {
+            discInput.style.color = '#ef4444'; // Red (Short)
+        } else {
+            discInput.style.color = '#10b981'; // Green (Exact or Over)
+        }
+    }
+    
+    document.getElementById('recon-pondo-amount').addEventListener('input', calculateDiscrepancy);
+    
+    // Strictly numbers only for Pondo Amount
+    document.getElementById('recon-pondo-amount').addEventListener('keydown', function(e) {
+        if (['e', 'E', '+', '-'].includes(e.key)) {
+            e.preventDefault();
+        }
+    });
+
+    document.getElementById('btn-generate-admin-report').addEventListener('click', async () => {
+        const startDate = document.getElementById('admin-start-date').value;
+        const endDate = document.getElementById('admin-end-date').value;
+        const branch = document.getElementById('admin-branch').value;
+        const btn = document.getElementById('btn-generate-admin-report');
+        
+        if (!startDate || !endDate) {
+            alert("Please select both Start Date and End Date.");
+            return;
+        }
+
+        const btnText = btn.querySelector('.btn-text');
+        const spinner = btn.querySelector('.spinner');
+        btn.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+
+        try {
+            const formData = {
+                action: 'getReconciliationData',
+                startDate: startDate,
+                endDate: endDate,
+                branch: branch
+            };
+
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(formData)
+            });
+
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                const totals = result.data;
+                document.getElementById('recon-cash-expense').value = `₱${formatCurrency(totals.cashExpense)}`;
+                document.getElementById('recon-gcash-expense').value = `₱${formatCurrency(totals.gcashExpense)}`;
+                document.getElementById('recon-gcash-receivable').value = `₱${formatCurrency(totals.gcashReceivable)}`;
+                document.getElementById('recon-cash-on-hand').value = `₱${formatCurrency(totals.cashOnHand)}`;
+                
+                currentReconTotals.cashExpense = totals.cashExpense;
+                currentReconTotals.gcashExpense = totals.gcashExpense;
+                currentReconTotals.gcashReceivable = totals.gcashReceivable;
+                currentReconTotals.cashOnHand = totals.cashOnHand;
+                
+                calculateDiscrepancy();
+            } else {
+                alert("Error: " + result.message);
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert("Fetch Error: " + error.message + "\nPlease check Developer Console (F12) for more details.");
+        } finally {
+            btn.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
     });
 
     function buildReportHTML(data, reportType, startDate, endDate, branch, prefix) {
