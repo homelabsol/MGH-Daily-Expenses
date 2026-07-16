@@ -357,7 +357,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 /* Status Message */
-#status-message {
+.status-msg, #status-message {
     margin-top: 15px;
     padding: 12px;
     border-radius: 8px;
@@ -367,14 +367,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     animation: fadeIn 0.3s ease forwards;
 }
 
-#status-message.success {
-    background: rgba(16, 185, 129, 0.2);
-    color: #34d399;
-    border: 1px solid rgba(16, 185, 129, 0.3);
+.success {
+    background: rgba(16, 185, 129, 0.2) !important;
+    color: #34d399 !important;
+    border: 1px solid rgba(16, 185, 129, 0.3) !important;
 }
 
-#status-message.error {
-    background: rgba(239, 68, 68, 0.2);
-    color: #f87171;
-    border: 1px solid rgba(239, 68, 68, 0.3);
+.error {
+    background: rgba(239, 68, 68, 0.2) !important;
+    color: #f87171 !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
 }

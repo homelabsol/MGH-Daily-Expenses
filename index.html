@@ -64,12 +64,14 @@
         </main>
     </div>
 
-    <div class="container hidden" id="expenses-container">
-        <header>
+    <div class="container hidden" id="expenses-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000;">
+        <header id="expenses-header" style="cursor: move; user-select: none;">
             <h1>Expenses</h1>
-            <p>Record your expenses directly to Google Sheets</p>
+            <p>Record your expenses (Drag here to move)</p>
             <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
-            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+            <div onmousedown="event.stopPropagation()">
+                <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+            </div>
         </header>
 
         <main class="glass-panel">
@@ -524,84 +526,141 @@
             <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 25px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Main Reports</button>
         </main>
 
-        <main class="glass-panel hidden" id="admin-report-content">
-            <h2>General Report</h2>
+        <main class="glass-panel hidden" id="admin-report-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 850px; max-width: 95vw; max-height: 90vh; overflow-y: auto; resize: both; z-index: 1000; padding: 25px; margin: 0; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+            <!-- Header (Draggable Area) -->
+            <div id="admin-report-header" style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; gap: 15px; cursor: move; user-select: none;">
+                <div>
+                    <h2 style="margin: 0; font-size: 1.5em; font-weight: 600; letter-spacing: -0.5px; display: flex; align-items: center;"><i class="fas fa-grip-horizontal" style="margin-right: 10px; color: var(--text-muted); font-size: 0.7em;"></i> General Report</h2>
+                    <span style="font-size: 0.85em; color: var(--text-muted); margin-left: 28px;">Daily Reconciliation & Balance (Drag here to move)</span>
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;" onmousedown="event.stopPropagation()">
+                    <button id="btn-save-daily-check" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: var(--primary); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                        <span class="btn-text"><i class="fas fa-save" style="margin-right: 5px;"></i> Save Record</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                    <button id="btn-print-report" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;">
+                        <span class="btn-text"><i class="fas fa-file-pdf" style="margin-right: 5px;"></i> Check & Balance</span>
+                    </button>
+                </div>
+            </div>
             
-            <!-- Filters -->
-            <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; margin: 20px 0; display: flex; flex-direction: column; gap: 10px; text-align: left;">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="admin-start-date">Start Date</label>
-                    <input type="date" id="admin-start-date" required>
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="admin-end-date">End Date</label>
-                    <input type="date" id="admin-end-date" required>
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label for="admin-branch">Branch</label>
-                    <select id="admin-branch" required>
-                        <option value="All">All Branches</option>
-                        <option value="MGH Parang">MGH Parang</option>
-                        <option value="MGH Concepcion">MGH Concepcion</option>
-                    </select>
-                </div>
-                <button class="submit-btn" id="btn-generate-admin-report" style="margin-top: 10px; background: linear-gradient(135deg, #10b981, #059669);">
-                    <span class="btn-text">Reconcile Income & Expenses</span>
-                    <div class="spinner hidden"></div>
-                </button>
-            </div>
-
-            <div id="admin-report-results" style="margin-top: 20px; text-align: left;">
-                <!-- Box 1: Expenses & Cash on Hand -->
-                <div style="background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
-                    <h3 style="margin-bottom: 15px; font-size: 1.1em; color: var(--text-muted); text-align: center;">Breakdown</h3>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label>Cash Expense</label>
-                            <input type="text" id="recon-cash-expense" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.2); font-family: monospace; color: var(--text-color);">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label>Gcash Expenses</label>
-                            <input type="text" id="recon-gcash-expense" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.2); font-family: monospace; color: var(--text-color);">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label>Gcash Receivable</label>
-                            <input type="text" id="recon-gcash-receivable" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.2); font-family: monospace; color: var(--text-color);">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label>Cash on Hand</label>
-                            <input type="text" id="recon-cash-on-hand" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.2); font-family: monospace; color: var(--text-color);">
-                        </div>
+            <div id="save-daily-status-message" class="hidden" style="margin-bottom: 15px; text-align: center; font-size: 0.9em; padding: 10px; border-radius: 6px;"></div>
+            
+            <!-- Filters & Actions -->
+            <div style="background: rgba(0, 0, 0, 0.2); padding: 20px; border-radius: 10px; margin-bottom: 25px; border: 1px solid rgba(255,255,255,0.05);">
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+                    <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 150px;">
+                        <label for="admin-start-date" style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Date</label>
+                        <input type="date" id="admin-start-date" required style="padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
                     </div>
-                </div>
-                
-                <!-- Box 1.5: Pondo Amount -->
-                <div style="background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(59, 130, 246, 0.3);">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label style="color: #3b82f6; font-weight: bold;">Pondo Amount</label>
-                        <input type="number" id="recon-pondo-amount" step="0.01" placeholder="0.00" style="background: rgba(0,0,0,0.3); font-family: monospace; color: #3b82f6; font-weight: bold; font-size: 1.1em; width: 100%; padding: 10px; border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 4px;">
+                    <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 150px;">
+                        <label for="admin-branch" style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Branch</label>
+                        <select id="admin-branch" required style="padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
+                            <option value="All">All Branches</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
                     </div>
-                </div>
-
-                <!-- Box 2: Total Income -->
-                <div style="background: rgba(16, 185, 129, 0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(16, 185, 129, 0.3);">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label style="color: #10b981; font-weight: bold;">Total Income</label>
-                        <input type="text" id="recon-total-income" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.3); font-family: monospace; color: #10b981; font-weight: bold; font-size: 1.1em; -webkit-text-fill-color: currentcolor;">
-                    </div>
-                </div>
-                
-                <!-- Box 3: Discrepancy -->
-                <div style="background: rgba(239, 68, 68, 0.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3);">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label style="color: #ef4444; font-weight: bold;">Discrepancy</label>
-                        <input type="text" id="recon-discrepancy" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.3); font-family: monospace; color: #ef4444; font-weight: bold; font-size: 1.1em; -webkit-text-fill-color: currentcolor;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; flex: 2; min-width: 250px;">
+                        <button class="submit-btn" id="btn-generate-admin-report" style="margin: 0; padding: 10px 16px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; border-radius: 6px; font-weight: 500; flex: 1; min-width: 120px;">
+                            <span class="btn-text">Reconcile</span>
+                            <div class="spinner hidden"></div>
+                        </button>
+                        <button class="submit-btn" id="btn-daily-sales-check" style="margin: 0; padding: 10px 16px; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.4); color: #a78bfa; border-radius: 6px; font-weight: 500; flex: 1; min-width: 120px;">
+                            <span class="btn-text">Load Daily Sales</span>
+                            <div class="spinner hidden"></div>
+                        </button>
                     </div>
                 </div>
             </div>
+            
+            <!-- Daily Sales List Container -->
+            <div id="daily-sales-list-container" class="hidden" style="margin-bottom: 25px; background: rgba(0, 0, 0, 0.2); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); overflow: hidden;">
+                <div style="background: rgba(139, 92, 246, 0.15); padding: 12px 20px; border-bottom: 1px solid rgba(139, 92, 246, 0.3);">
+                    <h3 style="margin: 0; font-size: 1.05em; color: #c4b5fd; font-weight: 500;">Saved Daily Checks</h3>
+                </div>
+                <div style="padding: 15px; overflow-x: auto;">
+                    <table id="daily-sales-list-table" style="width: 100%; border-collapse: collapse; font-size: 0.85em; text-align: left;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted);">
+                                <th style="padding: 8px;">Date</th>
+                                <th style="padding: 8px;">Branch</th>
+                                <th style="padding: 8px; text-align: right;">Cash Exp</th>
+                                <th style="padding: 8px; text-align: right;">Gcash Exp</th>
+                                <th style="padding: 8px; text-align: right;">Gcash Rec</th>
+                                <th style="padding: 8px; text-align: right;">Cash on Hand</th>
+                                <th style="padding: 8px; text-align: right;">Daily Sales</th>
+                                <th style="padding: 8px; text-align: right;">Pondo Amt</th>
+                                <th style="padding: 8px; text-align: right;">Discrepancy</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-            <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Dashboard</button>
+            <!-- Reconciliation Summary Card -->
+            <div id="admin-report-results" style="margin-top: 20px; text-align: left; background: rgba(255, 255, 255, 0.03); border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+                
+                <!-- Header of the Summary Card -->
+                <div style="background: rgba(0,0,0,0.2); padding: 15px 25px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <h3 style="margin: 0; font-size: 1.1em; color: #e2e8f0; font-weight: 500;">Reconciliation Details</h3>
+                </div>
+
+                <!-- Content -->
+                <div style="padding: 25px;">
+                    <!-- Breakdown Grid -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-bottom: 30px; padding-bottom: 25px; border-bottom: 1px dashed rgba(255,255,255,0.1);">
+                        <div>
+                            <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Cash Expense</div>
+                            <input type="text" id="recon-cash-expense" disabled readonly value="₱0.00" style="background: transparent; border: none; font-family: 'Inter', monospace; font-size: 1.1em; color: #e2e8f0; padding: 0; margin: 0; outline: none; width: 100%;">
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Gcash Expenses</div>
+                            <input type="text" id="recon-gcash-expense" disabled readonly value="₱0.00" style="background: transparent; border: none; font-family: 'Inter', monospace; font-size: 1.1em; color: #e2e8f0; padding: 0; margin: 0; outline: none; width: 100%;">
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Gcash Receivable</div>
+                            <input type="text" id="recon-gcash-receivable" disabled readonly value="₱0.00" style="background: transparent; border: none; font-family: 'Inter', monospace; font-size: 1.1em; color: #e2e8f0; padding: 0; margin: 0; outline: none; width: 100%;">
+                        </div>
+                        <div>
+                            <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Cash on Hand</div>
+                            <input type="text" id="recon-cash-on-hand" disabled readonly value="₱0.00" style="background: transparent; border: none; font-family: 'Inter', monospace; font-size: 1.1em; color: #e2e8f0; padding: 0; margin: 0; outline: none; width: 100%;">
+                        </div>
+                    </div>
+
+                    <!-- Summary Rows -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; max-width: 500px; margin: 0 auto;">
+                        <!-- Total Income -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: rgba(16, 185, 129, 0.05); border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.2);">
+                            <span style="color: #10b981; font-weight: 500; font-size: 0.95em;">Total Income (Daily Sales)</span>
+                            <input type="text" id="recon-total-income" disabled readonly value="₱0.00" style="background: transparent; border: none; font-family: 'Inter', monospace; font-size: 1.15em; font-weight: 600; color: #10b981; text-align: right; width: 150px; outline: none;">
+                        </div>
+
+                        <!-- Pondo Amount -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: rgba(59, 130, 246, 0.05); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.2);">
+                            <span style="color: #3b82f6; font-weight: 500; font-size: 0.95em;">Pondo Amount</span>
+                            <input type="number" id="recon-pondo-amount" step="0.01" placeholder="0.00" style="background: rgba(0,0,0,0.25); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 6px; font-family: 'Inter', monospace; font-size: 1.1em; font-weight: 600; color: #93c5fd; text-align: right; width: 160px; padding: 6px 10px; outline: none; transition: border-color 0.2s;">
+                        </div>
+
+                        <!-- Discrepancy -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: rgba(239, 68, 68, 0.05); border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.2);">
+                            <span style="color: #ef4444; font-weight: 500; font-size: 0.95em;">Discrepancy</span>
+                            <input type="text" id="recon-discrepancy" disabled readonly value="₱0.00" style="background: transparent; border: none; font-family: 'Inter', monospace; font-size: 1.15em; font-weight: 600; color: #ef4444; text-align: right; width: 150px; outline: none;">
+                        </div>
+                    </div>
+
+                    <!-- Remarks -->
+                    <div id="recon-remarks-container" class="hidden" style="margin-top: 25px; padding-top: 20px; border-top: 1px dashed rgba(255,255,255,0.1);">
+                        <label style="display: block; color: #f59e0b; font-weight: 500; font-size: 0.9em; margin-bottom: 8px;">Remarks / Reason for Discrepancy (Required)</label>
+                        <textarea id="recon-remarks" rows="2" placeholder="Please state the reason for the discrepancy..." style="width: 100%; background: rgba(0,0,0,0.25); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 12px; color: #e2e8f0; font-family: 'Inter', sans-serif; font-size: 0.95em; outline: none; resize: vertical; transition: border-color 0.2s;"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 20px; width: 100%; text-align: center; color: var(--text-muted); background: none; border: none; cursor: pointer; font-size: 0.9em;">← Back to Dashboard</button>
         </main>
 
         <main class="glass-panel hidden" id="admin-statistics-report-content">

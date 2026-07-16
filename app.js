@@ -381,7 +381,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // FOOLPROOF CLEAR: Always reset everything when entering this screen
         document.getElementById('admin-start-date').value = '';
-        document.getElementById('admin-end-date').value = '';
         document.getElementById('admin-branch').value = 'All';
         document.getElementById('recon-cash-expense').value = '₱0.00';
         document.getElementById('recon-gcash-expense').value = '₱0.00';
@@ -391,6 +390,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('recon-total-income').value = '₱0.00';
         document.getElementById('recon-discrepancy').value = '₱0.00';
         document.getElementById('recon-discrepancy').style.color = '#ef4444';
+        
+        document.getElementById('recon-remarks').value = '';
+        document.getElementById('recon-remarks-container').classList.add('hidden');
         
         if (typeof currentReconTotals !== 'undefined') {
             currentReconTotals.cashExpense = 0;
@@ -1052,16 +1054,25 @@ document.addEventListener('DOMContentLoaded', () => {
         // Total Income = Cash on hand + Gcash Receivable + Cash Expense - Gcash Expenses
         const income = currentReconTotals.cashOnHand + currentReconTotals.gcashReceivable + currentReconTotals.cashExpense - currentReconTotals.gcashExpense;
         
-        // Discrepancy = Total Income - Pondo Amount
-        const discrepancy = income - pondo;
+        // Discrepancy = Pondo Amount - Total Income
+        const discrepancy = pondo - income;
         
         incomeInput.value = `₱${formatCurrency(income)}`;
-        discInput.value = `₱${formatCurrency(discrepancy)}`;
         
-        if (discrepancy < 0) {
-            discInput.style.color = '#ef4444'; // Red (Short)
+        const remarksContainer = document.getElementById('recon-remarks-container');
+        
+        if (pondo === income) {
+            discInput.value = "Balance";
+            discInput.style.color = '#10b981'; // Green
+            remarksContainer.classList.add('hidden'); // Hide remarks if balanced
         } else {
-            discInput.style.color = '#10b981'; // Green (Exact or Over)
+            discInput.value = `₱${formatCurrency(discrepancy)}`;
+            remarksContainer.classList.remove('hidden'); // Show remarks if there's a discrepancy
+            if (discrepancy < 0) {
+                discInput.style.color = '#ef4444'; // Red (Short)
+            } else {
+                discInput.style.color = '#10b981'; // Green (Over)
+            }
         }
     }
     
@@ -1076,12 +1087,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-generate-admin-report').addEventListener('click', async () => {
         const startDate = document.getElementById('admin-start-date').value;
-        const endDate = document.getElementById('admin-end-date').value;
+        const endDate = startDate; // Use the same date to filter exactly one day
         const branch = document.getElementById('admin-branch').value;
         const btn = document.getElementById('btn-generate-admin-report');
+        const pondoVal = document.getElementById('recon-pondo-amount').value;
         
-        if (!startDate || !endDate) {
-            alert("Please select both Start Date and End Date.");
+        if (!startDate) {
+            alert("Please select a Date.");
+            return;
+        }
+
+        if (!pondoVal) {
+            alert("Please enter the Pondo Amount before reconciling.");
             return;
         }
 
@@ -1132,6 +1149,93 @@ document.addEventListener('DOMContentLoaded', () => {
             spinner.classList.add('hidden');
         }
     });
+
+    const btnDailySalesCheck = document.getElementById('btn-daily-sales-check');
+    if (btnDailySalesCheck) {
+        btnDailySalesCheck.addEventListener('click', async () => {
+            const startDate = document.getElementById('admin-start-date').value;
+            const branch = document.getElementById('admin-branch').value;
+            
+            if (!startDate) {
+                alert("Please select a Date.");
+                return;
+            }
+
+            const btnText = btnDailySalesCheck.querySelector('.btn-text');
+            const spinner = btnDailySalesCheck.querySelector('.spinner');
+            btnDailySalesCheck.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+
+            try {
+                const formData = {
+                    action: 'getDailyCheckList',
+                    date: startDate,
+                    branch: branch
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    const rows = result.data;
+                    const container = document.getElementById('daily-sales-list-container');
+                    const tbody = document.querySelector('#daily-sales-list-table tbody');
+                    tbody.innerHTML = '';
+
+                    if (!rows || rows.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No saved Daily Checks found for the selected date and branch.</td></tr>';
+                    } else {
+                        rows.forEach(row => {
+                            const [rowDate, rowBranch, cashExp, gcashExp, gcashRec, cashOnHand, dailySales, pondoAmt, discrepancy] = row;
+                            
+                            // Format date properly if it's an ISO string
+                            let formattedDate = rowDate;
+                            if (rowDate && String(rowDate).includes('T')) {
+                                formattedDate = String(rowDate).split('T')[0];
+                            }
+
+                            const formatRowCurrency = (val) => {
+                                let num = parseFloat(val);
+                                if (isNaN(num)) return val;
+                                return '₱' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            };
+
+                            const tr = document.createElement('tr');
+                            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                            tr.innerHTML = `
+                                <td style="padding: 8px;">${formattedDate}</td>
+                                <td style="padding: 8px;">${rowBranch}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(cashExp)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(gcashExp)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(gcashRec)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #a78bfa;">${formatRowCurrency(cashOnHand)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #10b981;">${formatRowCurrency(dailySales)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #60a5fa;">${formatRowCurrency(pondoAmt)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace; color: ${parseFloat(discrepancy) < 0 ? '#ef4444' : (parseFloat(discrepancy) > 0 ? '#34d399' : '#e2e8f0')};">${formatRowCurrency(discrepancy)}</td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    }
+                    container.classList.remove('hidden');
+                } else {
+                    alert("Error: " + result.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert("Fetch Error: " + error.message);
+            } finally {
+                btnDailySalesCheck.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
 
     function buildReportHTML(data, reportType, startDate, endDate, branch, prefix) {
         if (!data || data.length === 0) {
@@ -1270,5 +1374,427 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         return html;
+    }
+
+    // Print Report Logic
+    const btnPrintReport = document.getElementById('btn-print-report');
+    if (btnPrintReport) {
+        btnPrintReport.addEventListener('click', async () => {
+            const startDate = document.getElementById('admin-start-date').value;
+            const branch = document.getElementById('admin-branch').value;
+            
+            if (!startDate) {
+                alert("Please select a Date first.");
+                return;
+            }
+
+            // Generate Report will only use Date and Branch, and fetch everything else from backend
+            const btnText = btnPrintReport.querySelector('.btn-text');
+            const spinner = btnPrintReport.querySelector('.spinner');
+            btnPrintReport.disabled = true;
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+
+            // Open new tab synchronously
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Fetching data and generating PDF Report, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            try {
+                // Fetch the detailed rows
+                const formData = {
+                    action: 'getReconciliationData',
+                    startDate: startDate,
+                    endDate: startDate,
+                    branch: branch
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Error fetching data');
+                }
+
+                const data = result.data;
+                const formatCurrency = (num) => Number(num).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+                // Helper to build table
+                const buildTable = (title, headers, rows, amountIdx) => {
+                    if (!rows || rows.length === 0) return '';
+                    let tableHtml = `
+                        <h3 style="margin-top: 15px; margin-bottom: 5px; color: #333; font-size: 13px; border-bottom: 2px solid #e5e7eb; padding-bottom: 2px;">${title}</h3>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10px;">
+                            <thead>
+                                <tr style="background-color: #f3f4f6; color: #333; text-align: left;">
+                    `;
+                    headers.forEach(h => { tableHtml += `<th style="padding: 4px; border: 1px solid #e5e7eb;">${h}</th>`; });
+                    tableHtml += `</tr></thead><tbody>`;
+                    
+                    let subTotal = 0;
+                    rows.forEach(row => {
+                        tableHtml += `<tr style="border-bottom: 1px solid #e5e7eb;">`;
+                        for(let i = 0; i < row.length; i++) {
+                            let cellVal = row[i] || '';
+                            if (i === amountIdx) {
+                                subTotal += parseFloat(cellVal) || 0;
+                                tableHtml += `<td style="padding: 4px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #111;">₱${formatCurrency(cellVal)}</td>`;
+                            } else {
+                                tableHtml += `<td style="padding: 4px; border: 1px solid #e5e7eb;">${cellVal}</td>`;
+                            }
+                        }
+                        tableHtml += `</tr>`;
+                    });
+                    
+                    // Subtotal Row
+                    tableHtml += `
+                        <tr style="background-color: #f9fafb; font-weight: 600;">
+                            <td colspan="${headers.length - 1}" style="padding: 4px; border: 1px solid #e5e7eb; text-align: right;">Subtotal:</td>
+                            <td style="padding: 4px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #111;">₱${formatCurrency(subTotal)}</td>
+                        </tr>
+                    `;
+                    
+                    tableHtml += `</tbody></table>`;
+                    return tableHtml;
+                };
+
+                // Recompute total income properly from fetched data
+                const computedIncome = data.cashOnHand + data.gcashReceivable + data.cashExpense - data.gcashExpense;
+                const totalIncome = `₱${formatCurrency(computedIncome)}`;
+                const cashExpText = `₱${formatCurrency(data.cashExpense)}`;
+                const gcashExpText = `₱${formatCurrency(data.gcashExpense)}`;
+                const gcashRecText = `₱${formatCurrency(data.gcashReceivable)}`;
+                const cashOnHandText = `₱${formatCurrency(data.cashOnHand)}`;
+                
+                // Fetch saved Pondo, Discrepancy, Remarks from backend data
+                const savedPondo = data.pondoAmount !== null ? `₱${formatCurrency(data.pondoAmount)}` : 'N/A';
+                const savedDiscrepancy = data.discrepancyStr || 'N/A';
+                const savedRemarks = data.remarks || 'None';
+
+                // Build HTML
+                let htmlString = `
+                    <div id="general-report-pdf-content" style="background: white; color: black; padding: 20px; font-family: Arial, Helvetica, sans-serif;">
+                        <h2 style="text-align: center; margin-bottom: 2px; color: #111; font-weight: bold; font-size: 18px;">Daily Check and Balance</h2>
+                        <p style="text-align: center; margin-bottom: 2px; color: #333; font-size: 12px;">Date: ${startDate}</p>
+                        <p style="text-align: center; margin-bottom: 15px; color: #333; font-size: 12px;">Branch: ${branch}</p>
+                `;
+
+                // Cash Expenses (Branch, Date, Desc, Amt, Receipt, Encoded)
+                htmlString += buildTable('Cash Expenses', ['Branch', 'Date', 'Description', 'Amount', 'Receipt', 'Encoded By'], data.cashExpenseRows, 3);
+                
+                // Gcash Expenses (Branch, Date, Details, Method, Amt, Ref, Receipt, Encoded)
+                htmlString += buildTable('Gcash Expenses', ['Branch', 'Date', 'Details', 'Payment Method', 'Amount', 'Reference#', 'Receipt', 'Encoded By'], data.gcashExpenseRows, 4);
+
+                // Gcash Receivable (Remove Employee Name at index 7)
+                const filteredGcashReceivableRows = data.gcashReceivableRows ? data.gcashReceivableRows.map(row => {
+                    // row is [Branch, Date, Cust, Hrs, Method, Ref, Amt, Emp, Encoded]
+                    // We remove Emp (index 7)
+                    return [row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[8]];
+                }) : [];
+                htmlString += buildTable('Gcash Receivable', ['Branch', 'Date', 'Customer Name', 'No of Hours', 'Payment Method', 'Reference#', 'Amount', 'Encoded By'], filteredGcashReceivableRows, 6);
+
+                // Cash on Hand (Branch, Date, Amt, Receipt, Encoded)
+                htmlString += buildTable('Cash on Hand', ['Branch', 'Date', 'Amount', 'Encoded By'], data.cashOnHandRows, 2);
+
+                // Add the Summary block
+                htmlString += `
+                        <h3 style="margin-top: 15px; margin-bottom: 5px; color: #111; font-size: 14px; border-bottom: 2px solid #111; padding-bottom: 2px;">Summary</h3>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 11px;">
+                            <tbody>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; width: 50%;">Total Cash Expense</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #111;">${cashExpText}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold;">Total Gcash Expenses</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #111;">${gcashExpText}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold;">Total Gcash Receivable</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #111;">${gcashRecText}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold;">Total Cash on Hand</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #111;">${cashOnHandText}</td>
+                                </tr>
+                                <tr style="background-color: #f3f4f6;">
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; color: #10b981;">Total Income (Daily Sales)</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #10b981;">${totalIncome}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                `;
+
+                if (savedPondo !== 'N/A') {
+                    htmlString += `
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 11px;">
+                            <tbody>
+                                <tr style="background-color: #f3f4f6;">
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; color: #3b82f6; width: 50%;">Pondo Amount</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: #3b82f6;">${savedPondo}</td>
+                                </tr>
+                                <tr style="background-color: ${savedDiscrepancy === 'Balance' ? '#d1fae5' : '#fee2e2'};">
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; color: ${savedDiscrepancy === 'Balance' ? '#059669' : '#dc2626'};">Discrepancy</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-family: Arial, Helvetica, sans-serif; font-weight: bold; color: ${savedDiscrepancy === 'Balance' ? '#059669' : '#dc2626'};">${savedDiscrepancy === 'Balance' ? 'Balance' : (typeof savedDiscrepancy === 'number' || !isNaN(parseFloat(savedDiscrepancy)) ? '₱' + formatCurrency(parseFloat(savedDiscrepancy)) : savedDiscrepancy)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    `;
+                    
+                    if (savedRemarks && savedRemarks !== 'None') {
+                        htmlString += `
+                            <div style="margin-top: 10px; padding: 10px; border: 1px solid #e5e7eb; background: #fffbeb;">
+                                <strong style="color: #d97706; font-size: 11px;">Remarks / Discrepancy Reason:</strong>
+                                <p style="margin-top: 4px; margin-bottom: 0; color: #4b5563; font-size: 11px;">${savedRemarks}</p>
+                            </div>
+                        `;
+                    }
+                }
+
+                htmlString += `
+                        <div style="text-align: center; margin-top: 50px; font-size: 12px; color: #9ca3af;">
+                            Encoded By: ${sessionStorage.getItem('loggedInUser') || 'Admin'} <br>
+                            Generated by MGH Daily Expenses | ${new Date().toLocaleString()}
+                        </div>
+                    </div>
+                `;
+
+                // Create off-screen container for html2pdf
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = '800px'; 
+                document.body.appendChild(hiddenDiv);
+                
+                const element = hiddenDiv.querySelector('#general-report-pdf-content');
+
+                const opt = {
+                    margin:       0.5,
+                    filename:     `Daily_Check_Balance_${branch}_${startDate}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2 },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                };
+
+                html2pdf().set(opt).from(element).output('bloburl').then(function(pdfUrl) {
+                    if (newTab) {
+                        newTab.location.href = pdfUrl;
+                    }
+                    document.body.removeChild(hiddenDiv);
+                }).catch(err => {
+                    console.error(err);
+                    if (newTab) newTab.close();
+                    document.body.removeChild(hiddenDiv);
+                    alert("Failed to generate PDF");
+                });
+
+            } catch (err) {
+                console.error(err);
+                if (newTab) newTab.close();
+                alert("Error: " + err.message);
+            } finally {
+                btnPrintReport.disabled = false;
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    // Save Daily Check Logic
+    const btnSaveDailyCheck = document.getElementById('btn-save-daily-check');
+    if (btnSaveDailyCheck) {
+        btnSaveDailyCheck.addEventListener('click', async () => {
+            const startDate = document.getElementById('admin-start-date').value;
+            const branch = document.getElementById('admin-branch').value;
+            
+            if (!startDate) {
+                alert("Please select a Date first before saving.");
+                return;
+            }
+            
+            const remarksContainer = document.getElementById('recon-remarks-container');
+            const remarksInput = document.getElementById('recon-remarks').value.trim();
+            
+            if (!remarksContainer.classList.contains('hidden') && !remarksInput) {
+                alert("Please enter a remark explaining the discrepancy before saving.");
+                document.getElementById('recon-remarks').focus();
+                return;
+            }
+
+            const statusMessage = document.getElementById('save-daily-status-message');
+            const btnText = btnSaveDailyCheck.querySelector('.btn-text');
+            const spinner = btnSaveDailyCheck.querySelector('.spinner');
+            
+            btnSaveDailyCheck.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                // Remove the peso sign and commas to get clean numbers
+                const parseCurrency = (id) => {
+                    let val = document.getElementById(id).value.replace(/[^0-9.-]+/g,"");
+                    return val ? parseFloat(val) : 0;
+                };
+
+                const formData = {
+                    action: 'saveDailyCheck',
+                    date: startDate,
+                    branch: branch,
+                    cashExpense: parseCurrency('recon-cash-expense'),
+                    gcashExpenses: parseCurrency('recon-gcash-expense'),
+                    gcashReceivable: parseCurrency('recon-gcash-receivable'),
+                    cashOnHand: parseCurrency('recon-cash-on-hand'),
+                    dailySales: parseCurrency('recon-total-income'), // Maps Total Income to Daily Sales
+                    pondoAmount: parseCurrency('recon-pondo-amount'),
+                    discrepancy: parseCurrency('recon-discrepancy'),
+                    remarks: document.getElementById('recon-remarks').value.trim(),
+                    encodedBy: sessionStorage.getItem('loggedInUser')
+                };
+
+                const urlEncodedData = new URLSearchParams(formData).toString();
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: urlEncodedData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showMessage(statusMessage, 'Saved to Daily Check & Balance!', 'success');
+                    
+                    // Reset everything to 0/empty
+                    document.getElementById('admin-start-date').value = '';
+                    document.getElementById('admin-branch').value = 'All';
+                    document.getElementById('recon-cash-expense').value = '₱0.00';
+                    document.getElementById('recon-gcash-expense').value = '₱0.00';
+                    document.getElementById('recon-gcash-receivable').value = '₱0.00';
+                    document.getElementById('recon-cash-on-hand').value = '₱0.00';
+                    document.getElementById('recon-pondo-amount').value = '';
+                    document.getElementById('recon-total-income').value = '₱0.00';
+                    document.getElementById('recon-discrepancy').value = '₱0.00';
+                    document.getElementById('recon-discrepancy').style.color = '#ef4444';
+                    document.getElementById('recon-remarks').value = '';
+                    document.getElementById('recon-remarks-container').classList.add('hidden');
+                    
+                    if (typeof currentReconTotals !== 'undefined') {
+                        currentReconTotals.cashExpense = 0;
+                        currentReconTotals.gcashExpense = 0;
+                        currentReconTotals.gcashReceivable = 0;
+                        currentReconTotals.cashOnHand = 0;
+                    }
+                } else {
+                    showMessage(statusMessage, 'Error: ' + result.message, 'error');
+                }
+            } catch (error) {
+                console.error(error);
+                showMessage(statusMessage, 'Failed to save data.', 'error');
+            } finally {
+                btnSaveDailyCheck.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+});
+
+// Make General Report Draggable
+document.addEventListener("DOMContentLoaded", function() {
+    const reportContent = document.getElementById("admin-report-content");
+    const reportHeader = document.getElementById("admin-report-header");
+
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    if (reportHeader && reportContent) {
+        reportHeader.addEventListener("mousedown", (e) => {
+            isDragging = true;
+            // Get initial mouse position relative to the element
+            offsetX = e.clientX - reportContent.getBoundingClientRect().left;
+            offsetY = e.clientY - reportContent.getBoundingClientRect().top;
+            
+            // Remove CSS transform centering so top/left work as absolute coordinates
+            reportContent.style.transform = 'none';
+            reportContent.style.left = e.clientX - offsetX + 'px';
+            reportContent.style.top = e.clientY - offsetY + 'px';
+            
+            reportContent.style.cursor = 'grabbing';
+            reportHeader.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+            
+            reportContent.style.left = newX + "px";
+            reportContent.style.top = newY + "px";
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                reportContent.style.cursor = '';
+                reportHeader.style.cursor = 'move';
+            }
+        });
+    }
+});
+
+// Make Expenses Form Draggable
+document.addEventListener("DOMContentLoaded", function() {
+    const expensesContainer = document.getElementById("expenses-container");
+    const expensesHeader = document.getElementById("expenses-header");
+
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    if (expensesHeader && expensesContainer) {
+        expensesHeader.addEventListener("mousedown", (e) => {
+            isDragging = true;
+            offsetX = e.clientX - expensesContainer.getBoundingClientRect().left;
+            offsetY = e.clientY - expensesContainer.getBoundingClientRect().top;
+            
+            expensesContainer.style.transform = 'none';
+            expensesContainer.style.left = e.clientX - offsetX + 'px';
+            expensesContainer.style.top = e.clientY - offsetY + 'px';
+            
+            expensesContainer.style.cursor = 'grabbing';
+            expensesHeader.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+            
+            expensesContainer.style.left = newX + "px";
+            expensesContainer.style.top = newY + "px";
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                expensesContainer.style.cursor = '';
+                expensesHeader.style.cursor = 'move';
+            }
+        });
     }
 });
