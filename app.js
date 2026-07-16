@@ -349,6 +349,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.status === 'success') {
                 const verifiedRole = result.role;
                 if (verifiedRole === 'Owner' || verifiedRole === 'Manager' || verifiedRole.toLowerCase() === 'auditor') {
+                    // Update session storage so subsequent actions are logged under this user
+                    sessionStorage.setItem('loggedInUser', result.name);
+                    sessionStorage.setItem('userRole', result.role);
+                    
+                    // Update UI text globally
+                    document.querySelectorAll('.logged-in-user-display').forEach(el => {
+                        el.textContent = `Logged in as: ${result.name}`;
+                    });
+
                     // Success! Show admin report dashboard
                     reportAdminLoginSection.classList.add('hidden');
                     adminReportsDashboard.classList.remove('hidden');
