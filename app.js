@@ -348,13 +348,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (result.status === 'success') {
                 const verifiedRole = result.role;
-                if (verifiedRole === 'Owner') {
+                if (verifiedRole === 'Owner' || verifiedRole === 'Manager' || verifiedRole.toLowerCase() === 'auditor') {
                     // Success! Show admin report dashboard
                     reportAdminLoginSection.classList.add('hidden');
                     adminReportsDashboard.classList.remove('hidden');
+                    
+                    // Hide restricted buttons if auditor
+                    const isAuditor = (verifiedRole.toLowerCase() === 'auditor');
+                    document.getElementById('btn-admin-statistics-report').style.display = isAuditor ? 'none' : '';
+                    document.getElementById('btn-admin-audit-report').style.display = isAuditor ? 'none' : '';
+                    document.getElementById('btn-admin-salary-expenses').style.display = isAuditor ? 'none' : '';
+                    document.getElementById('btn-admin-monthly-income').style.display = isAuditor ? 'none' : '';
                 } else {
-                    // Valid credentials, but not owner
-                    reportAdminErrorMessage.textContent = 'Access Denied: Only the Owner can access Admin Reports.';
+                    // Valid credentials, but not allowed
+                    reportAdminErrorMessage.textContent = 'Access Denied: Only Owner, Manager, or Auditor can access Admin Reports.';
                     reportAdminErrorMessage.className = 'error';
                     reportAdminErrorMessage.classList.remove('hidden');
                 }
@@ -420,6 +427,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-admin-monthly-income').addEventListener('click', () => {
         hideAllReportSections();
         adminMonthlyContent.classList.remove('hidden');
+
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        document.getElementById('monthly-start-date').valueAsDate = firstDay;
+        document.getElementById('monthly-end-date').valueAsDate = now;
+        document.getElementById('monthly-branch').value = 'All';
+        
+        document.getElementById('monthly-cash-expense').value = '₱0.00';
+        document.getElementById('monthly-gcash-expense').value = '₱0.00';
+        document.getElementById('monthly-gcash-receivable').value = '₱0.00';
+        document.getElementById('monthly-cash-on-hand').value = '₱0.00';
+        document.getElementById('monthly-salary-expense').value = '₱0.00';
+        document.getElementById('monthly-total-income').value = '₱0.00';
+        document.getElementById('monthly-pondo-amount').value = '₱0.00';
+        document.getElementById('monthly-net-income').value = '₱0.00';
+        document.getElementById('monthly-total-net-income').value = '₱0.00';
     });
 
     // Tab Switching Logic
@@ -1150,6 +1174,266 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const btnGenerateMonthlyReport = document.getElementById('btn-generate-monthly-report');
+    if (btnGenerateMonthlyReport) {
+        btnGenerateMonthlyReport.addEventListener('click', async () => {
+            const startDate = document.getElementById('monthly-start-date').value;
+            const endDate = document.getElementById('monthly-end-date').value;
+            const branch = document.getElementById('monthly-branch').value;
+
+            if (!startDate || !endDate) {
+                alert("Please select both Start Date and End Date.");
+                return;
+            }
+
+            if (new Date(startDate) > new Date(endDate)) {
+                alert("Start Date cannot be later than End Date.");
+                return;
+            }
+
+            const btnText = btnGenerateMonthlyReport.querySelector('.btn-text');
+            const spinner = btnGenerateMonthlyReport.querySelector('.spinner');
+            btnGenerateMonthlyReport.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+
+            try {
+                const formData = {
+                    action: 'getMonthlyIncome',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: branch
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    const totals = result.data;
+                    document.getElementById('monthly-cash-expense').value = `₱${formatCurrency(totals.cashExpense)}`;
+                    document.getElementById('monthly-gcash-expense').value = `₱${formatCurrency(totals.gcashExpenses)}`;
+                    document.getElementById('monthly-gcash-receivable').value = `₱${formatCurrency(totals.gcashReceivable)}`;
+                    document.getElementById('monthly-cash-on-hand').value = `₱${formatCurrency(totals.cashOnHand)}`;
+                    document.getElementById('monthly-salary-expense').value = `₱${formatCurrency(totals.salaryExpenses)}`;
+                    
+                    const computedMonthlySales = totals.cashOnHand + totals.gcashReceivable + totals.cashExpense;
+                    document.getElementById('monthly-total-income').value = `₱${formatCurrency(computedMonthlySales)}`;
+                    
+                    document.getElementById('monthly-pondo-amount').value = `₱${formatCurrency(totals.pondoAmount)}`;
+
+                    // Net Income = Salary Expenses + Gcash Expenses
+                    const netIncome = totals.salaryExpenses + totals.gcashExpenses;
+                    document.getElementById('monthly-net-income').value = `₱${formatCurrency(netIncome)}`;
+
+                    // Total Net Income = Monthly Sales - Monthly Expenses (netIncome)
+                    const totalNetIncome = computedMonthlySales - netIncome;
+                    document.getElementById('monthly-total-net-income').value = `₱${formatCurrency(totalNetIncome)}`;
+                } else {
+                    alert("Error: " + result.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert("Fetch Error: " + error.message);
+            } finally {
+                btnGenerateMonthlyReport.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    const btnSaveMonthlyCheck = document.getElementById('btn-save-monthly-check');
+    if (btnSaveMonthlyCheck) {
+        btnSaveMonthlyCheck.addEventListener('click', async () => {
+            const startDate = document.getElementById('monthly-start-date').value;
+            const endDate = document.getElementById('monthly-end-date').value;
+            const branch = document.getElementById('monthly-branch').value;
+            
+            if (!startDate || !endDate) {
+                alert("Please select both Start Date and End Date.");
+                return;
+            }
+
+            const parseCurrency = (val) => parseFloat(val.replace(/[^0-9.-]+/g, "")) || 0;
+
+            const cashExpense = parseCurrency(document.getElementById('monthly-cash-expense').value);
+            const gcashExpense = parseCurrency(document.getElementById('monthly-gcash-expense').value);
+            const gcashReceivable = parseCurrency(document.getElementById('monthly-gcash-receivable').value);
+            const cashOnHand = parseCurrency(document.getElementById('monthly-cash-on-hand').value);
+            const salaryExpenses = parseCurrency(document.getElementById('monthly-salary-expense').value);
+            const monthlySales = parseCurrency(document.getElementById('monthly-total-income').value);
+            const pondoAmount = parseCurrency(document.getElementById('monthly-pondo-amount').value);
+            const netIncome = parseCurrency(document.getElementById('monthly-net-income').value);
+            const totalNetIncome = parseCurrency(document.getElementById('monthly-total-net-income').value);
+
+            const btnText = btnSaveMonthlyCheck.querySelector('.btn-text');
+            const spinner = btnSaveMonthlyCheck.querySelector('.spinner');
+            const statusMsg = document.getElementById('monthly-income-status-message');
+            
+            btnSaveMonthlyCheck.disabled = true;
+            if(btnText) btnText.classList.add('hidden');
+            if(spinner) spinner.classList.remove('hidden');
+            if(statusMsg) statusMsg.classList.add('hidden');
+
+            try {
+                const formData = {
+                    action: 'saveMonthlyIncome',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: branch,
+                    cashExpense: cashExpense,
+                    gcashExpense: gcashExpense,
+                    gcashReceivable: gcashReceivable,
+                    cashOnHand: cashOnHand,
+                    salaryExpenses: salaryExpenses,
+                    monthlySales: monthlySales,
+                    pondoAmount: pondoAmount,
+                    netIncome: netIncome,
+                    totalNetIncome: totalNetIncome
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    if(statusMsg) {
+                        statusMsg.textContent = result.message;
+                        statusMsg.style.backgroundColor = 'rgba(16, 185, 129, 0.2)';
+                        statusMsg.style.color = '#10b981';
+                        statusMsg.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+                        statusMsg.classList.remove('hidden');
+                    }
+                } else {
+                    if(statusMsg) {
+                        statusMsg.textContent = "Error: " + result.message;
+                        statusMsg.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+                        statusMsg.style.color = '#ef4444';
+                        statusMsg.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+                        statusMsg.classList.remove('hidden');
+                    }
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                if(statusMsg) {
+                    statusMsg.textContent = "Error saving data. Check console.";
+                    statusMsg.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+                    statusMsg.style.color = '#ef4444';
+                    statusMsg.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+                    statusMsg.classList.remove('hidden');
+                }
+            } finally {
+                btnSaveMonthlyCheck.disabled = false;
+                if(btnText) btnText.classList.remove('hidden');
+                if(spinner) spinner.classList.add('hidden');
+                
+                if(statusMsg) {
+                    setTimeout(() => {
+                        statusMsg.classList.add('hidden');
+                    }, 4000);
+                }
+            }
+        });
+    }
+
+    const btnMonthlySalesCheck = document.getElementById('btn-monthly-sales-check');
+    if (btnMonthlySalesCheck) {
+        btnMonthlySalesCheck.addEventListener('click', async () => {
+            const startDate = document.getElementById('monthly-start-date').value;
+            const endDate = document.getElementById('monthly-end-date').value;
+            const branch = document.getElementById('monthly-branch').value;
+            
+            if (!startDate || !endDate) {
+                alert("Please select both Start Date and End Date.");
+                return;
+            }
+
+            const btnText = btnMonthlySalesCheck.querySelector('.btn-text');
+            const spinner = btnMonthlySalesCheck.querySelector('.spinner');
+            btnMonthlySalesCheck.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+
+            try {
+                const formData = {
+                    action: 'getDailyRecordsByRange',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: branch
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    const rows = result.data;
+                    const container = document.getElementById('monthly-daily-record-list-container');
+                    const tbody = document.querySelector('#monthly-daily-record-list-table tbody');
+                    tbody.innerHTML = '';
+
+                    if (!rows || rows.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No saved Daily Records found for the selected date range and branch.</td></tr>';
+                    } else {
+                        rows.forEach(row => {
+                            const [rowDate, rowBranch, cashExp, gcashExp, gcashRec, cashOnHand, dailySales, pondoAmt, discrepancy] = row;
+                            
+                            // Format date properly if it's an ISO string
+                            let formattedDate = rowDate;
+                            if (rowDate && String(rowDate).includes('T')) {
+                                formattedDate = String(rowDate).split('T')[0];
+                            }
+
+                            const formatRowCurrency = (val) => {
+                                let num = parseFloat(val);
+                                if (isNaN(num)) return val;
+                                return '₱' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                            };
+
+                            const tr = document.createElement('tr');
+                            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                            tr.innerHTML = `
+                                <td style="padding: 8px;">${formattedDate}</td>
+                                <td style="padding: 8px;">${rowBranch}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(cashExp)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(gcashExp)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(gcashRec)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #a78bfa;">${formatRowCurrency(cashOnHand)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #10b981;">${formatRowCurrency(dailySales)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #60a5fa;">${formatRowCurrency(pondoAmt)}</td>
+                                <td style="padding: 8px; text-align: right; font-family: monospace; color: ${parseFloat(discrepancy) < 0 ? '#ef4444' : (parseFloat(discrepancy) > 0 ? '#34d399' : '#e2e8f0')};">${formatRowCurrency(discrepancy)}</td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    }
+                    container.classList.remove('hidden');
+                } else {
+                    alert("Error: " + result.message);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert("Fetch Error: " + error.message);
+            } finally {
+                btnMonthlySalesCheck.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
     const btnDailySalesCheck = document.getElementById('btn-daily-sales-check');
     if (btnDailySalesCheck) {
         btnDailySalesCheck.addEventListener('click', async () => {
@@ -1756,6 +2040,49 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 
+// Make Monthly Income Report Draggable
+document.addEventListener("DOMContentLoaded", function() {
+    const monthlyContent = document.getElementById("admin-monthly-income-content");
+    const monthlyHeader = document.getElementById("admin-monthly-income-header");
+
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    if (monthlyHeader && monthlyContent) {
+        monthlyHeader.addEventListener("mousedown", (e) => {
+            isDragging = true;
+            offsetX = e.clientX - monthlyContent.getBoundingClientRect().left;
+            offsetY = e.clientY - monthlyContent.getBoundingClientRect().top;
+            
+            monthlyContent.style.transform = 'none';
+            monthlyContent.style.left = e.clientX - offsetX + 'px';
+            monthlyContent.style.top = e.clientY - offsetY + 'px';
+            
+            monthlyContent.style.cursor = 'grabbing';
+            monthlyHeader.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+            
+            monthlyContent.style.left = newX + "px";
+            monthlyContent.style.top = newY + "px";
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                monthlyContent.style.cursor = '';
+                monthlyHeader.style.cursor = 'move';
+            }
+        });
+    }
+});
+
 // Make Expenses Form Draggable
 document.addEventListener("DOMContentLoaded", function() {
     const expensesContainer = document.getElementById("expenses-container");
@@ -1795,6 +2122,256 @@ document.addEventListener("DOMContentLoaded", function() {
                 expensesContainer.style.cursor = '';
                 expensesHeader.style.cursor = 'move';
             }
+        });
+    }
+});
+
+document.addEventListener("DOMContentLoaded", function() {
+    const editModal = document.getElementById('edit-records-modal');
+    const closeEditModalBtn = document.getElementById('close-edit-modal-btn');
+    const viewRecordsBtns = document.querySelectorAll('.view-records-btn');
+    const filterForm = document.getElementById('filter-records-form');
+    const sheetNameInput = document.getElementById('edit-sheet-name');
+    const editTitle = document.getElementById('edit-records-title');
+    const theadTr = document.getElementById('edit-records-thead-tr');
+    const tbody = document.getElementById('edit-records-tbody');
+    const startDateInput = document.getElementById('edit-start-date');
+    const endDateInput = document.getElementById('edit-end-date');
+
+    if (!editModal) return;
+
+    const sheetColumns = {
+        'Cash Expenses': ['Branch', 'Date', 'Item Description', 'Amount', 'Receipt'],
+        'Gcash Expenses': ['Branch', 'Date', 'Details', 'Payment Method', 'Amount', 'Reference#', 'Receipt'],
+        'Gcash Receivable': ['Branch', 'Date', 'Customer Name', 'No of Hours', 'Payment Method', 'Reference#', 'Amount'],
+        'Cash on Hand': ['Branch', 'Date', 'Amount Per Shift'],
+        'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL']
+    };
+
+    viewRecordsBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const sheet = btn.getAttribute('data-sheet');
+            sheetNameInput.value = sheet;
+            editTitle.textContent = "View & Edit: " + sheet;
+            
+            // Set default dates to today
+            const today = new Date();
+            const y = today.getFullYear();
+            const m = String(today.getMonth() + 1).padStart(2, '0');
+            const d = String(today.getDate()).padStart(2, '0');
+            const todayStr = `${y}-${m}-${d}`;
+            startDateInput.value = todayStr;
+            endDateInput.value = todayStr;
+            
+            // Render headers
+            theadTr.innerHTML = '';
+            const cols = sheetColumns[sheet] || [];
+            cols.forEach(col => {
+                const th = document.createElement('th');
+                th.style.padding = '8px';
+                th.textContent = col;
+                theadTr.appendChild(th);
+            });
+            const actionTh = document.createElement('th');
+            actionTh.style.padding = '8px';
+            actionTh.textContent = 'Actions';
+            theadTr.appendChild(actionTh);
+            
+            tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">Click Load Records to view data.</td></tr>';
+            editModal.classList.remove('hidden');
+        });
+    });
+
+    closeEditModalBtn.addEventListener('click', () => {
+        editModal.classList.add('hidden');
+    });
+
+    filterForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const sheet = sheetNameInput.value;
+        const submitBtn = filterForm.querySelector('.submit-btn');
+        const btnText = submitBtn.querySelector('.btn-text');
+        const spinner = submitBtn.querySelector('.spinner');
+        
+        submitBtn.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        
+        try {
+            const formData = {
+                action: 'getExpenseRecords',
+                sheetName: sheet,
+                startDate: startDateInput.value,
+                endDate: endDateInput.value,
+                branch: document.getElementById('edit-branch').value
+            };
+            
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(formData)
+            });
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                renderRecords(result.data, sheet);
+            } else {
+                alert("Error loading records: " + result.message);
+            }
+        } catch (error) {
+            console.error(error);
+            alert("Error: " + error.message);
+        } finally {
+            submitBtn.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    });
+
+    function renderRecords(rows, sheet) {
+        tbody.innerHTML = '';
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found for this date range.</td></tr>';
+            return;
+        }
+        
+        const colsCount = (sheetColumns[sheet] || []).length;
+        
+        rows.forEach(row => {
+            const rowIndex = row[row.length - 1]; // The last element is the row index
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+            
+            // Render cells
+            for(let i = 0; i < colsCount; i++) {
+                const td = document.createElement('td');
+                td.style.padding = '8px';
+                td.style.whiteSpace = 'nowrap';
+                
+                let val = row[i];
+                if (val === undefined || val === null) val = '';
+                
+                const colName = sheetColumns[sheet][i] || '';
+                
+                // format date string if it's a date cell
+                const isDateCol = (sheet === 'Remitted amount') ? (i === 0) : (i === 1);
+                if (isDateCol && val && String(val).includes('T')) {
+                    val = String(val).split('T')[0];
+                }
+                
+                // format amount with commas
+                if (colName.toLowerCase().includes('amount') && val !== '' && !isNaN(String(val).replace(/,/g, ''))) {
+                    // Just in case it already has commas, remove them first
+                    const cleanVal = String(val).replace(/,/g, '');
+                    val = parseFloat(cleanVal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                }
+                
+                td.innerHTML = `<input type="text" value="${val}" class="edit-input-${rowIndex}" readonly style="background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; color: inherit; width: 100%; min-width: 100px; outline: none; font-family: inherit; font-size: 0.95em;">`;
+                tr.appendChild(td);
+            }
+            
+            // Action cell
+            const actionTd = document.createElement('td');
+            actionTd.style.padding = '8px';
+            actionTd.style.whiteSpace = 'nowrap';
+            
+            const editBtn = document.createElement('button');
+            editBtn.innerHTML = '<i class="fas fa-edit"></i> Edit';
+            editBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
+            
+            const saveBtn = document.createElement('button');
+            saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+            saveBtn.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; display: none;';
+            
+            editBtn.addEventListener('click', () => {
+                const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
+                inputs.forEach(input => {
+                    input.readOnly = false;
+                    input.style.background = 'rgba(0,0,0,0.3)';
+                    input.style.border = '1px solid rgba(255,255,255,0.2)';
+                    input.style.padding = '6px';
+                    input.style.borderRadius = '4px';
+                });
+                editBtn.style.display = 'none';
+                saveBtn.style.display = 'inline-block';
+            });
+            
+            saveBtn.addEventListener('click', async () => {
+                const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
+                const updatedData = [];
+                inputs.forEach((input, index) => {
+                    let valToSave = input.value;
+                    const colName = sheetColumns[sheet][index] || '';
+                    if (colName.toLowerCase().includes('amount')) {
+                        // strip commas before saving back to server
+                        valToSave = valToSave.replace(/,/g, '');
+                    }
+                    updatedData.push(valToSave);
+                });
+                
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                saveBtn.disabled = true;
+                
+                try {
+                    const formData = {
+                        action: 'updateExpenseRecord',
+                        sheetName: sheet,
+                        rowIndex: rowIndex,
+                        updatedData: updatedData
+                    };
+                    
+                    const response = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify(formData)
+                    });
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        // Reset UI
+                        inputs.forEach(input => {
+                            input.readOnly = true;
+                            input.style.background = 'transparent';
+                            input.style.border = 'none';
+                            input.style.padding = '0';
+                        });
+                        saveBtn.style.display = 'none';
+                        editBtn.style.display = 'inline-block';
+                        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+                    } else {
+                        alert("Error saving: " + result.message);
+                        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+                    }
+                } catch(err) {
+                    console.error(err);
+                    alert("Error: " + err.message);
+                    saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+                } finally {
+                    saveBtn.disabled = false;
+                }
+            });
+            
+            let viewBtn = null;
+            let urlToView = null;
+            for(let i = 0; i < colsCount; i++) {
+                if (typeof row[i] === 'string' && row[i].startsWith('http')) {
+                    urlToView = row[i];
+                    break;
+                }
+            }
+            if (urlToView) {
+                viewBtn = document.createElement('a');
+                viewBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> View';
+                viewBtn.href = urlToView;
+                viewBtn.target = '_blank';
+                viewBtn.style.cssText = 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px; text-decoration: none; display: inline-block;';
+            }
+            
+            if (viewBtn) actionTd.appendChild(viewBtn);
+            actionTd.appendChild(editBtn);
+            actionTd.appendChild(saveBtn);
+            tr.appendChild(actionTd);
+            tbody.appendChild(tr);
         });
     }
 });
