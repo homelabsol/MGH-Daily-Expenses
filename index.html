@@ -696,13 +696,32 @@
 
         <main class="glass-panel hidden" id="admin-audit-report-content">
             <h2>Audit Report</h2>
-            <p style="color: var(--text-muted); text-align: center; padding: 40px 0;">Coming Soon</p>
+            <div class="table-responsive" style="margin-top: 15px; max-height: 400px; overflow-y: auto;">
+                <table class="report-table" id="audit-report-table">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>User Account</th>
+                            <th>Action Type</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="audit-report-tbody">
+                        <tr>
+                            <td colspan="4" style="text-align: center; padding: 20px;">Loading audit logs...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
             <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Dashboard</button>
         </main>
 
         <main class="glass-panel hidden" id="admin-salary-expenses-content">
-            <h2>Other Expenses</h2>
-            <form id="salary-expense-form" style="margin-top: 20px; text-align: left;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Other Expenses</h2>
+                <button type="button" class="view-records-btn" data-sheet="Other Expenses" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View & Edit Records"><i class="fas fa-list-alt"></i> View</button>
+            </div>
+            <form id="salary-expense-form" style="text-align: left;">
                 <div class="form-group">
                     <label for="salary-start-date">Start Date</label>
                     <input type="date" id="salary-start-date" name="startDate" required>

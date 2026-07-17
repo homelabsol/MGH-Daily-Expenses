@@ -426,6 +426,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-admin-audit-report').addEventListener('click', () => {
         hideAllReportSections();
         adminAuditContent.classList.remove('hidden');
+        loadAuditLogs();
     });
 
     document.getElementById('btn-admin-salary-expenses').addEventListener('click', () => {
@@ -1310,7 +1311,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     monthlySales: monthlySales,
                     pondoAmount: pondoAmount,
                     monthlyExpenses: monthlyExpenses,
-                    totalNetIncome: totalNetIncome
+                    totalNetIncome: totalNetIncome,
+                    encodedBy: sessionStorage.getItem('loggedInUser')
                 };
 
                 const response = await fetch(SCRIPT_URL, {
@@ -1913,6 +1915,49 @@ document.addEventListener('DOMContentLoaded', () => {
         return html;
     }
 
+    // Load Audit Logs
+    async function loadAuditLogs() {
+        const tbody = document.getElementById('audit-report-tbody');
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;"><i class="fas fa-spinner fa-spin"></i> Loading audit logs...</td></tr>';
+
+        try {
+            const formData = {
+                action: 'getAuditLogs'
+            };
+
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(formData)
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                const logs = result.data || [];
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #6b7280;">No audit logs found.</td></tr>';
+                } else {
+                    let html = '';
+                    logs.forEach(log => {
+                        html += `
+                            <tr>
+                                <td style="font-family: monospace; color: #4b5563;">${log[0] || ''}</td>
+                                <td style="font-weight: 500;">${log[1] || ''}</td>
+                                <td><span style="background-color: rgba(59, 130, 246, 0.1); color: #2563eb; padding: 2px 8px; border-radius: 4px; font-size: 0.85em;">${log[2] || ''}</span></td>
+                                <td>${log[3] || ''}</td>
+                            </tr>
+                        `;
+                    });
+                    tbody.innerHTML = html;
+                }
+            } else {
+                tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 20px; color: red;">Error: ${result.message}</td></tr>`;
+            }
+        } catch (error) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: red;">Network error. Please try again later.</td></tr>';
+        }
+    }
+
     // Print Report Logic
     const btnPrintReport = document.getElementById('btn-print-report');
     if (btnPrintReport) {
@@ -2183,6 +2228,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     return val ? parseFloat(val) : 0;
                 };
 
+                const discrepancyValue = parseCurrency('recon-discrepancy');
+                let remarksValue = document.getElementById('recon-remarks').value.trim();
+                
+                if (discrepancyValue === 0) {
+                    remarksValue = "Balanced";
+                }
+
                 const formData = {
                     action: 'saveDailyCheck',
                     date: startDate,
@@ -2193,8 +2245,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     cashOnHand: parseCurrency('recon-cash-on-hand'),
                     dailySales: parseCurrency('recon-total-income'), // Maps Total Income to Daily Sales
                     pondoAmount: parseCurrency('recon-pondo-amount'),
-                    discrepancy: parseCurrency('recon-discrepancy'),
-                    remarks: document.getElementById('recon-remarks').value.trim(),
+                    discrepancy: discrepancyValue,
+                    remarks: remarksValue,
                     encodedBy: sessionStorage.getItem('loggedInUser')
                 };
 
@@ -2398,7 +2450,8 @@ document.addEventListener("DOMContentLoaded", function() {
         'Gcash Expenses': ['Branch', 'Date', 'Details', 'Payment Method', 'Amount', 'Reference#', 'Receipt'],
         'Gcash Receivable': ['Branch', 'Date', 'Customer Name', 'No of Hours', 'Payment Method', 'Reference#', 'Amount'],
         'Cash on Hand': ['Branch', 'Date', 'Amount Per Shift'],
-        'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL', 'Login Account', 'Branch']
+        'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL', 'Login Account', 'Branch'],
+        'Other Expenses': ['Start Date', 'End Date', 'Branch', 'Internet', 'Rent', 'Electricity', 'Water', 'Pondo', 'Food', 'Salary']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -2507,7 +2560,14 @@ document.addEventListener("DOMContentLoaded", function() {
                 const colName = sheetColumns[sheet][i] || '';
                 
                 // format date string if it's a date cell
-                const isDateCol = (sheet === 'Remitted amount') ? (i === 0) : (i === 1);
+                let isDateCol = false;
+                if (sheet === 'Remitted amount') {
+                    isDateCol = (i === 0);
+                } else if (sheet === 'Other Expenses') {
+                    isDateCol = (i === 0 || i === 1);
+                } else {
+                    isDateCol = (i === 1);
+                }
                 if (isDateCol && val && String(val).includes('T')) {
                     val = String(val).split('T')[0];
                 }
@@ -2535,6 +2595,70 @@ document.addEventListener("DOMContentLoaded", function() {
             const saveBtn = document.createElement('button');
             saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
             saveBtn.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; display: none;';
+            
+            const copyBtn = document.createElement('button');
+            copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+            copyBtn.style.cssText = 'background: rgba(139, 92, 246, 0.2); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
+            
+            copyBtn.addEventListener('click', () => {
+                if (sheet === 'Cash Expenses') {
+                    document.getElementById('branch').value = row[0] || '';
+                    document.getElementById('date').value = (row[1] || '').split('T')[0];
+                    document.getElementById('description').value = row[2] || '';
+                    document.getElementById('amount').value = String(row[3]).replace(/,/g, '') || '';
+                    document.getElementById('receipt').value = row[4] || '';
+                } else if (sheet === 'Gcash Expenses') {
+                    document.getElementById('g-branch').value = row[0] || '';
+                    document.getElementById('g-date').value = (row[1] || '').split('T')[0];
+                    document.getElementById('g-details').value = row[2] || '';
+                    document.getElementById('g-payment-method').value = row[3] || '';
+                    document.getElementById('g-amount').value = String(row[4]).replace(/,/g, '') || '';
+                    document.getElementById('g-reference').value = row[5] || '';
+                    document.getElementById('g-receipt').value = row[6] || '';
+                } else if (sheet === 'Gcash Receivable') {
+                    document.getElementById('r-branch').value = row[0] || '';
+                    document.getElementById('r-date').value = (row[1] || '').split('T')[0];
+                    document.getElementById('r-customer-name').value = row[2] || '';
+                    document.getElementById('r-no-of-hours').value = row[3] || '';
+                    document.getElementById('r-payment-method').value = row[4] || '';
+                    document.getElementById('r-reference').value = row[5] || '';
+                    document.getElementById('r-amount').value = String(row[6]).replace(/,/g, '') || '';
+                } else if (sheet === 'Cash on Hand') {
+                    document.getElementById('coh-branch').value = row[0] || '';
+                    document.getElementById('coh-date').value = (row[1] || '').split('T')[0];
+                    document.getElementById('coh-amount').value = String(row[2]).replace(/,/g, '') || '';
+                } else if (sheet === 'Remitted amount') {
+                    document.getElementById('remit-date').value = (row[0] || '').split('T')[0];
+                    document.getElementById('remit-bank').value = row[1] || '';
+                    document.getElementById('remit-amount').value = String(row[2]).replace(/,/g, '') || '';
+                    document.getElementById('remit-file').value = row[3] || '';
+                    document.getElementById('remit-branch').value = row[5] || '';
+                } else if (sheet === 'Other Expenses') {
+                    document.getElementById('salary-start-date').value = (row[0] || '').split('T')[0];
+                    document.getElementById('salary-end-date').value = (row[1] || '').split('T')[0];
+                    document.getElementById('salary-branch').value = row[2] || '';
+                    document.getElementById('expense-internet').value = String(row[3]).replace(/,/g, '') || '';
+                    document.getElementById('expense-rent').value = String(row[4]).replace(/,/g, '') || '';
+                    document.getElementById('expense-electricity').value = String(row[5]).replace(/,/g, '') || '';
+                    document.getElementById('expense-water').value = String(row[6]).replace(/,/g, '') || '';
+                    document.getElementById('expense-pondo').value = String(row[7]).replace(/,/g, '') || '';
+                    document.getElementById('expense-food').value = String(row[8]).replace(/,/g, '') || '';
+                    document.getElementById('expense-salary').value = String(row[9]).replace(/,/g, '') || '';
+                }
+                
+                editModal.classList.add('hidden');
+                
+                // Show a quick visual feedback
+                const notification = document.createElement('div');
+                notification.textContent = 'Details copied to form! You can now modify and Save.';
+                notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #8b5cf6; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; font-weight: 500; transition: opacity 0.5s;';
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    notification.style.opacity = '0';
+                    setTimeout(() => notification.remove(), 500);
+                }, 3000);
+            });
             
             editBtn.addEventListener('click', () => {
                 const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
@@ -2570,7 +2694,8 @@ document.addEventListener("DOMContentLoaded", function() {
                         action: 'updateExpenseRecord',
                         sheetName: sheet,
                         rowIndex: rowIndex,
-                        updatedData: updatedData
+                        updatedData: updatedData,
+                        encodedBy: sessionStorage.getItem('loggedInUser')
                     };
                     
                     const response = await fetch(SCRIPT_URL, {
@@ -2621,6 +2746,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             
             if (viewBtn) actionTd.appendChild(viewBtn);
+            actionTd.appendChild(copyBtn);
             actionTd.appendChild(editBtn);
             actionTd.appendChild(saveBtn);
             tr.appendChild(actionTd);
