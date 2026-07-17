@@ -1092,8 +1092,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const pondo = parseFloat(pondoInput.value) || 0;
         
-        // Total Income = Cash on hand + Gcash Receivable + Cash Expense - Gcash Expenses
-        const income = currentReconTotals.cashOnHand + currentReconTotals.gcashReceivable + currentReconTotals.cashExpense - currentReconTotals.gcashExpense;
+        // Total Income = Cash on hand + Gcash Receivable + Cash Expense
+        const income = currentReconTotals.cashOnHand + currentReconTotals.gcashReceivable + currentReconTotals.cashExpense;
         
         // Discrepancy = Pondo Amount - Total Income
         const discrepancy = pondo - income;
