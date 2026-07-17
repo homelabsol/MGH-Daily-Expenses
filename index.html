@@ -255,6 +255,14 @@
                 </div>
                 <form id="remitted-amount-form">
                     <div class="form-group">
+                        <label for="remit-branch">Branch</label>
+                        <select id="remit-branch" name="branch" required>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
                         <label for="remit-date">Date</label>
                         <input type="date" id="remit-date" name="date" required>
                     </div>
@@ -525,7 +533,7 @@
                 <button class="menu-action-btn" id="btn-admin-salary-expenses">
                     <div class="btn-icon">👥</div>
                     <div class="btn-text">
-                        <h3>Weekly Salary Branch Expenses</h3>
+                        <h3>Other Expenses</h3>
                         <p>Employee payroll and advances</p>
                     </div>
                 </button>
@@ -693,7 +701,7 @@
         </main>
 
         <main class="glass-panel hidden" id="admin-salary-expenses-content">
-            <h2>Weekly Salary Branch Expenses</h2>
+            <h2>Other Expenses</h2>
             <form id="salary-expense-form" style="margin-top: 20px; text-align: left;">
                 <div class="form-group">
                     <label for="salary-start-date">Start Date</label>
@@ -714,13 +722,39 @@
                     </select>
                 </div>
 
-                <div class="form-group">
-                    <label for="salary-amount">Amount (₱)</label>
-                    <input type="number" id="salary-amount" name="amount" step="0.01" required placeholder="0.00">
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label for="expense-internet">Internet Cost (₱)</label>
+                        <input type="number" id="expense-internet" name="internetCost" step="0.01" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label for="expense-rent">Rent Cost (₱)</label>
+                        <input type="number" id="expense-rent" name="rentCost" step="0.01" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label for="expense-electricity">Electricity Cost (₱)</label>
+                        <input type="number" id="expense-electricity" name="electricityCost" step="0.01" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label for="expense-water">Water Cost (₱)</label>
+                        <input type="number" id="expense-water" name="waterCost" step="0.01" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label for="expense-pondo">Pondo Cost (₱)</label>
+                        <input type="number" id="expense-pondo" name="pondoCost" step="0.01" placeholder="0.00">
+                    </div>
+                    <div>
+                        <label for="expense-food">Food Cost (₱)</label>
+                        <input type="number" id="expense-food" name="foodCost" step="0.01" placeholder="0.00">
+                    </div>
+                    <div style="grid-column: span 2;">
+                        <label for="expense-salary">Salary Cost (₱)</label>
+                        <input type="number" id="expense-salary" name="salaryCost" step="0.01" placeholder="0.00">
+                    </div>
                 </div>
 
                 <button type="submit" class="submit-btn" id="salary-submit-btn">
-                    <span class="btn-text">Save Salary Expense</span>
+                    <span class="btn-text">Save Other Expenses</span>
                     <div class="spinner hidden"></div>
                 </button>
             </form>
@@ -807,7 +841,7 @@
                             <input type="text" id="monthly-cash-on-hand" disabled readonly value="₱0.00" style="background: transparent; border: none; font-family: 'Inter', monospace; font-size: 1.1em; color: #e2e8f0; padding: 0; margin: 0; outline: none; width: 100%;">
                         </div>
                         <div>
-                            <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Salary Expenses</div>
+                            <div style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px;">Other Expenses</div>
                             <input type="text" id="monthly-salary-expense" disabled readonly value="₱0.00" style="background: transparent; border: none; font-family: 'Inter', monospace; font-size: 1.1em; color: #e2e8f0; padding: 0; margin: 0; outline: none; width: 100%;">
                         </div>
                     </div>
@@ -824,8 +858,8 @@
                         </div>
 
                         <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: rgba(245, 158, 11, 0.05); border-radius: 8px; border: 1px solid rgba(245, 158, 11, 0.2); opacity: 0.8;">
-                            <span style="color: #f59e0b; font-weight: 500; font-size: 0.95em;">Monthly Expenses with Salary</span>
-                            <input type="text" id="monthly-net-income" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.25); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 6px; font-family: 'Inter', monospace; font-size: 1.15em; font-weight: 600; color: #f59e0b; text-align: right; width: 150px; outline: none; cursor: not-allowed;">
+                            <span style="color: #f59e0b; font-weight: 500; font-size: 0.95em;">Monthly Expenses</span>
+                            <input type="text" id="monthly-total-expenses" disabled readonly value="₱0.00" style="background: rgba(0,0,0,0.25); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 6px; font-family: 'Inter', monospace; font-size: 1.15em; font-weight: 600; color: #f59e0b; text-align: right; width: 150px; outline: none; cursor: not-allowed;">
                         </div>
 
                         <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; background: rgba(6, 182, 212, 0.05); border-radius: 8px; border: 1px solid rgba(6, 182, 212, 0.2); opacity: 0.8;">

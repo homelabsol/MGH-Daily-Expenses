@@ -451,7 +451,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('monthly-salary-expense').value = '₱0.00';
         document.getElementById('monthly-total-income').value = '₱0.00';
         document.getElementById('monthly-pondo-amount').value = '₱0.00';
-        document.getElementById('monthly-net-income').value = '₱0.00';
+        document.getElementById('monthly-total-expenses').value = '₱0.00';
         document.getElementById('monthly-total-net-income').value = '₱0.00';
     });
 
@@ -718,6 +718,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const formData = {
                 action: 'addRemittedAmount',
+                branch: document.getElementById('remit-branch').value,
                 date: document.getElementById('remit-date').value,
                 bankName: document.getElementById('remit-bank').value,
                 amount: document.getElementById('remit-amount').value,
@@ -831,7 +832,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 startDate: document.getElementById('salary-start-date').value,
                 endDate: document.getElementById('salary-end-date').value,
                 branch: document.getElementById('salary-branch').value,
-                amount: document.getElementById('salary-amount').value,
+                internetCost: document.getElementById('expense-internet').value || 0,
+                rentCost: document.getElementById('expense-rent').value || 0,
+                electricityCost: document.getElementById('expense-electricity').value || 0,
+                waterCost: document.getElementById('expense-water').value || 0,
+                pondoCost: document.getElementById('expense-pondo').value || 0,
+                foodCost: document.getElementById('expense-food').value || 0,
+                salaryCost: document.getElementById('expense-salary').value || 0,
                 encodedBy: sessionStorage.getItem('loggedInUser')
             };
 
@@ -1235,12 +1242,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     document.getElementById('monthly-pondo-amount').value = `₱${formatCurrency(totals.pondoAmount)}`;
 
-                    // Net Income = Salary Expenses + Gcash Expenses
-                    const netIncome = totals.salaryExpenses + totals.gcashExpenses;
-                    document.getElementById('monthly-net-income').value = `₱${formatCurrency(netIncome)}`;
+                    // Monthly Expenses = Total computation ng Other Expenses tab
+                    const monthlyExpenses = totals.salaryExpenses;
+                    document.getElementById('monthly-total-expenses').value = `₱${formatCurrency(monthlyExpenses)}`;
 
-                    // Total Net Income = Monthly Sales - Monthly Expenses (netIncome)
-                    const totalNetIncome = computedMonthlySales - netIncome;
+                    // Total Net Income = (Gcash Receivable + Cash on Hand) - Monthly Expenses
+                    const totalNetIncome = (totals.gcashReceivable + totals.cashOnHand) - monthlyExpenses;
                     document.getElementById('monthly-total-net-income').value = `₱${formatCurrency(totalNetIncome)}`;
                 } else {
                     alert("Error: " + result.message);
@@ -1277,7 +1284,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const salaryExpenses = parseCurrency(document.getElementById('monthly-salary-expense').value);
             const monthlySales = parseCurrency(document.getElementById('monthly-total-income').value);
             const pondoAmount = parseCurrency(document.getElementById('monthly-pondo-amount').value);
-            const netIncome = parseCurrency(document.getElementById('monthly-net-income').value);
+            const monthlyExpenses = parseCurrency(document.getElementById('monthly-total-expenses').value);
             const totalNetIncome = parseCurrency(document.getElementById('monthly-total-net-income').value);
 
             const btnText = btnSaveMonthlyCheck.querySelector('.btn-text');
@@ -1302,7 +1309,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     salaryExpenses: salaryExpenses,
                     monthlySales: monthlySales,
                     pondoAmount: pondoAmount,
-                    netIncome: netIncome,
+                    monthlyExpenses: monthlyExpenses,
                     totalNetIncome: totalNetIncome
                 };
 
@@ -1348,8 +1355,244 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(statusMsg) {
                     setTimeout(() => {
                         statusMsg.classList.add('hidden');
-                    }, 4000);
+                    }, 5000);
                 }
+            }
+        });
+    }
+
+    const btnPrintMonthlyReport = document.getElementById('btn-print-monthly-report');
+    if (btnPrintMonthlyReport) {
+        btnPrintMonthlyReport.addEventListener('click', async () => {
+            const startDate = document.getElementById('monthly-start-date').value;
+            const endDate = document.getElementById('monthly-end-date').value;
+            const branch = document.getElementById('monthly-branch').value;
+            
+            if (!startDate || !endDate) {
+                alert("Please select both Start Date and End Date first.");
+                return;
+            }
+
+            const btnText = btnPrintMonthlyReport.querySelector('.btn-text');
+            const spinner = btnPrintMonthlyReport.querySelector('.spinner');
+            btnPrintMonthlyReport.disabled = true;
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating PDF Report, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            try {
+                const formatCurrencyToPdf = (val) => {
+                    let num = parseFloat(val);
+                    if (isNaN(num)) return '₱0.00';
+                    return '₱' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                };
+
+                // Fetch Monthly Totals
+                const totalsResponse = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'getMonthlyIncome',
+                        startDate: startDate,
+                        endDate: endDate,
+                        branch: branch
+                    })
+                });
+                const totalsResult = await totalsResponse.json();
+                
+                if (totalsResult.status !== 'success') {
+                    throw new Error("Failed to fetch totals: " + totalsResult.message);
+                }
+                
+                const totals = totalsResult.data;
+                const computedMonthlySales = totals.cashOnHand + totals.gcashReceivable + totals.cashExpense;
+                const monthlyExpenses = totals.salaryExpenses;
+                const netIncome = (totals.gcashReceivable + totals.cashOnHand) - monthlyExpenses;
+
+                const cashExpenseStr = formatCurrencyToPdf(totals.cashExpense);
+                const gcashExpenseStr = formatCurrencyToPdf(totals.gcashExpenses);
+                const gcashReceivableStr = formatCurrencyToPdf(totals.gcashReceivable);
+                const cashOnHandStr = formatCurrencyToPdf(totals.cashOnHand);
+                const salaryExpensesStr = formatCurrencyToPdf(totals.salaryExpenses);
+                
+                const monthlySalesStr = formatCurrencyToPdf(computedMonthlySales);
+                const pondoAmountStr = formatCurrencyToPdf(totals.pondoAmount);
+                const monthlyExpensesStr = formatCurrencyToPdf(monthlyExpenses);
+                const netIncomeStr = formatCurrencyToPdf(netIncome);
+
+                // Fetch Daily Records
+                const recordsResponse = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'getDailyRecordsByRange',
+                        startDate: startDate,
+                        endDate: endDate,
+                        branch: branch
+                    })
+                });
+                const recordsResult = await recordsResponse.json();
+                
+                if (recordsResult.status !== 'success') {
+                    throw new Error("Failed to fetch records: " + recordsResult.message);
+                }
+
+                const rows = recordsResult.data;
+                let rowsHtml = '';
+                
+                if (!rows || rows.length === 0) {
+                    rowsHtml = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #9ca3af; font-family: Arial, Helvetica, sans-serif;">No saved Daily Records found for the selected date range and branch.</td></tr>';
+                } else {
+                    rows.forEach(row => {
+                        const [rowDate, rowBranch, cashExp, gcashExp, gcashRec, coh, dSales, pAmt, disc] = row;
+                        
+                        let formattedDate = rowDate;
+                        if (rowDate && String(rowDate).includes('T')) {
+                            formattedDate = String(rowDate).split('T')[0];
+                        }
+
+                        const fmt = formatCurrencyToPdf;
+                        rowsHtml += `
+                            <tr>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: left; color: #333;">${formattedDate}</td>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: left; color: #333;">${rowBranch}</td>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: right; color: #333;">${fmt(cashExp)}</td>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: right; color: #333;">${fmt(gcashExp)}</td>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: right; color: #333;">${fmt(gcashRec)}</td>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: right; color: #8b5cf6;">${fmt(coh)}</td>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: right; color: #10b981;">${fmt(dSales)}</td>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: right; color: #3b82f6;">${fmt(pAmt)}</td>
+                                <td style="padding: 5px; border: 1px solid #e5e7eb; font-family: Arial, Helvetica, sans-serif; text-align: right; color: #333;">${fmt(disc)}</td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                let htmlString = `
+                    <div id="monthly-report-pdf-content" style="background: white; color: black; padding: 20px; font-family: Arial, Helvetica, sans-serif;">
+                        <h2 style="text-align: center; margin-bottom: 2px; color: #111; font-weight: bold; font-size: 18px;">Monthly Income Report</h2>
+                        <p style="text-align: center; margin-bottom: 2px; color: #333; font-size: 12px;">Period: ${startDate} to ${endDate}</p>
+                        <p style="text-align: center; margin-bottom: 15px; color: #333; font-size: 12px;">Branch: ${branch}</p>
+
+                        <h3 style="margin-top: 15px; margin-bottom: 5px; color: #111; font-size: 14px; border-bottom: 2px solid #111; padding-bottom: 2px;">Breakdown</h3>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; font-size: 11px;">
+                            <tbody>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; width: 50%;">Total Cash Expense</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; color: #111; font-family: Arial, Helvetica, sans-serif;">${cashExpenseStr}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold;">Total Gcash Expenses</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; color: #111; font-family: Arial, Helvetica, sans-serif;">${gcashExpenseStr}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold;">Total Gcash Receivable</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; color: #111; font-family: Arial, Helvetica, sans-serif;">${gcashReceivableStr}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold;">Total Cash on Hand</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; color: #111; font-family: Arial, Helvetica, sans-serif;">${cashOnHandStr}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold;">Salary Expenses</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; color: #111; font-family: Arial, Helvetica, sans-serif;">${salaryExpensesStr}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <h3 style="margin-top: 15px; margin-bottom: 5px; color: #111; font-size: 14px; border-bottom: 2px solid #111; padding-bottom: 2px;">Summary</h3>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px;">
+                            <tbody>
+                                <tr style="background-color: #f3f4f6;">
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; color: #10b981; width: 50%;">Monthly Sales (Income)</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #10b981; font-family: Arial, Helvetica, sans-serif;">${monthlySalesStr}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; color: #3b82f6;">Monthly Pondo Sales</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #3b82f6; font-family: Arial, Helvetica, sans-serif;">${pondoAmountStr}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; color: #d97706;">Monthly Expenses</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #d97706; font-family: Arial, Helvetica, sans-serif;">${monthlyExpensesStr}</td>
+                                </tr>
+                                <tr style="background-color: #f3f4f6;">
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; font-weight: bold; color: #059669; font-size: 13px;">Total Net Income</td>
+                                    <td style="padding: 5px; border: 1px solid #e5e7eb; text-align: right; font-weight: bold; color: #059669; font-size: 13px; font-family: Arial, Helvetica, sans-serif;">${netIncomeStr}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <h3 style="margin-top: 15px; margin-bottom: 5px; color: #111; font-size: 14px; border-bottom: 2px solid #111; padding-bottom: 2px;">Daily Records</h3>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9px; page-break-inside: auto;">
+                            <thead>
+                                <tr style="background-color: #f3f4f6;">
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: left;">Date</th>
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: left;">Branch</th>
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: right;">Cash Exp</th>
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: right;">Gcash Exp</th>
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: right;">Gcash Rec</th>
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: right;">Cash on Hand</th>
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: right;">Daily Sales</th>
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: right;">Pondo Amt</th>
+                                    <th style="padding: 5px; border: 1px solid #e5e7eb; text-align: right;">Discrepancy</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+
+                        <div style="text-align: center; margin-top: 50px; font-size: 12px; color: #9ca3af;">
+                            Generated By: ${sessionStorage.getItem('loggedInUser') || 'Admin'} <br>
+                            MGH Daily Expenses | ${new Date().toLocaleString()}
+                        </div>
+                    </div>
+                `;
+
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = '800px'; 
+                document.body.appendChild(hiddenDiv);
+                
+                const element = hiddenDiv.querySelector('#monthly-report-pdf-content');
+
+                const opt = {
+                    margin:       0.5,
+                    filename:     `Monthly_Income_Report_${branch}_${startDate}_to_${endDate}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2 },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                };
+
+                html2pdf().set(opt).from(element).output('bloburl').then(function(pdfUrl) {
+                    if (newTab) {
+                        newTab.location.href = pdfUrl;
+                    }
+                    document.body.removeChild(hiddenDiv);
+                }).catch(err => {
+                    console.error(err);
+                    if (newTab) newTab.close();
+                    document.body.removeChild(hiddenDiv);
+                    alert("Failed to generate PDF");
+                });
+
+            } catch (err) {
+                console.error(err);
+                if (newTab) newTab.close();
+                alert("Error: " + err.message);
+            } finally {
+                btnPrintMonthlyReport.disabled = false;
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
             }
         });
     }
@@ -1584,7 +1827,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (reportType === 'Gcash Receivable') {
             tableHeader = `<th>Branch</th><th>Customer</th><th>Hrs</th><th>Payment Method</th><th>Reference</th><th style="text-align: center;">Amount</th><th>Encoded By</th>`;
         } else if (reportType === 'Remitted Amount') {
-            tableHeader = `<th>Bank Name</th><th style="text-align: center;">Amount</th><th>Encoded By</th>`;
+            tableHeader = `<th>Branch</th><th>Bank Name</th><th style="text-align: center;">Amount</th><th>Encoded By</th>`;
         } else if (reportType === 'Cash on Hand') {
             tableHeader = `<th>Branch</th><th style="text-align: center;">Amount Per Shift</th><th>Encoded By</th>`;
         }
@@ -1633,6 +1876,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-family: monospace;">₱${formatCurrency(row[6])}</td>`;
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[8] || ''}</td>`;
                 } else if (reportType === 'Remitted Amount') {
+                    html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[5] || ''}</td>`;
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[1]}</td>`;
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-family: monospace;">₱${formatCurrency(row[2])}</td>`;
                     html += `<td style="padding: 8px; border: 1px solid #e5e7eb;">${row[4] || ''}</td>`;
@@ -1647,7 +1891,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Subtotal
             html += `
                 <tr style="background-color: #f9fafb; font-weight: 600; color: #111;">
-                    <td colspan="${reportType === 'Remitted Amount' || reportType === 'Cash on Hand' ? 1 : (reportType === 'Cash Expense' ? 2 : (reportType === 'Gcash Receivable' ? 5 : 3))}" style="padding: 8px; border: 1px solid #e5e7eb; text-align: center;">Sub-total for ${date}:</td>
+                    <td colspan="${reportType === 'Remitted Amount' ? 2 : (reportType === 'Cash on Hand' ? 1 : (reportType === 'Cash Expense' ? 2 : (reportType === 'Gcash Receivable' ? 5 : 3)))}" style="padding: 8px; border: 1px solid #e5e7eb; text-align: center;">Sub-total for ${date}:</td>
                     <td style="padding: 8px; border: 1px solid #e5e7eb; text-align: center; font-family: monospace; color: #2563eb;">₱${formatCurrency(grouped[date].total)}</td>
                     <td style="padding: 8px; border: 1px solid #e5e7eb;"></td>
                 </tr>
@@ -2154,7 +2398,7 @@ document.addEventListener("DOMContentLoaded", function() {
         'Gcash Expenses': ['Branch', 'Date', 'Details', 'Payment Method', 'Amount', 'Reference#', 'Receipt'],
         'Gcash Receivable': ['Branch', 'Date', 'Customer Name', 'No of Hours', 'Payment Method', 'Reference#', 'Amount'],
         'Cash on Hand': ['Branch', 'Date', 'Amount Per Shift'],
-        'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL']
+        'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL', 'Login Account', 'Branch']
     };
 
     viewRecordsBtns.forEach(btn => {
