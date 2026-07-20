@@ -2521,7 +2521,8 @@ document.addEventListener("DOMContentLoaded", function() {
         'Gcash Receivable': ['Branch', 'Date', 'Customer Name', 'No of Hours', 'Payment Method', 'Reference#', 'Amount'],
         'Cash on Hand': ['Branch', 'Date', 'Amount Per Shift'],
         'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL', 'Login Account', 'Branch'],
-        'Other Expenses': ['Start Date', 'End Date', 'Branch', 'Internet', 'Rent', 'Electricity', 'Water', 'Pondo', 'Food', 'Salary']
+        'Other Expenses': ['Start Date', 'End Date', 'Branch', 'Internet', 'Rent', 'Electricity', 'Water', 'Pondo', 'Food', 'Salary'],
+        'Daily Survey': ['Date', 'Branch', 'Time', 'Count', 'Logged In']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -2548,10 +2549,12 @@ document.addEventListener("DOMContentLoaded", function() {
                 th.textContent = col;
                 theadTr.appendChild(th);
             });
-            const actionTh = document.createElement('th');
-            actionTh.style.padding = '8px';
-            actionTh.textContent = 'Actions';
-            theadTr.appendChild(actionTh);
+            if (sheet !== 'Daily Survey') {
+                const actionTh = document.createElement('th');
+                actionTh.style.padding = '8px';
+                actionTh.textContent = 'Actions';
+                theadTr.appendChild(actionTh);
+            }
             
             tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">Click Load Records to view data.</td></tr>';
             editModal.classList.remove('hidden');
@@ -2631,7 +2634,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 // format date string if it's a date cell
                 let isDateCol = false;
-                if (sheet === 'Remitted amount') {
+                if (sheet === 'Remitted amount' || sheet === 'Daily Survey') {
                     isDateCol = (i === 0);
                 } else if (sheet === 'Other Expenses') {
                     isDateCol = (i === 0 || i === 1);
@@ -2815,11 +2818,13 @@ document.addEventListener("DOMContentLoaded", function() {
                 viewBtn.style.cssText = 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px; text-decoration: none; display: inline-block;';
             }
             
-            if (viewBtn) actionTd.appendChild(viewBtn);
-            actionTd.appendChild(copyBtn);
-            actionTd.appendChild(editBtn);
-            actionTd.appendChild(saveBtn);
-            tr.appendChild(actionTd);
+            if (sheet !== 'Daily Survey') {
+                if (viewBtn) actionTd.appendChild(viewBtn);
+                actionTd.appendChild(copyBtn);
+                actionTd.appendChild(editBtn);
+                actionTd.appendChild(saveBtn);
+                tr.appendChild(actionTd);
+            }
             tbody.appendChild(tr);
         });
     }
