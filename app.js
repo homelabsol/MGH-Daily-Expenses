@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const expensesContainer = document.getElementById('expenses-container');
     const adminContainer = document.getElementById('admin-container');
     const reportContainer = document.getElementById('report-container');
+    const dailySurveyContainer = document.getElementById('daily-survey-container');
     
     const loginForm = document.getElementById('login-form');
     const loginSubmitBtn = document.getElementById('login-btn');
@@ -50,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuAdminBtn = document.getElementById('menu-admin-btn');
     const menuExpensesBtn = document.getElementById('menu-expenses-btn');
     const menuReportBtn = document.getElementById('menu-report-btn');
+    const menuSurveyBtn = document.getElementById('menu-survey-btn');
     const backBtns = document.querySelectorAll('.back-btn');
 
     // Check if user is already logged in
@@ -64,6 +66,8 @@ document.addEventListener('DOMContentLoaded', () => {
         expensesContainer.classList.add('hidden');
         adminContainer.classList.add('hidden');
         reportContainer.classList.add('hidden');
+        dailySurveyContainer.classList.add('hidden');
+        document.getElementById('edit-records-modal').classList.add('hidden');
     }
 
     function showApp(name) {
@@ -112,6 +116,15 @@ document.addEventListener('DOMContentLoaded', () => {
         hideAllContainers();
         reportContainer.classList.remove('hidden');
     });
+
+    if (menuSurveyBtn) {
+        menuSurveyBtn.addEventListener('click', () => {
+            hideAllContainers();
+            dailySurveyContainer.classList.remove('hidden');
+            document.getElementById('survey-date').valueAsDate = new Date();
+            document.getElementById('report-survey-date').valueAsDate = new Date();
+        });
+    }
 
     backBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -956,7 +969,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showMessage(element, msg, type) {
         element.textContent = msg;
-        element.className = type;
+        // Keep any inline styles but apply status-msg and the type (success/error)
+        element.className = `status-msg ${type}`;
         element.classList.remove('hidden');
 
         // Hide after 5 seconds
@@ -2294,10 +2308,66 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 btnSaveDailyCheck.disabled = false;
                 btnText.classList.remove('hidden');
+            }
+        });
+    }
+    // ======= Daily Survey Logic =======
+    const dailySurveyForm = document.getElementById('daily-survey-form');
+    if (dailySurveyForm) {
+        dailySurveyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const date = document.getElementById('survey-date').value;
+            const branch = document.getElementById('survey-branch').value;
+            const time = document.getElementById('survey-time').value;
+            const count = document.getElementById('survey-count').value;
+            
+            const btnSaveSurvey = document.getElementById('btn-save-survey');
+            const btnText = btnSaveSurvey.querySelector('.btn-text');
+            const spinner = btnSaveSurvey.querySelector('.spinner');
+            const statusMessage = document.getElementById('survey-status-message');
+            
+            btnSaveSurvey.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                const formData = {
+                    action: 'saveDailySurvey',
+                    date: date,
+                    branch: branch,
+                    time: time,
+                    count: count,
+                    encodedBy: sessionStorage.getItem('loggedInUser')
+                };
+
+                const urlEncodedData = new URLSearchParams(formData).toString();
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: urlEncodedData
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showMessage(statusMessage, 'Daily survey saved successfully!', 'success');
+                    dailySurveyForm.reset();
+                    document.getElementById('survey-date').valueAsDate = new Date();
+                } else {
+                    showMessage(statusMessage, 'Failed to save survey. Please try again.', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving survey:', error);
+                showMessage(statusMessage, 'An error occurred. Please check your connection.', 'error');
+            } finally {
+                btnSaveSurvey.disabled = false;
+                btnText.classList.remove('hidden');
                 spinner.classList.add('hidden');
             }
         });
     }
+
 });
 
 // Make General Report Draggable

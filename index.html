@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
@@ -61,6 +61,10 @@
             <button class="menu-action-btn" id="menu-report-btn">
                 <span class="icon">📊</span>
                 Report
+            </button>
+            <button class="menu-action-btn" id="menu-survey-btn">
+                <span class="icon">📋</span>
+                Daily Survey
             </button>
         </main>
     </div>
@@ -920,6 +924,56 @@
         </main>
     </div>
 
+    <!-- Daily Survey Container -->
+    <div class="container hidden" id="daily-survey-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <header id="daily-survey-header" style="cursor: move; user-select: none;">
+            <h1>Daily Survey</h1>
+            <p>Submit and View Daily Surveys</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <div onmousedown="event.stopPropagation()">
+                <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+            </div>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <form id="daily-survey-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="survey-date">Date</label>
+                        <input type="date" id="survey-date" name="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="survey-branch">Branch</label>
+                        <select id="survey-branch" name="branch" required>
+                            <option value="" disabled selected>Select Branch</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="survey-time">Time</label>
+                        <input type="time" id="survey-time" name="time" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="survey-count">Count</label>
+                        <input type="number" id="survey-count" name="count" min="0" required>
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="btn-save-survey">
+                    <span class="btn-text">Submit Survey</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <div id="survey-status-message" class="status-message hidden"></div>
+            </form>
+            
+
+        </main>
+    </div>
+
     <!-- Edit Records Modal -->
     <div id="edit-records-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 900px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -969,6 +1023,6 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
 </body>
 </html>
