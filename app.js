@@ -135,17 +135,24 @@ document.addEventListener('DOMContentLoaded', () => {
             warrantyContainer.classList.remove('hidden');
             document.getElementById('warranty-date').valueAsDate = new Date();
             
-            // Show or hide elements based on role
             const role = sessionStorage.getItem('userRole');
             const statusGroup = document.getElementById('warranty-status-group');
             const saveBtn = document.getElementById('btn-save-warranty');
+            const statusSelect = document.getElementById('warranty-status');
+            const approverInput = document.getElementById('warranty-approver');
+            
+            if (statusGroup) statusGroup.style.display = 'block';
+            if (saveBtn) saveBtn.style.display = 'block';
             
             if (role === 'Supervisor' || role === 'Manager' || role === 'Owner') {
-                if (statusGroup) statusGroup.style.display = 'block';
-                if (saveBtn) saveBtn.style.display = 'block';
+                if (statusSelect) statusSelect.disabled = false;
+                if (approverInput) approverInput.value = sessionStorage.getItem('loggedInUser') || '';
             } else {
-                if (statusGroup) statusGroup.style.display = 'none';
-                if (saveBtn) saveBtn.style.display = 'none';
+                if (statusSelect) {
+                    statusSelect.value = 'Pending';
+                    statusSelect.disabled = true;
+                }
+                if (approverInput) approverInput.value = '';
             }
             
             // Populate technician options
@@ -182,8 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             
-            // Populate approver field with logged in user
-            document.getElementById('warranty-approver').value = sessionStorage.getItem('loggedInUser') || '';
+            // (Approver logic moved up)
         });
     }
 
@@ -2435,8 +2441,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     warrantyForm.reset();
                     document.getElementById('warranty-date').valueAsDate = new Date();
                     
-                    // Reset branch dropdown to force user to select again if needed, or keep it.
-                    // It's usually better to reset if they are logging multiple things.
+                    const savedRole = sessionStorage.getItem('userRole');
+                    if (savedRole !== 'Supervisor' && savedRole !== 'Manager' && savedRole !== 'Owner') {
+                        alert("paki coordinate sa inyo supervisor or manager yung approval ng warranty!. Dapat approve nila.");
+                    }
+                    
                 } else {
                     statusMessage.textContent = result.message || 'Failed to save warranty record.';
                     statusMessage.className = 'status-message error';
