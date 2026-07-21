@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css?v=2">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="background-blobs">
@@ -63,8 +64,12 @@
                 Report
             </button>
             <button class="menu-action-btn" id="menu-survey-btn">
-                <span class="icon">📋</span>
+                <span class="icon">📝</span>
                 Daily Survey
+            </button>
+            <button class="menu-action-btn" id="menu-warranty-btn">
+                <span class="icon">🛡️</span>
+                Warranty
             </button>
         </main>
     </div>
@@ -396,6 +401,8 @@
                         <select id="acc-role" name="role" required>
                             <option value="" disabled selected>Select a role</option>
                             <option value="Staff">Staff</option>
+                            <option value="Technician">Technician</option>
+                            <option value="Supervisor">Supervisor</option>
                             <option value="Manager">Manager</option>
                             <option value="Auditor">Auditor</option>
                             <option value="Owner">Owner</option>
@@ -547,6 +554,14 @@
                     <div class="btn-text">
                         <h3>Monthly Income Report</h3>
                         <p>Consolidated monthly profit</p>
+                    </div>
+                </button>
+
+                <button class="menu-action-btn" id="btn-admin-survey-report">
+                    <div class="btn-icon">📋</div>
+                    <div class="btn-text">
+                        <h3>MGH Survey Report</h3>
+                        <p>View daily survey reports</p>
                     </div>
                 </button>
             </div>
@@ -974,6 +989,155 @@
             </form>
             
 
+        </main>
+    </div>
+
+    <!-- Warranty Container -->
+    <div class="container hidden" id="warranty-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <header id="warranty-header" style="cursor: move; user-select: none;">
+            <h1>Warranty Items</h1>
+            <p>Log and Track Warranty Claims</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <div onmousedown="event.stopPropagation()">
+                <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+            </div>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 15px;">
+                <button type="button" class="view-records-btn" data-sheet="Warranty Items" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View & Edit Records"><i class="fas fa-list-alt"></i> View</button>
+            </div>
+            <form id="warranty-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="warranty-date">Recorded Date</label>
+                        <input type="date" id="warranty-date" name="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="warranty-branch">Branch</label>
+                        <select id="warranty-branch" name="branch" required>
+                            <option value="" disabled selected>Select Branch</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="warranty-tech">Tech</label>
+                        <select id="warranty-tech" name="tech" required>
+                            <option value="" disabled selected>Loading technicians...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="warranty-item">Item Description</label>
+                        <input type="text" id="warranty-item" name="itemDescription" placeholder="e.g. Realme C35 Screen" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="warranty-serial">Serial#</label>
+                        <input type="text" id="warranty-serial" name="serial" placeholder="Serial or IMEI" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="warranty-pc">PC#</label>
+                        <input type="text" id="warranty-pc" name="pc" placeholder="PC Number" required>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="warranty-issue">Issue and Concern</label>
+                    <textarea id="warranty-issue" name="issue" rows="3" placeholder="Describe the issue in detail" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-light);" required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="warranty-approver">Sup Approver</label>
+                        <input type="text" id="warranty-approver" name="approver" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;" required>
+                    </div>
+                    <div class="form-group" id="warranty-status-group">
+                        <label for="warranty-status">Status</label>
+                        <select id="warranty-status" name="status" required>
+                            <option value="Pending">Pending</option>
+                            <option value="Sent to RMA">Sent to RMA</option>
+                            <option value="Replaced">Replaced</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="btn-save-warranty">
+                    <span class="btn-text">Submit Warranty Record</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <div id="warranty-status-message" class="status-message hidden"></div>
+            </form>
+        </main>
+    </div>
+
+    <!-- MGH Survey Report Container -->
+    <div class="container hidden" id="admin-survey-report-content" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <header id="admin-survey-report-header" style="cursor: move; user-select: none; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1>MGH Survey Report</h1>
+                <p>View daily survey reports</p>
+            </div>
+            <div onmousedown="event.stopPropagation()" style="display: flex; gap: 10px;">
+                <button id="btn-print-survey-report" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;">
+                    <span class="btn-text"><i class="fas fa-file-pdf" style="margin-right: 5px;"></i> Print Report</span>
+                </button>
+                <button class="report-back-btn" data-target="admin-reports-dashboard" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 5px 10px; font-weight: bold;">← Back to Dashboard</button>
+            </div>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="report-section" id="survey-print-area">
+                <form id="generate-survey-report-form" style="display: flex; gap: 15px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 130px;">
+                        <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Start Date</label>
+                        <input type="date" id="report-survey-start-date" required style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                    </div>
+                    <div style="flex: 1; min-width: 130px;">
+                        <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">End Date</label>
+                        <input type="date" id="report-survey-end-date" required style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                    </div>
+                    <div style="flex: 1; min-width: 130px;">
+                        <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Branch</label>
+                        <select id="report-survey-branch" style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                            <option value="All">All Branches</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="submit-btn" style="margin: 0; padding: 10px 20px; flex: 0 0 auto; width: auto; height: 42px;">
+                        <span class="btn-text">Generate</span>
+                        <div class="spinner hidden" style="width: 16px; height: 16px; border-width: 2px;"></div>
+                    </button>
+                </form>
+
+                <!-- Chart Container -->
+                <div style="width: 100%; height: 250px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 10px; margin-bottom: 20px;">
+                    <canvas id="surveyChart"></canvas>
+                </div>
+
+                <div style="overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9em; text-align: left;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted);">
+                                <th style="padding: 12px; font-weight: 500;">Date</th>
+                                <th style="padding: 12px; font-weight: 500;">Branch</th>
+                                <th style="padding: 12px; font-weight: 500;">Time</th>
+                                <th style="padding: 12px; font-weight: 500;">Count</th>
+                                <th style="padding: 12px; font-weight: 500;">Logged In</th>
+                            </tr>
+                        </thead>
+                        <tbody id="survey-report-tbody">
+                            <tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">Select a date to generate report.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </main>
     </div>
 

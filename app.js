@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminContainer = document.getElementById('admin-container');
     const reportContainer = document.getElementById('report-container');
     const dailySurveyContainer = document.getElementById('daily-survey-container');
+    const warrantyContainer = document.getElementById('warranty-container');
     
     const loginForm = document.getElementById('login-form');
     const loginSubmitBtn = document.getElementById('login-btn');
@@ -52,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuExpensesBtn = document.getElementById('menu-expenses-btn');
     const menuReportBtn = document.getElementById('menu-report-btn');
     const menuSurveyBtn = document.getElementById('menu-survey-btn');
+    const menuWarrantyBtn = document.getElementById('menu-warranty-btn');
     const backBtns = document.querySelectorAll('.back-btn');
 
     // Check if user is already logged in
@@ -67,6 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
         adminContainer.classList.add('hidden');
         reportContainer.classList.add('hidden');
         dailySurveyContainer.classList.add('hidden');
+        if (warrantyContainer) warrantyContainer.classList.add('hidden');
         document.getElementById('edit-records-modal').classList.add('hidden');
     }
 
@@ -123,6 +126,64 @@ document.addEventListener('DOMContentLoaded', () => {
             dailySurveyContainer.classList.remove('hidden');
             document.getElementById('survey-date').valueAsDate = new Date();
             document.getElementById('report-survey-date').valueAsDate = new Date();
+        });
+    }
+
+    if (menuWarrantyBtn) {
+        menuWarrantyBtn.addEventListener('click', async () => {
+            hideAllContainers();
+            warrantyContainer.classList.remove('hidden');
+            document.getElementById('warranty-date').valueAsDate = new Date();
+            
+            // Show or hide elements based on role
+            const role = sessionStorage.getItem('userRole');
+            const statusGroup = document.getElementById('warranty-status-group');
+            const saveBtn = document.getElementById('btn-save-warranty');
+            
+            if (role === 'Supervisor' || role === 'Manager' || role === 'Owner') {
+                if (statusGroup) statusGroup.style.display = 'block';
+                if (saveBtn) saveBtn.style.display = 'block';
+            } else {
+                if (statusGroup) statusGroup.style.display = 'none';
+                if (saveBtn) saveBtn.style.display = 'none';
+            }
+            
+            // Populate technician options
+            try {
+                const techSelect = document.getElementById('warranty-tech');
+                techSelect.innerHTML = '<option value="" disabled selected>Loading technicians...</option>';
+                
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ action: 'getTechnicians' })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    techSelect.innerHTML = '<option value="" disabled selected>Select Technician</option>';
+                    if (result.data && result.data.length > 0) {
+                        result.data.forEach(tech => {
+                            const option = document.createElement('option');
+                            option.value = tech;
+                            option.textContent = tech;
+                            techSelect.appendChild(option);
+                        });
+                    } else {
+                        techSelect.innerHTML = '<option value="" disabled selected>No technicians found</option>';
+                    }
+                } else {
+                    techSelect.innerHTML = '<option value="" disabled selected>Failed to load technicians</option>';
+                }
+            } catch (error) {
+                console.error('Error fetching technicians:', error);
+                document.getElementById('warranty-tech').innerHTML = '<option value="" disabled selected>Error connecting</option>';
+            }
+            
+            
+            // Populate approver field with logged in user
+            document.getElementById('warranty-approver').value = sessionStorage.getItem('loggedInUser') || '';
         });
     }
 
@@ -281,6 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminAuditContent = document.getElementById('admin-audit-report-content');
     const adminSalaryContent = document.getElementById('admin-salary-expenses-content');
     const adminMonthlyContent = document.getElementById('admin-monthly-income-content');
+    const adminSurveyContent = document.getElementById('admin-survey-report-content');
     
     const reportAdminLoginSection = document.getElementById('report-admin-login-section');
     const reportBackBtns = document.querySelectorAll('.report-back-btn');
@@ -298,6 +360,7 @@ document.addEventListener('DOMContentLoaded', () => {
         adminAuditContent.classList.add('hidden');
         adminSalaryContent.classList.add('hidden');
         adminMonthlyContent.classList.add('hidden');
+        adminSurveyContent.classList.add('hidden');
         reportAdminLoginSection.classList.add('hidden');
     }
 
@@ -380,6 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('btn-admin-statistics-report').style.display = isAuditor ? 'none' : '';
                     document.getElementById('btn-admin-audit-report').style.display = isAuditor ? 'none' : '';
                     document.getElementById('btn-admin-salary-expenses').style.display = isAuditor ? 'none' : '';
+                    document.getElementById('btn-admin-survey-report').style.display = isAuditor ? 'none' : '';
                     document.getElementById('btn-admin-monthly-income').style.display = isAuditor ? 'none' : '';
                 } else {
                     // Valid credentials, but not allowed
@@ -445,6 +509,11 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-admin-salary-expenses').addEventListener('click', () => {
         hideAllReportSections();
         adminSalaryContent.classList.remove('hidden');
+    });
+
+    document.getElementById('btn-admin-survey-report').addEventListener('click', () => {
+        hideAllReportSections();
+        adminSurveyContent.classList.remove('hidden');
     });
 
     document.getElementById('btn-admin-monthly-income').addEventListener('click', () => {
@@ -2311,6 +2380,83 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // ======= Warranty Form Logic =======
+    const warrantyForm = document.getElementById('warranty-form');
+    if (warrantyForm) {
+        warrantyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const date = document.getElementById('warranty-date').value;
+            const branch = document.getElementById('warranty-branch').value;
+            const tech = document.getElementById('warranty-tech').value;
+            const itemDescription = document.getElementById('warranty-item').value;
+            const serial = document.getElementById('warranty-serial').value;
+            const pc = document.getElementById('warranty-pc').value;
+            const issue = document.getElementById('warranty-issue').value;
+            const approver = document.getElementById('warranty-approver').value;
+            const status = document.getElementById('warranty-status').value;
+            
+            const submitBtn = document.getElementById('btn-save-warranty');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            const statusMessage = document.getElementById('warranty-status-message');
+            
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            const loggedInUser = sessionStorage.getItem('loggedInUser') || 'Unknown';
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        action: 'addWarrantyItem',
+                        date: date,
+                        branch: branch,
+                        tech: tech,
+                        itemDescription: itemDescription,
+                        serial: serial,
+                        pc: pc,
+                        issue: issue,
+                        approver: approver,
+                        status: status,
+                        encodedBy: loggedInUser
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    statusMessage.textContent = 'Warranty Record saved successfully!';
+                    statusMessage.className = 'status-message success';
+                    warrantyForm.reset();
+                    document.getElementById('warranty-date').valueAsDate = new Date();
+                    
+                    // Reset branch dropdown to force user to select again if needed, or keep it.
+                    // It's usually better to reset if they are logging multiple things.
+                } else {
+                    statusMessage.textContent = result.message || 'Failed to save warranty record.';
+                    statusMessage.className = 'status-message error';
+                }
+            } catch (error) {
+                statusMessage.textContent = 'Error connecting to the server.';
+                statusMessage.className = 'status-message error';
+            } finally {
+                statusMessage.classList.remove('hidden');
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+                
+                setTimeout(() => {
+                    statusMessage.classList.add('hidden');
+                }, 3000);
+            }
+        });
+    }
+
     // ======= Daily Survey Logic =======
     const dailySurveyForm = document.getElementById('daily-survey-form');
     if (dailySurveyForm) {
@@ -2368,6 +2514,278 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    let surveyChartInstance = null;
+    const generateSurveyReportForm = document.getElementById('generate-survey-report-form');
+    if (generateSurveyReportForm) {
+        generateSurveyReportForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const startDate = document.getElementById('report-survey-start-date').value;
+            const endDate = document.getElementById('report-survey-end-date').value;
+            const selectedBranch = document.getElementById('report-survey-branch').value;
+            
+            const submitBtn = generateSurveyReportForm.querySelector('.submit-btn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            const tbody = document.getElementById('survey-report-tbody');
+
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            
+            tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+
+            try {
+                const formData = {
+                    action: 'getExpenseRecords',
+                    sheetName: 'Daily Survey',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: selectedBranch
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                tbody.innerHTML = '';
+                
+                if (result.status === 'success' && result.data && result.data.length > 0) {
+                    let filteredData = result.data;
+                    
+                    // Frontend branch filtering (Branch is at index 1 for Daily Survey)
+                    if (selectedBranch && selectedBranch !== 'All') {
+                        filteredData = filteredData.filter(row => row[1] === selectedBranch);
+                    }
+                    
+                    if (filteredData.length === 0) {
+                         tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this filter.</td></tr>';
+                         if (surveyChartInstance) { surveyChartInstance.destroy(); }
+                         return;
+                    }
+
+                    const chartLabels = [];
+                    const chartData = [];
+
+                    filteredData.forEach(row => {
+                        // row structure: [Date, Branch, Time, Count, Logged In]
+                        const [rowDate, rowBranch, rowTime, rowCount, rowLoggedin] = row;
+                        
+                        let formattedDate = rowDate;
+                        if (rowDate && String(rowDate).includes('T')) {
+                            formattedDate = String(rowDate).split('T')[0];
+                        }
+                        
+                        let formattedTime = rowTime;
+                        if (rowTime && String(rowTime).includes('T')) {
+                            const d = new Date(rowTime);
+                            if (!isNaN(d.getTime())) {
+                                let h = d.getHours();
+                                const m = String(d.getMinutes()).padStart(2, '0');
+                                const ampm = h >= 12 ? 'PM' : 'AM';
+                                h = h % 12;
+                                h = h ? h : 12;
+                                formattedTime = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+                            }
+                        }
+
+                        chartLabels.push(`${formattedDate} ${formattedTime}`);
+                        chartData.push(parseInt(rowCount) || 0);
+
+                        const tr = document.createElement('tr');
+                        tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                        tr.innerHTML = `
+                            <td style="padding: 12px;">${formattedDate}</td>
+                            <td style="padding: 12px;">${rowBranch || ''}</td>
+                            <td style="padding: 12px;">${formattedTime || ''}</td>
+                            <td style="padding: 12px;">${rowCount !== undefined ? rowCount : ''}</td>
+                            <td style="padding: 12px;">${rowLoggedin || ''}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+
+                    // Render Chart
+                    if (surveyChartInstance) {
+                        surveyChartInstance.destroy();
+                    }
+                    const ctx = document.getElementById('surveyChart').getContext('2d');
+                    surveyChartInstance = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: chartLabels,
+                            datasets: [{
+                                label: 'Survey Count',
+                                data: chartData,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                borderWidth: 2,
+                                pointBackgroundColor: '#3b82f6',
+                                fill: true,
+                                tension: 0.3
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                    ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+                                },
+                                x: {
+                                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                    ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+                                }
+                            },
+                            plugins: {
+                                legend: { labels: { color: 'rgba(255, 255, 255, 0.9)' } }
+                            }
+                        }
+                    });
+
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this date.</td></tr>';
+                    if (surveyChartInstance) { surveyChartInstance.destroy(); }
+                }
+            } catch (error) {
+                console.error('Error fetching survey report:', error);
+                tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Error fetching data. Please try again.</td></tr>';
+                if (surveyChartInstance) { surveyChartInstance.destroy(); }
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    const btnPrintSurvey = document.getElementById('btn-print-survey-report');
+    if (btnPrintSurvey) {
+        btnPrintSurvey.addEventListener('click', () => {
+            const startDate = document.getElementById('report-survey-start-date').value;
+            const endDate = document.getElementById('report-survey-end-date').value;
+            const branch = document.getElementById('report-survey-branch').value;
+            const tbodyHTML = document.getElementById('survey-report-tbody').innerHTML;
+
+            const btnText = btnPrintSurvey.querySelector('.btn-text');
+            const originalText = btnText.innerHTML;
+            btnText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            btnPrintSurvey.disabled = true;
+
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating PDF Report, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            try {
+                let chartImgHTML = '';
+                const canvas = document.getElementById('surveyChart');
+                if (canvas && surveyChartInstance) {
+                    // Switch chart text/grid to dark for print
+                    surveyChartInstance.options.scales.x.ticks.color = '#333';
+                    surveyChartInstance.options.scales.x.grid.color = '#ddd';
+                    surveyChartInstance.options.scales.y.ticks.color = '#333';
+                    surveyChartInstance.options.scales.y.grid.color = '#ddd';
+                    surveyChartInstance.options.plugins.legend.labels.color = '#333';
+                    surveyChartInstance.update('none');
+
+                    // Temporarily fill background with white to avoid transparent PNG rendering as black
+                    const ctx = canvas.getContext('2d');
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'destination-over';
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    const chartDataUrl = canvas.toDataURL('image/jpeg', 1.0);
+                    ctx.restore();
+                    
+                    // Revert chart to light text for UI
+                    surveyChartInstance.options.scales.x.ticks.color = 'rgba(255, 255, 255, 0.7)';
+                    surveyChartInstance.options.scales.x.grid.color = 'rgba(255, 255, 255, 0.1)';
+                    surveyChartInstance.options.scales.y.ticks.color = 'rgba(255, 255, 255, 0.7)';
+                    surveyChartInstance.options.scales.y.grid.color = 'rgba(255, 255, 255, 0.1)';
+                    surveyChartInstance.options.plugins.legend.labels.color = 'rgba(255, 255, 255, 0.9)';
+                    surveyChartInstance.update('none');
+
+                    chartImgHTML = `<div style="text-align: center; margin: 20px 0;"><img src="${chartDataUrl}" style="max-width: 100%; height: auto; max-height: 250px; border: 1px solid #ddd; padding: 10px; border-radius: 4px;" /></div>`;
+                }
+
+                let htmlString = `
+                    <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 800px; margin: 0 auto;">
+                        <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                            <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">MGH Survey Report</h2>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Branch:</strong> ${branch}</p>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
+                        </div>
+                        
+                        ${chartImgHTML}
+
+                        <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left; margin-top: 20px;">
+                            <thead>
+                                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                    <th style="padding: 10px; color: #334155;">Date</th>
+                                    <th style="padding: 10px; color: #334155;">Branch</th>
+                                    <th style="padding: 10px; color: #334155;">Time</th>
+                                    <th style="padding: 10px; color: #334155;">Count</th>
+                                    <th style="padding: 10px; color: #334155;">Logged In</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tbodyHTML.replace(/rgba\(255,255,255,0\.05\)/g, '#e2e8f0').replace(/color:\s*var\(--text-muted\)/g, 'color: #64748b')}
+                            </tbody>
+                        </table>
+                        <div style="margin-top: 30px; text-align: right; font-size: 11px; color: #94a3b8;">
+                            <p>Generated on ${new Date().toLocaleString()}</p>
+                        </div>
+                    </div>
+                `;
+
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = '800px';
+                document.body.appendChild(hiddenDiv);
+
+                const opt = {
+                    margin:       0.5,
+                    filename:     `Survey_Report_${startDate}_to_${endDate}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                };
+
+                const elementToPrint = hiddenDiv.firstElementChild;
+
+                html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function(pdfUrl) {
+                    if (newTab) {
+                        newTab.location.href = pdfUrl;
+                    }
+                    document.body.removeChild(hiddenDiv);
+                    btnText.innerHTML = originalText;
+                    btnPrintSurvey.disabled = false;
+                }).catch(err => {
+                    console.error(err);
+                    if (newTab) newTab.close();
+                    document.body.removeChild(hiddenDiv);
+                    btnText.innerHTML = originalText;
+                    btnPrintSurvey.disabled = false;
+                    alert('Failed to generate PDF.');
+                });
+            } catch (error) {
+                console.error(error);
+                if (newTab) newTab.close();
+                btnText.innerHTML = originalText;
+                btnPrintSurvey.disabled = false;
+                alert('Failed to generate PDF.');
+            }
+        });
+    }
 });
 
 // Make General Report Draggable
@@ -2457,6 +2875,49 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 });
+// Make MGH Survey Report Draggable
+document.addEventListener("DOMContentLoaded", function() {
+    const surveyContent = document.getElementById("admin-survey-report-content");
+    const surveyHeader = document.getElementById("admin-survey-report-header");
+
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    if (surveyHeader && surveyContent) {
+        surveyHeader.addEventListener("mousedown", (e) => {
+            isDragging = true;
+            offsetX = e.clientX - surveyContent.getBoundingClientRect().left;
+            offsetY = e.clientY - surveyContent.getBoundingClientRect().top;
+            
+            surveyContent.style.transform = 'none';
+            surveyContent.style.left = e.clientX - offsetX + 'px';
+            surveyContent.style.top = e.clientY - offsetY + 'px';
+            
+            surveyContent.style.cursor = 'grabbing';
+            surveyHeader.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+            
+            surveyContent.style.left = newX + "px";
+            surveyContent.style.top = newY + "px";
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                surveyContent.style.cursor = '';
+                surveyHeader.style.cursor = 'move';
+            }
+        });
+    }
+});
+
 
 // Make Expenses Form Draggable
 document.addEventListener("DOMContentLoaded", function() {
@@ -2522,7 +2983,8 @@ document.addEventListener("DOMContentLoaded", function() {
         'Cash on Hand': ['Branch', 'Date', 'Amount Per Shift'],
         'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL', 'Login Account', 'Branch'],
         'Other Expenses': ['Start Date', 'End Date', 'Branch', 'Internet', 'Rent', 'Electricity', 'Water', 'Pondo', 'Food', 'Salary'],
-        'Daily Survey': ['Date', 'Branch', 'Time', 'Count', 'Logged In']
+        'Daily Survey': ['Date', 'Branch', 'Time', 'Count', 'Logged In'],
+        'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Issue and Concern', 'Sup Approver', 'Status']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -2593,7 +3055,15 @@ document.addEventListener("DOMContentLoaded", function() {
             const result = await response.json();
             
             if (result.status === 'success') {
-                renderRecords(result.data, sheet);
+                let filteredData = result.data;
+                const selectedBranch = document.getElementById('edit-branch').value;
+                if (selectedBranch && selectedBranch !== 'All') {
+                    const branchColIndex = (sheetColumns[sheet] || []).indexOf('Branch');
+                    if (branchColIndex !== -1) {
+                        filteredData = filteredData.filter(row => row[branchColIndex] === selectedBranch);
+                    }
+                }
+                renderRecords(filteredData, sheet);
             } else {
                 alert("Error loading records: " + result.message);
             }
@@ -2643,6 +3113,19 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
                 if (isDateCol && val && String(val).includes('T')) {
                     val = String(val).split('T')[0];
+                }
+                
+                // format time string if it's a time cell
+                if (colName.toLowerCase() === 'time' && val && String(val).includes('T')) {
+                    const d = new Date(val);
+                    if (!isNaN(d.getTime())) {
+                        let h = d.getHours();
+                        const m = String(d.getMinutes()).padStart(2, '0');
+                        const ampm = h >= 12 ? 'PM' : 'AM';
+                        h = h % 12;
+                        h = h ? h : 12;
+                        val = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+                    }
                 }
                 
                 // format amount with commas
@@ -2820,9 +3303,11 @@ document.addEventListener("DOMContentLoaded", function() {
             
             if (sheet !== 'Daily Survey') {
                 if (viewBtn) actionTd.appendChild(viewBtn);
-                actionTd.appendChild(copyBtn);
-                actionTd.appendChild(editBtn);
-                actionTd.appendChild(saveBtn);
+                if (sheet !== 'Warranty Items') {
+                    actionTd.appendChild(copyBtn);
+                    actionTd.appendChild(editBtn);
+                    actionTd.appendChild(saveBtn);
+                }
                 tr.appendChild(actionTd);
             }
             tbody.appendChild(tr);
