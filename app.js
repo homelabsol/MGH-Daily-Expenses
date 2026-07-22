@@ -2398,9 +2398,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const itemDescription = document.getElementById('warranty-item').value;
             const serial = document.getElementById('warranty-serial').value;
             const pc = document.getElementById('warranty-pc').value;
+            const qty = document.getElementById('warranty-qty').value;
             const issue = document.getElementById('warranty-issue').value;
             const approver = document.getElementById('warranty-approver').value;
             const status = document.getElementById('warranty-status').value;
+            const rowIndex = document.getElementById('warranty-row-index').value;
             
             const submitBtn = document.getElementById('btn-save-warranty');
             const btnText = submitBtn.querySelector('.btn-text');
@@ -2415,10 +2417,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const loggedInUser = sessionStorage.getItem('loggedInUser') || 'Unknown';
 
             try {
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
+                let formData = {};
+                if (rowIndex) {
+                    formData = {
+                        action: 'updateExpenseRecord',
+                        sheetName: 'Warranty Items',
+                        rowIndex: rowIndex,
+                        updatedData: [date, branch, tech, itemDescription, serial, pc, qty, issue, approver, status],
+                        encodedBy: loggedInUser
+                    };
+                } else {
+                    formData = {
                         action: 'addWarrantyItem',
                         date: date,
                         branch: branch,
@@ -2426,11 +2435,18 @@ document.addEventListener('DOMContentLoaded', () => {
                         itemDescription: itemDescription,
                         serial: serial,
                         pc: pc,
+                        qty: qty,
                         issue: issue,
                         approver: approver,
                         status: status,
                         encodedBy: loggedInUser
-                    })
+                    };
+                }
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': rowIndex ? 'text/plain;charset=utf-8' : 'application/x-www-form-urlencoded' },
+                    body: rowIndex ? JSON.stringify(formData) : new URLSearchParams(formData)
                 });
 
                 const result = await response.json();
@@ -2439,6 +2455,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     statusMessage.textContent = 'Warranty Record saved successfully!';
                     statusMessage.className = 'status-message success';
                     warrantyForm.reset();
+                    document.getElementById('warranty-row-index').value = '';
                     document.getElementById('warranty-date').valueAsDate = new Date();
                     
                     const savedRole = sessionStorage.getItem('userRole');
@@ -2993,7 +3010,7 @@ document.addEventListener("DOMContentLoaded", function() {
         'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL', 'Login Account', 'Branch'],
         'Other Expenses': ['Start Date', 'End Date', 'Branch', 'Internet', 'Rent', 'Electricity', 'Water', 'Pondo', 'Food', 'Salary'],
         'Daily Survey': ['Date', 'Branch', 'Time', 'Count', 'Logged In'],
-        'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Issue and Concern', 'Sup Approver', 'Status']
+        'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -3328,6 +3345,43 @@ document.addEventListener("DOMContentLoaded", function() {
                     actionTd.appendChild(copyBtn);
                     actionTd.appendChild(editBtn);
                     actionTd.appendChild(saveBtn);
+                } else {
+                    const currentRole = sessionStorage.getItem('userRole');
+                    if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
+                        const modifyBtn = document.createElement('button');
+                        modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
+                        modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
+                        modifyBtn.addEventListener('click', () => {
+                            try {
+                                document.getElementById('edit-records-modal').classList.add('hidden');
+                                document.getElementById('warranty-container').classList.remove('hidden');
+                                
+                                document.getElementById('warranty-row-index').value = rowIndex;
+                                document.getElementById('warranty-date').value = row[0] || '';
+                                document.getElementById('warranty-branch').value = row[1] || '';
+                                
+                                setTimeout(() => {
+                                    document.getElementById('warranty-tech').value = row[2] || '';
+                                }, 500);
+                                
+                                document.getElementById('warranty-item').value = row[3] || '';
+                                document.getElementById('warranty-serial').value = row[4] || '';
+                                document.getElementById('warranty-pc').value = row[5] || '';
+                                document.getElementById('warranty-qty').value = row[6] || '';
+                                document.getElementById('warranty-issue').value = row[7] || '';
+                                document.getElementById('warranty-approver').value = sessionStorage.getItem('loggedInUser') || '';
+                                
+                                const statusSelect = document.getElementById('warranty-status');
+                                if (statusSelect) {
+                                    statusSelect.disabled = false;
+                                    statusSelect.value = row[9] || 'Pending';
+                                }
+                            } catch(err) {
+                                alert("Error populating form: " + err.message);
+                            }
+                        });
+                        actionTd.appendChild(modifyBtn);
+                    }
                 }
                 tr.appendChild(actionTd);
             }

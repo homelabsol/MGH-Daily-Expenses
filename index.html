@@ -1008,6 +1008,7 @@
                 <button type="button" class="view-records-btn" data-sheet="Warranty Items" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View & Edit Records"><i class="fas fa-list-alt"></i> View</button>
             </div>
             <form id="warranty-form">
+                <input type="hidden" id="warranty-row-index" name="rowIndex" value="">
                 <div class="form-row">
                     <div class="form-group">
                         <label for="warranty-date">Recorded Date</label>
@@ -1044,6 +1045,10 @@
                     <div class="form-group">
                         <label for="warranty-pc">PC#</label>
                         <input type="text" id="warranty-pc" name="pc" placeholder="PC Number" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="warranty-qty">Qty</label>
+                        <input type="number" id="warranty-qty" name="qty" placeholder="Quantity" min="1" required>
                     </div>
                 </div>
 
