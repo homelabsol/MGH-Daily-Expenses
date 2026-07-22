@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const reportContainer = document.getElementById('report-container');
     const dailySurveyContainer = document.getElementById('daily-survey-container');
     const warrantyContainer = document.getElementById('warranty-container');
+    const handoverContainer = document.getElementById('handover-container');
     
     const loginForm = document.getElementById('login-form');
     const loginSubmitBtn = document.getElementById('login-btn');
@@ -53,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuExpensesBtn = document.getElementById('menu-expenses-btn');
     const menuReportBtn = document.getElementById('menu-report-btn');
     const menuSurveyBtn = document.getElementById('menu-survey-btn');
+    const menuHandoverBtn = document.getElementById('menu-handover-btn');
     const menuWarrantyBtn = document.getElementById('menu-warranty-btn');
     const backBtns = document.querySelectorAll('.back-btn');
 
@@ -70,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
         reportContainer.classList.add('hidden');
         dailySurveyContainer.classList.add('hidden');
         if (warrantyContainer) warrantyContainer.classList.add('hidden');
+        if (handoverContainer) handoverContainer.classList.add('hidden');
         document.getElementById('edit-records-modal').classList.add('hidden');
     }
 
@@ -844,7 +847,64 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Handle Cash on Hand Form Submission
+    if (menuHandoverBtn) {
+        menuHandoverBtn.addEventListener('click', async () => {
+            const role = sessionStorage.getItem('userRole');
+            hideAllContainers();
+            handoverContainer.classList.remove('hidden');
+            document.getElementById('handover-date').valueAsDate = new Date();
+            
+            const approverInput = document.getElementById('handover-approver');
+            const statusSelect = document.getElementById('handover-status');
+            
+            if (role === 'Supervisor' || role === 'Manager' || role === 'Owner') {
+                if (statusSelect) statusSelect.disabled = false;
+                if (approverInput) approverInput.value = sessionStorage.getItem('loggedInUser') || '';
+            } else {
+                if (statusSelect) {
+                    statusSelect.value = 'Pending';
+                    statusSelect.disabled = true;
+                }
+                if (approverInput) approverInput.value = '';
+            }
+
+            try {
+                const outgoingSelect = document.getElementById('handover-outgoing-staff');
+                const incomingSelect = document.getElementById('handover-incoming-staff');
+                outgoingSelect.innerHTML = '<option value="" disabled selected>Loading technicians...</option>';
+                incomingSelect.innerHTML = '<option value="" disabled selected>Loading technicians...</option>';
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ action: 'getTechnicians' })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    if (result.data && result.data.length > 0) {
+                        const optionsHTML = '<option value="" disabled selected>Select Staff</option>' + 
+                            result.data.map(tech => `<option value="${tech}">${tech}</option>`).join('');
+                        outgoingSelect.innerHTML = optionsHTML;
+                        incomingSelect.innerHTML = optionsHTML;
+                    } else {
+                        outgoingSelect.innerHTML = '<option value="" disabled selected>No technicians found</option>';
+                        incomingSelect.innerHTML = '<option value="" disabled selected>No technicians found</option>';
+                    }
+                } else {
+                    outgoingSelect.innerHTML = '<option value="" disabled selected>Failed to load technicians</option>';
+                    incomingSelect.innerHTML = '<option value="" disabled selected>Failed to load technicians</option>';
+                }
+            } catch (error) {
+                console.error("Error loading staff:", error);
+                document.getElementById('handover-outgoing-staff').innerHTML = '<option value="" disabled selected>Error connecting</option>';
+                document.getElementById('handover-incoming-staff').innerHTML = '<option value="" disabled selected>Error connecting</option>';
+            }
+        });
+    }
+
+    // Role-based logic and form submissions
     const cohForm = document.getElementById('cash-on-hand-form');
     const cohSubmitBtn = document.getElementById('coh-submit-btn');
     const cohStatusMessage = document.getElementById('coh-status-message');
@@ -2483,6 +2543,91 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ======= Handover Logic =======
+    const handoverForm = document.getElementById('handover-form');
+    if (handoverForm) {
+        handoverForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const date = document.getElementById('handover-date').value;
+            const branch = document.getElementById('handover-branch').value;
+            const outgoingStaff = document.getElementById('handover-outgoing-staff').value;
+            const incomingStaff = document.getElementById('handover-incoming-staff').value;
+            const description = document.getElementById('handover-description').value;
+            const discussion = document.getElementById('handover-discussion').value;
+            const remarks = document.getElementById('handover-remarks').value;
+            const approver = document.getElementById('handover-approver').value;
+            const status = document.getElementById('handover-status').value;
+            const rowIndex = document.getElementById('handover-row-index').value;
+
+            const btnSave = document.getElementById('btn-save-handover');
+            const btnText = btnSave.querySelector('.btn-text');
+            const spinner = btnSave.querySelector('.spinner');
+            const statusMessage = document.getElementById('handover-status-message');
+            
+            btnSave.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                const formData = {
+                    action: rowIndex ? 'updateExpenseRecord' : 'addHandover',
+                    date: date,
+                    branch: branch,
+                    outgoingStaff: outgoingStaff,
+                    description: description,
+                    discussion: discussion,
+                    status: status,
+                    incomingStaff: incomingStaff,
+                    remarks: remarks,
+                    approver: approver,
+                    encodedBy: sessionStorage.getItem('loggedInUser') || 'Unknown'
+                };
+                
+                if (rowIndex) {
+                    formData.sheetName = 'Handover';
+                    formData.rowIndex = rowIndex;
+                    formData.updatedData = JSON.stringify([date, branch, outgoingStaff, description, discussion, status, incomingStaff, remarks, approver]);
+                }
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams(formData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    statusMessage.textContent = 'Handover record saved successfully!';
+                    statusMessage.className = 'success-message';
+                    handoverForm.reset();
+                    document.getElementById('handover-row-index').value = '';
+                    document.getElementById('handover-date').valueAsDate = new Date();
+                    document.getElementById('handover-approver').value = (sessionStorage.getItem('userRole') !== 'Staff' && sessionStorage.getItem('userRole') !== 'Technician' && sessionStorage.getItem('userRole') !== 'Auditor') ? sessionStorage.getItem('loggedInUser') : '';
+                    if (document.getElementById('handover-status').disabled) {
+                        document.getElementById('handover-status').value = 'Pending';
+                    }
+                } else {
+                    statusMessage.textContent = 'Error: ' + result.message;
+                    statusMessage.className = 'error-message';
+                }
+            } catch (error) {
+                statusMessage.textContent = 'Error: Could not connect to the server.';
+                statusMessage.className = 'error-message';
+            } finally {
+                btnSave.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+                statusMessage.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    statusMessage.classList.add('hidden');
+                }, 3000);
+            }
+        });
+    }
+
     // ======= Daily Survey Logic =======
     const dailySurveyForm = document.getElementById('daily-survey-form');
     if (dailySurveyForm) {
@@ -3010,7 +3155,8 @@ document.addEventListener("DOMContentLoaded", function() {
         'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL', 'Login Account', 'Branch'],
         'Other Expenses': ['Start Date', 'End Date', 'Branch', 'Internet', 'Rent', 'Electricity', 'Water', 'Pondo', 'Food', 'Salary'],
         'Daily Survey': ['Date', 'Branch', 'Time', 'Count', 'Logged In'],
-        'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status']
+        'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status'],
+        'Handover': ['Date', 'Branch', 'Outgoing Staff', 'Handover Description', 'Discussion', 'Status', 'Incoming Staff', 'Remarks', 'Approver']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -3130,7 +3276,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 // format date string if it's a date cell
                 let isDateCol = false;
-                if (sheet === 'Remitted amount' || sheet === 'Daily Survey') {
+                if (sheet === 'Remitted amount' || sheet === 'Daily Survey' || sheet === 'Warranty Items' || sheet === 'Handover') {
                     isDateCol = (i === 0);
                 } else if (sheet === 'Other Expenses') {
                     isDateCol = (i === 0 || i === 1);
@@ -3341,11 +3487,11 @@ document.addEventListener("DOMContentLoaded", function() {
             
             if (sheet !== 'Daily Survey') {
                 if (viewBtn) actionTd.appendChild(viewBtn);
-                if (sheet !== 'Warranty Items') {
+                if (sheet !== 'Warranty Items' && sheet !== 'Handover') {
                     actionTd.appendChild(copyBtn);
                     actionTd.appendChild(editBtn);
                     actionTd.appendChild(saveBtn);
-                } else {
+                } else if (sheet === 'Warranty Items') {
                     const currentRole = sessionStorage.getItem('userRole');
                     if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
                         const modifyBtn = document.createElement('button');
@@ -3375,6 +3521,42 @@ document.addEventListener("DOMContentLoaded", function() {
                                 if (statusSelect) {
                                     statusSelect.disabled = false;
                                     statusSelect.value = row[9] || 'Pending';
+                                }
+                            } catch(err) {
+                                alert("Error populating form: " + err.message);
+                            }
+                        });
+                        actionTd.appendChild(modifyBtn);
+                    }
+                } else if (sheet === 'Handover') {
+                    const currentRole = sessionStorage.getItem('userRole');
+                    if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
+                        const modifyBtn = document.createElement('button');
+                        modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
+                        modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
+                        modifyBtn.addEventListener('click', () => {
+                            try {
+                                document.getElementById('edit-records-modal').classList.add('hidden');
+                                document.getElementById('handover-container').classList.remove('hidden');
+                                
+                                document.getElementById('handover-row-index').value = rowIndex;
+                                document.getElementById('handover-date').value = row[0] || '';
+                                document.getElementById('handover-branch').value = row[1] || '';
+                                
+                                setTimeout(() => {
+                                    document.getElementById('handover-outgoing-staff').value = row[2] || '';
+                                    document.getElementById('handover-incoming-staff').value = row[6] || '';
+                                }, 500);
+                                
+                                document.getElementById('handover-description').value = row[3] || '';
+                                document.getElementById('handover-discussion').value = row[4] || '';
+                                document.getElementById('handover-remarks').value = row[7] || '';
+                                document.getElementById('handover-approver').value = sessionStorage.getItem('loggedInUser') || '';
+                                
+                                const statusSelect = document.getElementById('handover-status');
+                                if (statusSelect) {
+                                    statusSelect.disabled = false;
+                                    statusSelect.value = row[5] || 'Pending';
                                 }
                             } catch(err) {
                                 alert("Error populating form: " + err.message);

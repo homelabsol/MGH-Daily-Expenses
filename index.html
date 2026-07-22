@@ -67,6 +67,10 @@
                 <span class="icon">📝</span>
                 Daily Survey
             </button>
+            <button class="menu-action-btn" id="menu-handover-btn">
+                <span class="icon">🤝</span>
+                Daily Handover
+            </button>
             <button class="menu-action-btn" id="menu-warranty-btn">
                 <span class="icon">🛡️</span>
                 Warranty
@@ -1143,6 +1147,93 @@
                     </table>
                 </div>
             </div>
+        </main>
+    </div>
+    </div>
+
+    <!-- Handover Container -->
+    <div class="container hidden" id="handover-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <header id="handover-header" style="cursor: move; user-select: none;">
+            <h1>Daily Handover</h1>
+            <p>Log and Track Staff Handovers</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <div onmousedown="event.stopPropagation()">
+                <button class="back-btn" data-target="main-menu-container">⬅ Back to Menu</button>
+            </div>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 15px;">
+                <button type="button" class="view-records-btn" data-sheet="Handover" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View & Edit Records"><i class="fas fa-list-alt"></i> View</button>
+            </div>
+            <form id="handover-form">
+                <input type="hidden" id="handover-row-index" name="rowIndex" value="">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="handover-date">Date</label>
+                        <input type="date" id="handover-date" name="date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="handover-branch">Branch</label>
+                        <select id="handover-branch" name="branch" required>
+                            <option value="" disabled selected>Select Branch</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="handover-outgoing-staff">Outgoing Staff</label>
+                        <select id="handover-outgoing-staff" name="outgoingStaff" required>
+                            <option value="" disabled selected>Loading technicians...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="handover-incoming-staff">Incoming Staff</label>
+                        <select id="handover-incoming-staff" name="incomingStaff" required>
+                            <option value="" disabled selected>Loading technicians...</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="handover-description">Handover Description</label>
+                    <textarea id="handover-description" name="description" rows="2" placeholder="Describe the items or responsibilities being handed over" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-light);" required></textarea>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="handover-discussion">Discussion</label>
+                    <textarea id="handover-discussion" name="discussion" rows="2" placeholder="Any important points discussed" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-light);" required></textarea>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="handover-remarks">Remarks</label>
+                    <textarea id="handover-remarks" name="remarks" rows="2" placeholder="Additional remarks" style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; color: var(--text-light);"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="handover-approver">Approver</label>
+                        <input type="text" id="handover-approver" name="approver" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;" required>
+                    </div>
+                    <div class="form-group" id="handover-status-group">
+                        <label for="handover-status">Status</label>
+                        <select id="handover-status" name="status" required>
+                            <option value="Pending">Pending</option>
+                            <option value="Completed">Completed</option>
+                            <option value="In Progress">In Progress</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="btn-save-handover">
+                    <span class="btn-text">Submit Handover Record</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div id="handover-status-message" class="hidden" style="margin-top: 15px;"></div>
         </main>
     </div>
 
