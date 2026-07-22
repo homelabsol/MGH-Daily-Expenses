@@ -3125,11 +3125,23 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
                 
                 // format time string if it's a time cell
-                if (colName.toLowerCase() === 'time' && val && String(val).includes('T')) {
-                    const d = new Date(val);
-                    if (!isNaN(d.getTime())) {
-                        let h = d.getHours();
-                        const m = String(d.getMinutes()).padStart(2, '0');
+                if (colName.toLowerCase() === 'time' && val) {
+                    let h, m;
+                    const valStr = String(val);
+                    if (valStr.includes('T')) {
+                        const d = new Date(valStr);
+                        if (!isNaN(d.getTime())) {
+                            h = d.getHours();
+                            m = String(d.getMinutes()).padStart(2, '0');
+                        }
+                    } else if (valStr.includes(':')) {
+                        const timePart = valStr.includes(' ') ? valStr.split(' ')[1] : valStr;
+                        const parts = timePart.split(':');
+                        h = parseInt(parts[0], 10);
+                        m = parts[1].padStart(2, '0');
+                    }
+                    
+                    if (h !== undefined && m !== undefined) {
                         const ampm = h >= 12 ? 'PM' : 'AM';
                         h = h % 12;
                         h = h ? h : 12;
