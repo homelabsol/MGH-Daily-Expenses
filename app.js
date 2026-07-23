@@ -396,8 +396,45 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetId = e.target.getAttribute('data-target');
             hideAllReportSections();
             document.getElementById(targetId).classList.remove('hidden');
+            
+            // Clear general report boxes when backing out
+            if (targetId === 'admin-reports-dashboard' || targetId === 'report-main-menu') {
+                document.getElementById('recon-cash-expense').value = '₱0.00';
+                document.getElementById('recon-gcash-expense').value = '₱0.00';
+                document.getElementById('recon-gcash-receivable').value = '₱0.00';
+                document.getElementById('recon-cash-on-hand').value = '₱0.00';
+                document.getElementById('recon-pondo-amount').value = '';
+                document.getElementById('recon-total-income').value = '₱0.00';
+                document.getElementById('recon-discrepancy').value = '₱0.00';
+                document.getElementById('recon-discrepancy').style.color = '#ef4444';
+                
+                document.getElementById('recon-remarks').value = '';
+                const remarksContainer = document.getElementById('recon-remarks-container');
+                if (remarksContainer) remarksContainer.classList.add('hidden');
+                
+                // Reset internal calculation totals
+                if (typeof currentReconTotals !== 'undefined') {
+                    currentReconTotals.cashExpense = 0;
+                    currentReconTotals.gcashExpense = 0;
+                    currentReconTotals.gcashReceivable = 0;
+                    currentReconTotals.cashOnHand = 0;
+                }
+                
+                // Clear the saved daily checks table and hide container
+                const savedChecksTbody = document.getElementById('recon-saved-checks-tbody');
+                if (savedChecksTbody) savedChecksTbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">No saved checks found</td></tr>';
+                const container = document.getElementById('daily-sales-list-container');
+                if (container) container.classList.add('hidden');
+            }
         });
     });
+
+    const closeDailySalesBtn = document.getElementById('close-daily-sales-list');
+    if (closeDailySalesBtn) {
+        closeDailySalesBtn.addEventListener('click', () => {
+            document.getElementById('daily-sales-list-container').classList.add('hidden');
+        });
+    }
 
     // Handle Report Admin Verification
     reportAdminLoginForm.addEventListener('submit', async (e) => {
@@ -1878,6 +1915,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         rows.forEach(row => {
                             const [rowDate, rowBranch, cashExp, gcashExp, gcashRec, cashOnHand, dailySales, pondoAmt, discrepancy] = row;
+                            const rowIndex = row[row.length - 1]; // Extracted from row array added in getDailyCheckList
                             
                             // Format date properly if it's an ISO string
                             let formattedDate = rowDate;
@@ -1903,7 +1941,48 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <td style="padding: 8px; text-align: right; font-family: monospace; color: #10b981;">${formatRowCurrency(dailySales)}</td>
                                 <td style="padding: 8px; text-align: right; font-family: monospace; color: #60a5fa;">${formatRowCurrency(pondoAmt)}</td>
                                 <td style="padding: 8px; text-align: right; font-family: monospace; color: ${parseFloat(discrepancy) < 0 ? '#ef4444' : (parseFloat(discrepancy) > 0 ? '#34d399' : '#e2e8f0')};">${formatRowCurrency(discrepancy)}</td>
+                                <td style="padding: 8px; text-align: right;">
+                                    <button class="delete-daily-check-btn" data-row="${rowIndex}" style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </td>
                             `;
+                            
+                            const deleteBtn = tr.querySelector('.delete-daily-check-btn');
+                            if (deleteBtn) {
+                                deleteBtn.addEventListener('click', async () => {
+                                    if (confirm('Are you sure you want to delete this Daily Check record?')) {
+                                        deleteBtn.disabled = true;
+                                        deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                                        
+                                        try {
+                                            const deleteResponse = await fetch(SCRIPT_URL, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                                body: JSON.stringify({
+                                                    action: 'deleteDailyCheck',
+                                                    rowIndex: rowIndex,
+                                                    encodedBy: sessionStorage.getItem('loggedInUser')
+                                                })
+                                            });
+                                            const deleteResult = await deleteResponse.json();
+                                            if (deleteResult.status === 'success') {
+                                                // Trigger the load button again to refresh the list
+                                                btnDailySalesCheck.click();
+                                            } else {
+                                                alert("Error deleting record: " + deleteResult.message);
+                                                deleteBtn.disabled = false;
+                                                deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                                            }
+                                        } catch (err) {
+                                            alert("Failed to delete record: " + err.message);
+                                            deleteBtn.disabled = false;
+                                            deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                                        }
+                                    }
+                                });
+                            }
+                            
                             tbody.appendChild(tr);
                         });
                     }
