@@ -857,15 +857,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const approverInput = document.getElementById('handover-approver');
             const statusSelect = document.getElementById('handover-status');
             
-            if (role === 'Supervisor' || role === 'Manager' || role === 'Owner') {
-                if (statusSelect) statusSelect.disabled = false;
-                if (approverInput) approverInput.value = sessionStorage.getItem('loggedInUser') || '';
-            } else {
-                if (statusSelect) {
-                    statusSelect.value = 'Pending';
-                    statusSelect.disabled = true;
-                }
-                if (approverInput) approverInput.value = '';
+            // Force status to "In Progress" and disabled for new handovers
+            if (statusSelect) {
+                statusSelect.value = 'In Progress';
+                statusSelect.disabled = true;
+            }
+            if (approverInput) {
+                approverInput.value = sessionStorage.getItem('loggedInUser');
             }
 
             try {
@@ -2545,6 +2543,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ======= Handover Logic =======
     const handoverForm = document.getElementById('handover-form');
+    
     if (handoverForm) {
         handoverForm.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -2563,6 +2562,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const btnText = btnSave.querySelector('.btn-text');
             const spinner = btnSave.querySelector('.spinner');
             const statusMessage = document.getElementById('handover-status-message');
+
+            const userRole = sessionStorage.getItem('userRole');
+            if (userRole !== 'Supervisor' && userRole !== 'Manager' && userRole !== 'Owner') {
+                if (outgoingStaff && approver && outgoingStaff === approver) {
+                    statusMessage.textContent = 'Error: Outgoing Staff and Approver cannot be the same person.';
+                    statusMessage.className = 'error-message';
+                    statusMessage.classList.remove('hidden');
+                    setTimeout(() => { statusMessage.classList.add('hidden'); }, 3000);
+                    return;
+                }
+
+                if (incomingStaff && approver && incomingStaff !== approver) {
+                    statusMessage.textContent = 'Error: Incoming Staff must match the Logged-in Approver.';
+                    statusMessage.className = 'error-message';
+                    statusMessage.classList.remove('hidden');
+                    setTimeout(() => { statusMessage.classList.add('hidden'); }, 3000);
+                    return;
+                }
+            }
             
             btnSave.disabled = true;
             btnText.classList.add('hidden');
@@ -2604,9 +2622,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     handoverForm.reset();
                     document.getElementById('handover-row-index').value = '';
                     document.getElementById('handover-date').valueAsDate = new Date();
-                    document.getElementById('handover-approver').value = (sessionStorage.getItem('userRole') !== 'Staff' && sessionStorage.getItem('userRole') !== 'Technician' && sessionStorage.getItem('userRole') !== 'Auditor') ? sessionStorage.getItem('loggedInUser') : '';
+                    document.getElementById('handover-approver').value = sessionStorage.getItem('loggedInUser');
                     if (document.getElementById('handover-status').disabled) {
-                        document.getElementById('handover-status').value = 'Pending';
+                        document.getElementById('handover-status').value = 'In Progress';
                     }
                 } else {
                     statusMessage.textContent = 'Error: ' + result.message;
@@ -3530,40 +3548,42 @@ document.addEventListener("DOMContentLoaded", function() {
                     }
                 } else if (sheet === 'Handover') {
                     const currentRole = sessionStorage.getItem('userRole');
-                    if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
-                        const modifyBtn = document.createElement('button');
-                        modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
-                        modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
-                        modifyBtn.addEventListener('click', () => {
-                            try {
-                                document.getElementById('edit-records-modal').classList.add('hidden');
-                                document.getElementById('handover-container').classList.remove('hidden');
-                                
-                                document.getElementById('handover-row-index').value = rowIndex;
-                                document.getElementById('handover-date').value = row[0] || '';
-                                document.getElementById('handover-branch').value = row[1] || '';
-                                
-                                setTimeout(() => {
-                                    document.getElementById('handover-outgoing-staff').value = row[2] || '';
-                                    document.getElementById('handover-incoming-staff').value = row[6] || '';
-                                }, 500);
-                                
-                                document.getElementById('handover-description').value = row[3] || '';
-                                document.getElementById('handover-discussion').value = row[4] || '';
-                                document.getElementById('handover-remarks').value = row[7] || '';
-                                document.getElementById('handover-approver').value = sessionStorage.getItem('loggedInUser') || '';
-                                
-                                const statusSelect = document.getElementById('handover-status');
-                                if (statusSelect) {
+                    const modifyBtn = document.createElement('button');
+                    modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
+                    modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
+                    modifyBtn.addEventListener('click', () => {
+                        try {
+                            document.getElementById('edit-records-modal').classList.add('hidden');
+                            document.getElementById('handover-container').classList.remove('hidden');
+                            
+                            document.getElementById('handover-row-index').value = rowIndex;
+                            document.getElementById('handover-date').value = row[0] || '';
+                            document.getElementById('handover-branch').value = row[1] || '';
+                            
+                            setTimeout(() => {
+                                document.getElementById('handover-outgoing-staff').value = row[2] || '';
+                                document.getElementById('handover-incoming-staff').value = row[6] || '';
+                            }, 500);
+                            
+                            document.getElementById('handover-description').value = row[3] || '';
+                            document.getElementById('handover-discussion').value = row[4] || '';
+                            document.getElementById('handover-remarks').value = row[7] || '';
+                            document.getElementById('handover-approver').value = sessionStorage.getItem('loggedInUser') || '';
+                            
+                            const statusSelect = document.getElementById('handover-status');
+                            if (statusSelect) {
+                                if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
                                     statusSelect.disabled = false;
-                                    statusSelect.value = row[5] || 'Pending';
+                                } else {
+                                    statusSelect.disabled = true;
                                 }
-                            } catch(err) {
-                                alert("Error populating form: " + err.message);
+                                statusSelect.value = row[5] || 'In Progress';
                             }
-                        });
-                        actionTd.appendChild(modifyBtn);
-                    }
+                        } catch(err) {
+                            alert("Error populating form: " + err.message);
+                        }
+                    });
+                    actionTd.appendChild(modifyBtn);
                 }
                 tr.appendChild(actionTd);
             }
