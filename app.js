@@ -2684,13 +2684,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (rowIndex) {
                     formData.sheetName = 'Handover';
                     formData.rowIndex = rowIndex;
-                    formData.updatedData = JSON.stringify([date, branch, outgoingStaff, description, discussion, status, incomingStaff, remarks, approver]);
+                    formData.updatedData = [date, branch, outgoingStaff, description, discussion, status, incomingStaff, remarks, approver];
                 }
 
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams(formData)
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
                 });
                 
                 const result = await response.json();
