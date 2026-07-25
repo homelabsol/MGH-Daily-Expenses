@@ -5,6 +5,8 @@ function formatCurrency(amount) {
     return Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+let allValidationRecords = []; // Global scope for validation records
+
 document.addEventListener('DOMContentLoaded', () => {
     const cashForm = document.getElementById('cash-expense-form');
     const cashSubmitBtn = document.getElementById('cash-submit-btn');
@@ -72,6 +74,9 @@ document.addEventListener('DOMContentLoaded', () => {
         reportContainer.classList.add('hidden');
         dailySurveyContainer.classList.add('hidden');
         if (warrantyContainer) warrantyContainer.classList.add('hidden');
+        if (document.getElementById('warranty-menu-container')) document.getElementById('warranty-menu-container').classList.add('hidden');
+        if (document.getElementById('warranty-validation-container')) document.getElementById('warranty-validation-container').classList.add('hidden');
+        if (document.getElementById('warranty-validation-form-container')) document.getElementById('warranty-validation-form-container').classList.add('hidden');
         if (handoverContainer) handoverContainer.classList.add('hidden');
         document.getElementById('edit-records-modal').classList.add('hidden');
     }
@@ -133,10 +138,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (menuWarrantyBtn) {
-        menuWarrantyBtn.addEventListener('click', async () => {
+        menuWarrantyBtn.addEventListener('click', () => {
+            hideAllContainers();
+            document.getElementById('warranty-menu-container').classList.remove('hidden');
+        });
+    }
+
+    const btnWarrantyRecords = document.getElementById('btn-warranty-records');
+    if (btnWarrantyRecords) {
+        btnWarrantyRecords.addEventListener('click', async () => {
             hideAllContainers();
             warrantyContainer.classList.remove('hidden');
             document.getElementById('warranty-date').valueAsDate = new Date();
+            
+            // Auto-generate Warranty Number
+            const generateWarrantyNumber = () => {
+                const now = new Date();
+                const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase();
+                return `WAR-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${randomStr}`;
+            };
+            document.getElementById('warranty-number').value = generateWarrantyNumber();
+            document.getElementById('warranty-row-index').value = '';
             
             const role = sessionStorage.getItem('userRole');
             const statusGroup = document.getElementById('warranty-status-group');
@@ -190,17 +212,316 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.error('Error fetching technicians:', error);
                 document.getElementById('warranty-tech').innerHTML = '<option value="" disabled selected>Error connecting</option>';
             }
-            
-            
-            // (Approver logic moved up)
         });
     }
 
+    // ======= Warranty Validation Logic =======
+    const valTableBody = document.getElementById('val-records-tbody');
+    const valTheadTr = document.getElementById('val-records-thead-tr');
+    
+    const renderValidationTable = () => {
+        if (!valTableBody || !valTheadTr) return;
+        
+        const branchFilter = document.getElementById('val-branch').value;
+        const searchFilter = document.getElementById('val-search-warranty').value.toLowerCase();
+        
+        // Define columns directly since sheetColumns is scoped elsewhere
+        const cols = ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status', 'Warranty#'];
+        
+        // Render headers if not already done
+        if (valTheadTr.innerHTML.trim() === '') {
+            let theadHTML = '';
+            cols.forEach(col => {
+                theadHTML += `<th style="padding: 12px 8px;">${col}</th>`;
+            });
+            theadHTML += `<th style="padding: 12px 8px;">Actions</th>`;
+            valTheadTr.innerHTML = theadHTML;
+        }
+
+        valTableBody.innerHTML = '';
+        
+        // Filter records
+        const filteredRecords = allValidationRecords.filter(row => {
+            const branch = row[1] || ''; // Branch is column index 1
+            const warrantyNum = row[10] || ''; // Warranty# is column index 10
+            
+            const matchBranch = branchFilter === 'All' || branch === branchFilter;
+            const matchSearch = String(warrantyNum).toLowerCase().includes(searchFilter);
+            
+            return matchBranch && matchSearch;
+        });
+
+        if (filteredRecords.length === 0) {
+            valTableBody.innerHTML = `<tr><td colspan="${cols.length + 1}" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found matching filters.</td></tr>`;
+            return;
+        }
+
+        filteredRecords.forEach(row => {
+            const rowIndex = row[row.length - 1]; // rowIndex is the last element
+            
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+            
+            for(let i=0; i<cols.length; i++) {
+                const td = document.createElement('td');
+                td.style.padding = '8px';
+                
+                let val = row[i];
+                if (val === undefined || val === null) val = '';
+                
+                // formatDate 
+                if (cols[i].toLowerCase().includes('date') && val !== '') {
+                    const d = new Date(val);
+                    if(!isNaN(d)) val = d.toISOString().split('T')[0];
+                }
+                
+                const inputEl = document.createElement('div');
+                inputEl.innerText = val;
+                inputEl.className = `edit-input-${rowIndex}`;
+                inputEl.style.cssText = 'background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; color: inherit; width: 100%; min-width: 150px; outline: none; font-family: inherit; font-size: 0.95em; box-sizing: border-box; word-break: break-word; white-space: pre-wrap;';
+                
+                td.appendChild(inputEl);
+                tr.appendChild(td);
+            }
+            
+            // Action cell
+            const actionTd = document.createElement('td');
+            actionTd.style.padding = '8px';
+            actionTd.style.whiteSpace = 'nowrap';
+            
+            const modifyBtn = document.createElement('button');
+            modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
+            modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
+            modifyBtn.addEventListener('click', () => {
+                try {
+                    document.getElementById('warranty-validation-container').classList.add('hidden');
+                    document.getElementById('warranty-validation-form-container').classList.remove('hidden');
+                    
+                    document.getElementById('val-form-row-index').value = rowIndex;
+                    
+                    // Store the original row data to preserve columns A-J when saving
+                    document.getElementById('warranty-validation-form').dataset.rowData = JSON.stringify(row);
+                    
+                    // Populate fields (indices 10 to 16) and read-only context (indices 3 and 7)
+                    document.getElementById('val-form-warranty-number-display').innerText = row[10] || '';
+                    document.getElementById('val-form-warranty-number').value = row[10] || '';
+                    document.getElementById('val-form-item-desc').innerText = row[3] || '';
+                    document.getElementById('val-form-issue').innerText = row[7] || '';
+                    
+                    document.getElementById('val-form-received-date').value = (row[11] || '').split('T')[0];
+                    document.getElementById('val-form-rma-office').value = row[12] || '';
+                    document.getElementById('val-form-status').value = row[13] || 'Pending';
+                    document.getElementById('val-form-assigned-tech').value = row[14] || '';
+                    document.getElementById('val-form-remarks').value = row[15] || '';
+                    document.getElementById('val-form-replacement-date').value = (row[16] || '').split('T')[0];
+                } catch(err) {
+                    console.error('Error opening modify modal:', err);
+                }
+            });
+
+            const printRowBtn = document.createElement('button');
+            printRowBtn.innerHTML = '<i class="fas fa-print"></i> Print';
+            printRowBtn.style.cssText = 'background: rgba(255, 255, 255, 0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
+            
+            printRowBtn.addEventListener('click', () => {
+                const originalText = printRowBtn.innerHTML;
+                printRowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                printRowBtn.disabled = true;
+
+                const newTab = window.open('', '_blank');
+                if (newTab) {
+                    newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Single Record PDF...</h3>');
+                } else {
+                    alert('Popup blocked!');
+                }
+
+                try {
+                    let htmlRows = '';
+                    for(let i=0; i<cols.length; i++) {
+                        let colVal = row[i];
+                        if (colVal === undefined || colVal === null) colVal = '';
+                        
+                        // Use updated innerText from the cell just in case
+                        const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
+                        if(inputs && inputs[i]) colVal = inputs[i].innerText;
+
+                        htmlRows += `
+                            <tr style="border-bottom: 1px solid #cbd5e1;">
+                                <th style="padding: 10px; background: #f8fafc; color: #475569; width: 35%; text-align: left; vertical-align: top;">${cols[i]}</th>
+                                <td style="padding: 10px; color: #0f172a; white-space: pre-wrap; word-wrap: break-word; text-align: left;">${colVal}</td>
+                            </tr>
+                        `;
+                    }
+
+                    const htmlString = `
+                        <div style="font-family: sans-serif; color: #333; padding: 30px; background: white; max-width: 800px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                            <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                                <h2 style="margin: 0 0 5px 0; color: #1e293b; font-size: 22px;">Warranty Items Details</h2>
+                                <p style="margin: 0; color: #64748b; font-size: 12px;">Printed on ${new Date().toLocaleString()}</p>
+                            </div>
+                            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                                <tbody>
+                                    ${htmlRows}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+
+                    const hiddenDiv = document.createElement('div');
+                    hiddenDiv.innerHTML = htmlString;
+                    hiddenDiv.style.position = 'absolute';
+                    hiddenDiv.style.top = '-9999px';
+                    hiddenDiv.style.left = '-9999px';
+                    hiddenDiv.style.width = '800px'; 
+                    document.body.appendChild(hiddenDiv);
+                    
+                    const element = hiddenDiv.firstElementChild;
+                    html2pdf().set({
+                        margin: 10,
+                        filename: `Warranty_Items_Record_${rowIndex}.pdf`,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 2, useCORS: true },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    }).from(element).outputPdf('datauristring').then(function(pdfAsString) {
+                        newTab.location.href = pdfAsString;
+                        document.body.removeChild(hiddenDiv);
+                        printRowBtn.innerHTML = originalText;
+                        printRowBtn.disabled = false;
+                    }).catch(function(error) {
+                        console.error('PDF generation error:', error);
+                        newTab.close();
+                        alert('Error generating PDF.');
+                        document.body.removeChild(hiddenDiv);
+                        printRowBtn.innerHTML = originalText;
+                        printRowBtn.disabled = false;
+                    });
+                } catch(err) {
+                    console.error(err);
+                    newTab.close();
+                    printRowBtn.innerHTML = originalText;
+                    printRowBtn.disabled = false;
+                }
+            });
+
+            actionTd.appendChild(modifyBtn);
+            actionTd.appendChild(printRowBtn);
+            
+            tr.appendChild(actionTd);
+            valTableBody.appendChild(tr);
+        });
+    };
+
+    const loadValidationRecords = async () => {
+        const refreshBtn = document.getElementById('btn-val-refresh');
+        const btnText = refreshBtn.querySelector('.btn-text');
+        const spinner = refreshBtn.querySelector('.spinner');
+        
+        refreshBtn.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        
+        valTableBody.innerHTML = `<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading warranty validation records... <i class="fas fa-spinner fa-spin"></i></td></tr>`;
+        
+        try {
+            const formData = {
+                action: 'getExpenseRecords',
+                sheetName: 'Warranty Items',
+                startDate: '2020-01-01',
+                endDate: '2099-12-31',
+                branch: 'All'
+            };
+            
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(formData)
+            });
+            
+            const result = await response.json();
+            if (result.status === 'success') {
+                allValidationRecords = result.data;
+                renderValidationTable();
+            } else {
+                valTableBody.innerHTML = `<tr><td colspan="12" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message}</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error fetching validation records:', error);
+            valTableBody.innerHTML = `<tr><td colspan="12" style="padding: 15px; text-align: center; color: #ef4444;">Connection error. Could not load records.</td></tr>`;
+        } finally {
+            refreshBtn.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    };
+
+    const loadRmaAdmins = async () => {
+        try {
+            const rmaOfficeSelect = document.getElementById('val-form-rma-office');
+            if (!rmaOfficeSelect || rmaOfficeSelect.options.length > 1) return; // already loaded or loading failed
+
+            rmaOfficeSelect.innerHTML = '<option value="" disabled selected>Loading RMA Admins...</option>';
+            
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ action: 'getRmaAdmins' })
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                rmaOfficeSelect.innerHTML = '<option value="" disabled selected>Select RMA Officer</option>';
+                if (result.data && result.data.length > 0) {
+                    result.data.forEach(admin => {
+                        const option = document.createElement('option');
+                        option.value = admin;
+                        option.textContent = admin;
+                        rmaOfficeSelect.appendChild(option);
+                    });
+                } else {
+                    rmaOfficeSelect.innerHTML = '<option value="" disabled selected>No RMA Admins found</option>';
+                }
+            } else {
+                rmaOfficeSelect.innerHTML = '<option value="" disabled selected>Failed to load RMA Admins</option>';
+            }
+        } catch (error) {
+            console.error('Error fetching RMA Admins:', error);
+            document.getElementById('val-form-rma-office').innerHTML = '<option value="" disabled selected>Error connecting</option>';
+        }
+    };
+
+    const btnWarrantyValidation = document.getElementById('btn-warranty-validation');
+    if (btnWarrantyValidation) {
+        btnWarrantyValidation.addEventListener('click', () => {
+            hideAllContainers();
+            document.getElementById('warranty-validation-container').classList.remove('hidden');
+            loadRmaAdmins();
+            loadValidationRecords();
+        });
+    }
+
+    // Attach listeners for live filtering
+    const valSearchInput = document.getElementById('val-search-warranty');
+    const valBranchSelect = document.getElementById('val-branch');
+    const valRefreshBtn = document.getElementById('btn-val-refresh');
+    
+    if (valSearchInput) valSearchInput.addEventListener('input', renderValidationTable);
+    if (valBranchSelect) valBranchSelect.addEventListener('change', renderValidationTable);
+    if (valRefreshBtn) valRefreshBtn.addEventListener('click', loadValidationRecords);
+
     backBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
-            const targetId = e.target.getAttribute('data-target');
-            hideAllContainers();
-            document.getElementById(targetId).classList.remove('hidden');
+            const targetId = btn.getAttribute('data-target');
+            if (targetId) {
+                hideAllContainers();
+                document.getElementById(targetId).classList.remove('hidden');
+                
+                // Clear validation form when going back to validation list
+                if (targetId === 'warranty-validation-container') {
+                    const valForm = document.getElementById('warranty-validation-form');
+                    if (valForm) valForm.reset();
+                }
+            }
             
             // Clear general report boxes when backing out to dashboard
             if (targetId === 'admin-reports-dashboard' || targetId === 'report-main-menu') {
@@ -2539,6 +2860,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const issue = document.getElementById('warranty-issue').value;
             const approver = document.getElementById('warranty-approver').value;
             const status = document.getElementById('warranty-status').value;
+            const warrantyNumber = document.getElementById('warranty-number').value;
             const rowIndex = document.getElementById('warranty-row-index').value;
             
             const submitBtn = document.getElementById('btn-save-warranty');
@@ -2560,7 +2882,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         action: 'updateExpenseRecord',
                         sheetName: 'Warranty Items',
                         rowIndex: rowIndex,
-                        updatedData: [date, branch, tech, itemDescription, serial, pc, qty, issue, approver, status],
+                        updatedData: [date, branch, tech, itemDescription, serial, pc, qty, issue, approver, status, warrantyNumber],
                         encodedBy: loggedInUser
                     };
                 } else {
@@ -2576,6 +2898,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         issue: issue,
                         approver: approver,
                         status: status,
+                        warrantyNumber: warrantyNumber,
                         encodedBy: loggedInUser
                     };
                 }
@@ -3054,6 +3377,86 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Validation Form Submit Handler
+    const valForm = document.getElementById('warranty-validation-form');
+    if (valForm) {
+        valForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('btn-val-form-submit');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            
+            const rowIndex = document.getElementById('val-form-row-index').value;
+            if (!rowIndex) return;
+
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            
+            try {
+                // We only send the 6 fields specifically for columns L to Q (12 to 17) to prevent overwriting anything else
+                const validationData = [
+                    document.getElementById('val-form-received-date').value || '',
+                    document.getElementById('val-form-rma-office').value || '',
+                    document.getElementById('val-form-status').value || '',
+                    document.getElementById('val-form-assigned-tech').value || '',
+                    document.getElementById('val-form-remarks').value || '',
+                    document.getElementById('val-form-replacement-date').value || ''
+                ];
+
+                const formData = {
+                    action: 'updateWarrantyValidation',
+                    rowIndex: parseInt(rowIndex, 10),
+                    validationData: validationData,
+                    encodedBy: sessionStorage.getItem('loggedInUser') || 'Unknown'
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    // Update the global allValidationRecords array with new data
+                    const recordIndex = allValidationRecords.findIndex(r => r[r.length - 1] == rowIndex);
+                    if (recordIndex !== -1) {
+                        allValidationRecords[recordIndex][11] = validationData[0];
+                        allValidationRecords[recordIndex][12] = validationData[1];
+                        allValidationRecords[recordIndex][13] = validationData[2];
+                        allValidationRecords[recordIndex][14] = validationData[3];
+                        allValidationRecords[recordIndex][15] = validationData[4];
+                        allValidationRecords[recordIndex][16] = validationData[5];
+                    }
+                    
+                    // Switch back to validation container and refresh table visually
+                    hideAllContainers();
+                    document.getElementById('warranty-validation-container').classList.remove('hidden');
+                    
+                    // Call the render function to update the view
+                    if (typeof renderValidationTable === 'function') {
+                        renderValidationTable();
+                    }
+                    
+                    valForm.reset();
+                    alert('Validation saved successfully!');
+                } else {
+                    alert("Error saving validation: " + result.message);
+                }
+            } catch (err) {
+                console.error("Submit Validation Error:", err);
+                alert("An error occurred while saving the validation data. Error Details: " + (err.message || err));
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
 });
 
 // Make General Report Draggable
@@ -3187,7 +3590,46 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 
-// Make Expenses Form Draggable
+// Make Warranty Validation Form Draggable
+document.addEventListener("DOMContentLoaded", function() {
+    const valFormContainer = document.getElementById("warranty-validation-form-container");
+    const valFormHeader = document.getElementById("warranty-val-form-header");
+
+    if (valFormContainer && valFormHeader) {
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        valFormHeader.addEventListener("mousedown", (e) => {
+            if (e.target.tagName.toLowerCase() === 'button' || e.target.closest('button')) return;
+            isDragging = true;
+            offsetX = e.clientX - valFormContainer.getBoundingClientRect().left;
+            offsetY = e.clientY - valFormContainer.getBoundingClientRect().top;
+            valFormContainer.style.cursor = 'grabbing';
+            valFormHeader.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+            
+            valFormContainer.style.left = newX + "px";
+            valFormContainer.style.top = newY + "px";
+            valFormContainer.style.transform = "none";
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                valFormContainer.style.cursor = '';
+                valFormHeader.style.cursor = 'move';
+            }
+        });
+    }
+    
+    // Validation Form Submit Handler
+    // (Moved to correct scope in main DOMContentLoaded block)
+});
 document.addEventListener("DOMContentLoaded", function() {
     const expensesContainer = document.getElementById("expenses-container");
     const expensesHeader = document.getElementById("expenses-header");
@@ -3252,7 +3694,7 @@ document.addEventListener("DOMContentLoaded", function() {
         'Remitted amount': ['Date', 'Bank Name', 'Amount', 'Screenshot URL', 'Login Account', 'Branch'],
         'Other Expenses': ['Start Date', 'End Date', 'Branch', 'Internet', 'Rent', 'Electricity', 'Water', 'Pondo', 'Food', 'Salary'],
         'Daily Survey': ['Date', 'Branch', 'Time', 'Count', 'Logged In'],
-        'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status'],
+        'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status', 'Warranty#'],
         'Handover': ['Date', 'Branch', 'Outgoing Staff', 'Handover Description', 'Discussion', 'Status', 'Incoming Staff', 'Remarks', 'Approver']
     };
 
@@ -3380,7 +3822,6 @@ document.addEventListener("DOMContentLoaded", function() {
             try {
                 // Clone the table to manipulate for print
                 const tableClone = document.getElementById('edit-records-table').cloneNode(true);
-                
                 let columnsToRemove = [];
 
                 // Process thead
@@ -3392,9 +3833,17 @@ document.addEventListener("DOMContentLoaded", function() {
                         cell.style.color = '#334155';
                         cell.style.whiteSpace = 'normal';
                         cell.style.wordWrap = 'break-word';
+                        cell.style.textAlign = 'left';
+                        
                         const headerText = cell.textContent.trim();
+                        if (headerText === 'Date' || headerText === 'Recorded Date') cell.style.width = '8%';
+                        if (headerText === 'Branch') cell.style.width = '12%';
+                        if (headerText === 'Tech') cell.style.width = '12%';
+                        
                         // Mark 'Actions', 'Outgoing Staff', and 'Discussion' for removal
-                        if (headerText === 'Actions' || (sheet === 'Handover' && (headerText === 'Outgoing Staff' || headerText === 'Discussion'))) {
+                        if (headerText === 'Actions' || 
+                           (sheet === 'Handover' && (headerText === 'Outgoing Staff' || headerText === 'Discussion')) ||
+                           (sheet === 'Warranty Items' && headerText === 'Serial#')) {
                             columnsToRemove.push(index);
                         }
                     });
@@ -3422,10 +3871,11 @@ document.addEventListener("DOMContentLoaded", function() {
                             cell.style.color = '#334155';
                             cell.style.whiteSpace = 'normal'; // Allow text wrapping
                             cell.style.wordWrap = 'break-word';
+                            cell.style.textAlign = 'left';
                             // Replace input fields with their values
-                            const input = cell.querySelector('input, select, textarea');
+                            const input = cell.querySelector('input, select, textarea, div[class^="edit-input-"]');
                             if (input) {
-                                cell.textContent = input.value;
+                                cell.textContent = input.value !== undefined ? input.value : input.innerText;
                             }
                         });
                     });
@@ -3563,14 +4013,10 @@ document.addEventListener("DOMContentLoaded", function() {
                     val = parseFloat(cleanVal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 }
                 
-                const inputEl = document.createElement('textarea');
-                inputEl.value = val;
+                const inputEl = document.createElement('div');
+                inputEl.innerText = val;
                 inputEl.className = `edit-input-${rowIndex}`;
-                inputEl.readOnly = true;
-                inputEl.style.cssText = 'background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; color: inherit; width: 100%; min-width: 150px; outline: none; font-family: inherit; font-size: 0.95em; resize: vertical; overflow-y: auto; box-sizing: border-box;';
-                
-                const lines = String(val).split('\\n').length;
-                inputEl.rows = lines > 1 ? Math.min(lines, 4) : 1;
+                inputEl.style.cssText = 'background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; color: inherit; width: 100%; min-width: 150px; outline: none; font-family: inherit; font-size: 0.95em; box-sizing: border-box; word-break: break-word; white-space: pre-wrap;';
                 
                 td.appendChild(inputEl);
                 tr.appendChild(td);
@@ -3656,7 +4102,7 @@ document.addEventListener("DOMContentLoaded", function() {
             editBtn.addEventListener('click', () => {
                 const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
                 inputs.forEach(input => {
-                    input.readOnly = false;
+                    input.contentEditable = true;
                     input.style.background = 'rgba(0,0,0,0.3)';
                     input.style.border = '1px solid rgba(255,255,255,0.2)';
                     input.style.padding = '6px';
@@ -3670,7 +4116,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
                 const updatedData = [];
                 inputs.forEach((input, index) => {
-                    let valToSave = input.value;
+                    let valToSave = input.value !== undefined ? input.value : input.innerText;
                     const colName = sheetColumns[sheet][index] || '';
                     if (colName.toLowerCase().includes('amount')) {
                         // strip commas before saving back to server
@@ -3756,7 +4202,7 @@ document.addEventListener("DOMContentLoaded", function() {
                                 document.getElementById('warranty-container').classList.remove('hidden');
                                 
                                 document.getElementById('warranty-row-index').value = rowIndex;
-                                document.getElementById('warranty-date').value = row[0] || '';
+                                document.getElementById('warranty-date').value = (row[0] || '').split('T')[0];
                                 document.getElementById('warranty-branch').value = row[1] || '';
                                 
                                 setTimeout(() => {
@@ -3769,6 +4215,7 @@ document.addEventListener("DOMContentLoaded", function() {
                                 document.getElementById('warranty-qty').value = row[6] || '';
                                 document.getElementById('warranty-issue').value = row[7] || '';
                                 document.getElementById('warranty-approver').value = sessionStorage.getItem('loggedInUser') || '';
+                                document.getElementById('warranty-number').value = row[10] || '';
                                 
                                 const statusSelect = document.getElementById('warranty-status');
                                 if (statusSelect) {
@@ -3792,7 +4239,7 @@ document.addEventListener("DOMContentLoaded", function() {
                             document.getElementById('handover-container').classList.remove('hidden');
                             
                             document.getElementById('handover-row-index').value = rowIndex;
-                            document.getElementById('handover-date').value = row[0] || '';
+                            document.getElementById('handover-date').value = (row[0] || '').split('T')[0];
                             document.getElementById('handover-branch').value = row[1] || '';
                             
                             setTimeout(() => {
@@ -3845,7 +4292,7 @@ document.addEventListener("DOMContentLoaded", function() {
                             if (colVal === undefined || colVal === null) colVal = '';
                             
                             const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
-                            if(inputs && inputs[i]) colVal = inputs[i].value;
+                            if(inputs && inputs[i]) colVal = inputs[i].value !== undefined ? inputs[i].value : inputs[i].innerText;
 
                             htmlRows += `
                                 <tr style="border-bottom: 1px solid #cbd5e1;">
