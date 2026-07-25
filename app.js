@@ -3346,6 +3346,138 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 
+    const btnPrintEditReport = document.getElementById('btn-print-edit-report');
+    if (btnPrintEditReport) {
+        btnPrintEditReport.addEventListener('click', () => {
+            const startDate = document.getElementById('edit-start-date').value;
+            const endDate = document.getElementById('edit-end-date').value;
+            const branch = document.getElementById('edit-branch').value;
+            const sheet = document.getElementById('edit-sheet-name').value;
+            
+            if (!startDate || !endDate) {
+                alert("Please load records first.");
+                return;
+            }
+
+            const tbody = document.getElementById('edit-records-tbody');
+            if (!tbody || tbody.innerHTML.includes('No records found') || tbody.innerHTML.includes('Select a date range')) {
+                alert("No records to print.");
+                return;
+            }
+
+            const btnText = btnPrintEditReport.querySelector('.btn-text');
+            const originalText = btnText.innerHTML;
+            btnText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            btnPrintEditReport.disabled = true;
+
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating PDF Report, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            try {
+                // Clone the table to manipulate for print
+                const tableClone = document.getElementById('edit-records-table').cloneNode(true);
+                
+                // Process thead
+                const theadTr = tableClone.querySelector('thead tr');
+                if (theadTr) {
+                    theadTr.style.background = '#f1f5f9';
+                    theadTr.style.borderBottom = '2px solid #cbd5e1';
+                    Array.from(theadTr.cells).forEach(cell => {
+                        cell.style.color = '#334155';
+                    });
+                    // Remove "Actions" column if exists
+                    if (theadTr.lastElementChild && theadTr.lastElementChild.textContent.trim() === 'Actions') {
+                        theadTr.lastElementChild.remove();
+                    }
+                }
+                
+                // Process tbody
+                const tbodyClone = tableClone.querySelector('tbody');
+                if (tbodyClone) {
+                    Array.from(tbodyClone.rows).forEach(row => {
+                        row.style.borderBottom = '1px solid #cbd5e1';
+                        // Remove "Actions" column cell if exists
+                        if (row.lastElementChild && (row.lastElementChild.innerHTML.includes('delete') || row.lastElementChild.innerHTML.includes('Save'))) {
+                             row.lastElementChild.remove();
+                        }
+                        
+                        Array.from(row.cells).forEach(cell => {
+                            cell.style.color = '#334155';
+                            // Replace input fields with their values
+                            const input = cell.querySelector('input, select, textarea');
+                            if (input) {
+                                cell.textContent = input.value;
+                            }
+                        });
+                    });
+                }
+
+                const htmlString = `
+                    <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 1000px; margin: 0 auto;">
+                        <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                            <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">${sheet} Report</h2>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Branch:</strong> ${branch === 'All' ? 'All Branches' : branch}</p>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
+                        </div>
+                        
+                        <div style="width: 100%;">
+                            <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; margin-top: 20px;">
+                                ${tableClone.innerHTML}
+                            </table>
+                        </div>
+                        <div style="margin-top: 30px; text-align: right; font-size: 11px; color: #94a3b8;">
+                            <p>Generated on ${new Date().toLocaleString()}</p>
+                        </div>
+                    </div>
+                `;
+
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = '1000px';
+                document.body.appendChild(hiddenDiv);
+
+                const opt = {
+                    margin:       0.5,
+                    filename:     `${sheet.replace(/\s+/g, '_')}_Report_${startDate}_to_${endDate}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
+                };
+
+                const elementToPrint = hiddenDiv.firstElementChild;
+
+                html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function(pdfUrl) {
+                    if (newTab) {
+                        newTab.location.href = pdfUrl;
+                    }
+                    document.body.removeChild(hiddenDiv);
+                    btnText.innerHTML = originalText;
+                    btnPrintEditReport.disabled = false;
+                }).catch(err => {
+                    console.error("PDF generation error:", err);
+                    alert("Failed to generate PDF.");
+                    if(newTab) newTab.close();
+                    btnText.innerHTML = originalText;
+                    btnPrintEditReport.disabled = false;
+                });
+                
+            } catch (error) {
+                console.error(error);
+                alert("Error generating report: " + error.message);
+                if(newTab) newTab.close();
+                btnText.innerHTML = originalText;
+                btnPrintEditReport.disabled = false;
+            }
+        });
+    }
+
     function renderRecords(rows, sheet) {
         tbody.innerHTML = '';
         if (!rows || rows.length === 0) {

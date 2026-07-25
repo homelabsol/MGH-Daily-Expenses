@@ -1265,10 +1265,15 @@
                             <option value="MGH Concepcion">MGH Concepcion</option>
                         </select>
                     </div>
-                    <button type="submit" class="submit-btn" style="margin: 0; padding: 9px 15px; flex: 0 0 auto; width: auto;">
-                        <span class="btn-text">Load Records</span>
-                        <div class="spinner hidden" style="width: 16px; height: 16px; border-width: 2px;"></div>
-                    </button>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button type="submit" class="submit-btn" style="margin: 0; padding: 9px 15px; flex: 0 0 auto; width: auto;">
+                            <span class="btn-text">Load Records</span>
+                            <div class="spinner hidden" style="width: 16px; height: 16px; border-width: 2px;"></div>
+                        </button>
+                        <button type="button" class="submit-btn" id="btn-print-edit-report" style="margin: 0; padding: 9px 15px; flex: 0 0 auto; width: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">
+                            <span class="btn-text"><i class="fas fa-file-pdf" style="margin-right: 5px;"></i> Print Report</span>
+                        </button>
+                    </div>
                 </form>
             </div>
             <div style="flex: 1; overflow-y: auto; padding: 20px;">
