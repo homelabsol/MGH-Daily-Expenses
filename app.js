@@ -3381,18 +3381,28 @@ document.addEventListener("DOMContentLoaded", function() {
                 // Clone the table to manipulate for print
                 const tableClone = document.getElementById('edit-records-table').cloneNode(true);
                 
+                let columnsToRemove = [];
+
                 // Process thead
                 const theadTr = tableClone.querySelector('thead tr');
                 if (theadTr) {
                     theadTr.style.background = '#f1f5f9';
                     theadTr.style.borderBottom = '2px solid #cbd5e1';
-                    Array.from(theadTr.cells).forEach(cell => {
+                    Array.from(theadTr.cells).forEach((cell, index) => {
                         cell.style.color = '#334155';
+                        cell.style.whiteSpace = 'normal';
+                        cell.style.wordWrap = 'break-word';
+                        const headerText = cell.textContent.trim();
+                        // Mark 'Actions', 'Outgoing Staff', and 'Discussion' for removal
+                        if (headerText === 'Actions' || (sheet === 'Handover' && (headerText === 'Outgoing Staff' || headerText === 'Discussion'))) {
+                            columnsToRemove.push(index);
+                        }
                     });
-                    // Remove "Actions" column if exists
-                    if (theadTr.lastElementChild && theadTr.lastElementChild.textContent.trim() === 'Actions') {
-                        theadTr.lastElementChild.remove();
-                    }
+                    
+                    // Remove marked columns from thead (reverse order to preserve indices)
+                    columnsToRemove.sort((a, b) => b - a).forEach(index => {
+                        theadTr.deleteCell(index);
+                    });
                 }
                 
                 // Process tbody
@@ -3400,13 +3410,18 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (tbodyClone) {
                     Array.from(tbodyClone.rows).forEach(row => {
                         row.style.borderBottom = '1px solid #cbd5e1';
-                        // Remove "Actions" column cell if exists
-                        if (row.lastElementChild && (row.lastElementChild.innerHTML.includes('delete') || row.lastElementChild.innerHTML.includes('Save'))) {
-                             row.lastElementChild.remove();
-                        }
+                        
+                        // Remove marked columns from tbody
+                        columnsToRemove.sort((a, b) => b - a).forEach(index => {
+                            if (row.cells[index]) {
+                                row.deleteCell(index);
+                            }
+                        });
                         
                         Array.from(row.cells).forEach(cell => {
                             cell.style.color = '#334155';
+                            cell.style.whiteSpace = 'normal'; // Allow text wrapping
+                            cell.style.wordWrap = 'break-word';
                             // Replace input fields with their values
                             const input = cell.querySelector('input, select, textarea');
                             if (input) {
@@ -3425,7 +3440,7 @@ document.addEventListener("DOMContentLoaded", function() {
                         </div>
                         
                         <div style="width: 100%;">
-                            <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; margin-top: 20px;">
+                            <table style="width: 100%; table-layout: auto; word-wrap: break-word; border-collapse: collapse; font-size: 11px; text-align: left; margin-top: 20px;">
                                 ${tableClone.innerHTML}
                             </table>
                         </div>
@@ -3548,7 +3563,16 @@ document.addEventListener("DOMContentLoaded", function() {
                     val = parseFloat(cleanVal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
                 }
                 
-                td.innerHTML = `<input type="text" value="${val}" class="edit-input-${rowIndex}" readonly style="background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; color: inherit; width: 100%; min-width: 100px; outline: none; font-family: inherit; font-size: 0.95em;">`;
+                const inputEl = document.createElement('textarea');
+                inputEl.value = val;
+                inputEl.className = `edit-input-${rowIndex}`;
+                inputEl.readOnly = true;
+                inputEl.style.cssText = 'background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; color: inherit; width: 100%; min-width: 150px; outline: none; font-family: inherit; font-size: 0.95em; resize: vertical; overflow-y: auto; box-sizing: border-box;';
+                
+                const lines = String(val).split('\\n').length;
+                inputEl.rows = lines > 1 ? Math.min(lines, 4) : 1;
+                
+                td.appendChild(inputEl);
                 tr.appendChild(td);
             }
             
@@ -3796,6 +3820,92 @@ document.addEventListener("DOMContentLoaded", function() {
                     });
                     actionTd.appendChild(modifyBtn);
                 }
+                
+                // --- ROW LEVEL PRINT BUTTON ---
+                const printRowBtn = document.createElement('button');
+                printRowBtn.innerHTML = '<i class="fas fa-print"></i> Print';
+                printRowBtn.style.cssText = 'background: rgba(255, 255, 255, 0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 5px; margin-top: 5px;';
+                printRowBtn.addEventListener('click', () => {
+                    const originalText = printRowBtn.innerHTML;
+                    printRowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                    printRowBtn.disabled = true;
+
+                    const newTab = window.open('', '_blank');
+                    if (newTab) {
+                        newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Single Record PDF...</h3>');
+                    } else {
+                        alert('Popup blocked!');
+                    }
+
+                    try {
+                        let htmlRows = '';
+                        for(let i=0; i<colsCount; i++) {
+                            const colName = sheetColumns[sheet][i] || '';
+                            let colVal = row[i];
+                            if (colVal === undefined || colVal === null) colVal = '';
+                            
+                            const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
+                            if(inputs && inputs[i]) colVal = inputs[i].value;
+
+                            htmlRows += `
+                                <tr style="border-bottom: 1px solid #cbd5e1;">
+                                    <th style="padding: 10px; background: #f8fafc; color: #475569; width: 35%; text-align: right; vertical-align: top;">${colName}</th>
+                                    <td style="padding: 10px; color: #0f172a; white-space: pre-wrap; word-wrap: break-word;">${colVal}</td>
+                                </tr>
+                            `;
+                        }
+
+                        const htmlString = `
+                            <div style="font-family: sans-serif; color: #333; padding: 30px; background: white; max-width: 800px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                                <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                                    <h2 style="margin: 0 0 5px 0; color: #1e293b; font-size: 22px;">${sheet} Details</h2>
+                                    <p style="margin: 0; color: #64748b; font-size: 12px;">Printed on ${new Date().toLocaleString()}</p>
+                                </div>
+                                <table style="width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; word-wrap: break-word;">
+                                    <tbody>
+                                        ${htmlRows}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+
+                        const hiddenDiv = document.createElement('div');
+                        hiddenDiv.innerHTML = htmlString;
+                        hiddenDiv.style.position = 'absolute';
+                        hiddenDiv.style.top = '-9999px';
+                        hiddenDiv.style.left = '-9999px';
+                        hiddenDiv.style.width = '800px';
+                        document.body.appendChild(hiddenDiv);
+
+                        const opt = {
+                            margin:       0.5,
+                            filename:     `${sheet.replace(/\\s+/g, '_')}_Record.pdf`,
+                            image:        { type: 'jpeg', quality: 0.98 },
+                            html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                            jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                        };
+
+                        html2pdf().set(opt).from(hiddenDiv.firstElementChild).output('bloburl').then(function(pdfUrl) {
+                            if (newTab) newTab.location.href = pdfUrl;
+                            document.body.removeChild(hiddenDiv);
+                            printRowBtn.innerHTML = originalText;
+                            printRowBtn.disabled = false;
+                        }).catch(err => {
+                            console.error(err);
+                            if(newTab) newTab.close();
+                            printRowBtn.innerHTML = originalText;
+                            printRowBtn.disabled = false;
+                        });
+                    } catch(err) {
+                        console.error(err);
+                        if(newTab) newTab.close();
+                        printRowBtn.innerHTML = originalText;
+                        printRowBtn.disabled = false;
+                    }
+                });
+                actionTd.appendChild(printRowBtn);
+                // -----------------------------
+
                 tr.appendChild(actionTd);
             }
             tbody.appendChild(tr);
