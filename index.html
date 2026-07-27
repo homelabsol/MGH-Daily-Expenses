@@ -413,6 +413,18 @@
                         </select>
                     </div>
 
+                    <div class="form-group">
+                        <label for="acc-store">Store</label>
+                        <select id="acc-store" name="store" required>
+                            <option value="" disabled selected>Select a store</option>
+                            <option value="All">All</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                            <option value="Auditor">Auditor</option>
+                            <option value="MarvsPCStufz">MarvsPCStufz</option>
+                        </select>
+                    </div>
+
                     <button type="submit" class="submit-btn" id="acc-submit-btn">
                         <span class="btn-text">Create Account</span>
                         <div class="spinner hidden"></div>
@@ -1262,7 +1274,6 @@
                         <select id="warranty-status" name="status" required>
                             <option value="Pending">Pending</option>
                             <option value="Sent to RMA">Sent to RMA</option>
-                            <option value="Replaced">Replaced</option>
                         </select>
                     </div>
                 </div>
@@ -1494,5 +1505,152 @@
     </div>
 
     <script src="app.js?v=3"></script>
+    <!-- Item Replacement Container -->
+    <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <!-- Header -->
+            <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); flex-shrink: 0;">
+                <h2 style="margin: 0; font-size: 1.3em; color: var(--primary);"><i class="fas fa-exchange-alt" style="margin-right: 8px;"></i>Item Replacement</h2>
+                <button type="button" class="back-btn" data-target="warranty-menu-container" style="background: none; border: 1px solid rgba(255,255,255,0.2); color: var(--text-light); font-size: 0.85em; cursor: pointer; padding: 6px 14px; border-radius: 6px;"><i class="fas fa-arrow-left"></i> Back</button>
+            </div>
+            <!-- Filters -->
+            <div style="padding: 12px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; flex-shrink: 0;">
+                <div style="flex: 2; min-width: 150px;">
+                    <label style="display: block; font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Search Warranty#</label>
+                    <input type="text" id="repl-search-warranty" placeholder="e.g. WAR-2026..." style="padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; font-size: 0.9em; box-sizing: border-box;">
+                </div>
+                <div style="flex: 1; min-width: 120px;">
+                    <label style="display: block; font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Branch</label>
+                    <select id="repl-branch" style="padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; font-size: 0.9em; box-sizing: border-box;">
+                        <option value="All">All Branches</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                    </select>
+                </div>
+                <div style="flex: 1; min-width: 120px;">
+                    <label style="display: block; font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Start Date</label>
+                    <input type="date" id="repl-start-date" style="padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; font-size: 0.9em; box-sizing: border-box;">
+                </div>
+                <div style="flex: 1; min-width: 120px;">
+                    <label style="display: block; font-size: 0.75em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">End Date</label>
+                    <input type="date" id="repl-end-date" style="padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; font-size: 0.9em; box-sizing: border-box;">
+                </div>
+                <div style="flex-shrink: 0;">
+                    <button id="btn-load-replacements" class="submit-btn" style="padding: 8px 18px; margin: 0; width: auto; font-size: 0.9em; white-space: nowrap;">
+                        <span class="btn-text"><i class="fas fa-sync-alt" style="margin-right: 6px;"></i>Load Items</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </div>
+            </div>
+            <!-- Table -->
+            <div style="flex: 1; overflow-y: auto; overflow-x: auto;">
+                <table id="item-replacement-table" style="width: 100%; border-collapse: collapse; font-size: 0.88em; table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 95px;">
+                        <col style="width: 115px;">
+                        <col style="width: 140px;">
+                        <col style="width: 160px;">
+                        <col style="width: 140px;">
+                        <col style="width: 110px;">
+                        <col style="width: 145px;">
+                        <col style="width: 95px;">
+                    </colgroup>
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th id="repl-sort-date" style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600; cursor: pointer; user-select: none;" title="Click to sort">Date <span id="repl-sort-icon">↑</span></th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Branch</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Item Desc</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Issue &amp; Concern</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Serial#</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Val. Status</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Warranty#</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px; font-size: 0.9em;">Click "Load Items" to view records.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Item Replacement Form Container -->
+    <div class="container hidden" id="item-replacement-form-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
+        <header id="item-replacement-form-header" style="cursor: move; user-select: none;">
+            <h1>Item Replacement Form</h1>
+            <p>Process Item Replacement</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <div onmousedown="event.stopPropagation()">
+                <button class="back-btn" data-target="item-replacement-container"><i class="fas fa-arrow-left"></i> Back to List</button>
+            </div>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <form id="item-replacement-form">
+                <input type="hidden" id="repl-form-row-index" name="rowIndex" value="">
+                
+                <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(59, 130, 246, 0.2); border-left: 4px solid #3b82f6; border-radius: 8px; padding: 20px; margin-bottom: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 4px;">Warranty Number</div>
+                        <div id="repl-form-warranty-num" style="font-size: 1.4em; font-weight: 700; color: #fff; font-family: monospace;">-</div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                        <div><div style="font-size: 0.75em; color: #94a3b8;">Recorded Date</div><div id="repl-form-recorded-date" style="color: #e2e8f0;">-</div></div>
+                        <div><div style="font-size: 0.75em; color: #94a3b8;">Branch</div><div id="repl-form-branch" style="color: #e2e8f0;">-</div></div>
+                        <div><div style="font-size: 0.75em; color: #94a3b8;">Tech</div><div id="repl-form-tech" style="color: #e2e8f0;">-</div></div>
+                        <div><div style="font-size: 0.75em; color: #94a3b8;">Original Item Desc</div><div id="repl-form-item-desc" style="color: #e2e8f0;">-</div></div>
+                        <div><div style="font-size: 0.75em; color: #94a3b8;">Original Serial#</div><div id="repl-form-serial" style="color: #e2e8f0;">-</div></div>
+                        <div><div style="font-size: 0.75em; color: #94a3b8;">Status</div><div id="repl-form-status" style="color: #e2e8f0;">-</div></div>
+                        <div><div style="font-size: 0.75em; color: #94a3b8;">Val. Status</div><div id="repl-form-val-status" style="color: #e2e8f0;">-</div></div>
+                        <div><div style="font-size: 0.75em; color: #94a3b8;">Assigned Tech</div><div id="repl-form-assigned-tech" style="color: #e2e8f0;">-</div></div>
+                        <div style="grid-column: span 2;"><div style="font-size: 0.75em; color: #94a3b8;">Issue and Concern</div><div id="repl-form-issue" style="color: #e2e8f0; font-style: italic;">-</div></div>
+                    </div>
+                </div>
+
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0; color: var(--primary); font-size: 1.1em; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;"><i class="fas fa-exchange-alt"></i> Replacement Details</h3>
+                    
+                    <div class="form-group">
+                        <label for="repl-form-date-received">Date Received (Col R)</label>
+                        <input type="date" id="repl-form-date-received" name="dateReceived" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="repl-form-repl-item-desc">Item Description (Col S)</label>
+                        <input type="text" id="repl-form-repl-item-desc" name="replItemDesc" placeholder="Replaced Item Description" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="repl-form-repl-serial">Serial# (Col T)</label>
+                        <input type="text" id="repl-form-repl-serial" name="replSerial" placeholder="Replaced Serial#" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="repl-form-sup-approver">Sup Approver (Col U)</label>
+                        <input type="text" id="repl-form-sup-approver" name="supApprover" disabled style="opacity: 0.7; background: rgba(0,0,0,0.5);">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="repl-form-overall-status">Overall Status (Col V)</label>
+                        <select id="repl-form-overall-status" name="overallStatus" required>
+                            <option value="" disabled selected>Select Status</option>
+                            <option value="Item Fixed">Item Fixed</option>
+                            <option value="New Replaced Item">New Replaced Item</option>
+                            <option value="Pending">Pending</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="btn-submit-item-replacement">
+                    <span class="btn-text">Submit Replacement</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <div id="item-replacement-status-message" class="hidden" style="margin-top: 15px;"></div>
+            </form>
+        </main>
+    </div>
 </body>
+
 </html>
+
