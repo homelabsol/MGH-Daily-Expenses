@@ -223,6 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!valTableBody || !valTheadTr) return;
         
         const branchFilter = document.getElementById('val-branch').value;
+        const statusFilter = document.getElementById('val-status-filter') ? document.getElementById('val-status-filter').value : 'All';
         const searchFilter = document.getElementById('val-search-warranty').value.toLowerCase();
         
         // Define columns directly since sheetColumns is scoped elsewhere
@@ -243,12 +244,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Filter records
         const filteredRecords = allValidationRecords.filter(row => {
             const branch = row[1] || ''; // Branch is column index 1
+            const status = row[9] || ''; // Status is column index 9
             const warrantyNum = row[10] || ''; // Warranty# is column index 10
             
             const matchBranch = branchFilter === 'All' || branch === branchFilter;
+            const matchStatus = statusFilter === 'All' || status === statusFilter;
             const matchSearch = String(warrantyNum).toLowerCase().includes(searchFilter);
             
-            return matchBranch && matchSearch;
+            return matchBranch && matchStatus && matchSearch;
         });
 
         if (filteredRecords.length === 0) {
@@ -382,8 +385,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         image: { type: 'jpeg', quality: 0.98 },
                         html2canvas: { scale: 2, useCORS: true },
                         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    }).from(element).outputPdf('datauristring').then(function(pdfAsString) {
-                        newTab.location.href = pdfAsString;
+                    }).from(element).output('bloburl').then(function(pdfUrl) {
+                        if (newTab) newTab.location.href = pdfUrl;
                         document.body.removeChild(hiddenDiv);
                         printRowBtn.innerHTML = originalText;
                         printRowBtn.disabled = false;
@@ -493,6 +496,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnWarrantyValidation = document.getElementById('btn-warranty-validation');
     if (btnWarrantyValidation) {
         btnWarrantyValidation.addEventListener('click', () => {
+            const currentRole = sessionStorage.getItem('userRole');
+            if (currentRole !== 'Owner' && currentRole !== 'Manager' && currentRole !== 'RMA Admin') {
+                alert('Access Denied. Only Owner, Manager, and RMA Admin can access Warranty Validation.');
+                return;
+            }
             hideAllContainers();
             document.getElementById('warranty-validation-container').classList.remove('hidden');
             loadRmaAdmins();
@@ -503,10 +511,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Attach listeners for live filtering
     const valSearchInput = document.getElementById('val-search-warranty');
     const valBranchSelect = document.getElementById('val-branch');
+    const valStatusSelect = document.getElementById('val-status-filter');
     const valRefreshBtn = document.getElementById('btn-val-refresh');
     
     if (valSearchInput) valSearchInput.addEventListener('input', renderValidationTable);
     if (valBranchSelect) valBranchSelect.addEventListener('change', renderValidationTable);
+    if (valStatusSelect) valStatusSelect.addEventListener('change', renderValidationTable);
     if (valRefreshBtn) valRefreshBtn.addEventListener('click', loadValidationRecords);
 
     backBtns.forEach(btn => {
@@ -3704,6 +3714,15 @@ document.addEventListener("DOMContentLoaded", function() {
             sheetNameInput.value = sheet;
             editTitle.textContent = "View & Edit: " + sheet;
             
+            const editStatusContainer = document.getElementById('edit-status-container');
+            if (editStatusContainer) {
+                if (sheet === 'Handover') {
+                    editStatusContainer.classList.remove('hidden');
+                } else {
+                    editStatusContainer.classList.add('hidden');
+                }
+            }
+            
             // Set default dates to today
             const today = new Date();
             const y = today.getFullYear();
@@ -3766,15 +3785,8 @@ document.addEventListener("DOMContentLoaded", function() {
             const result = await response.json();
             
             if (result.status === 'success') {
-                let filteredData = result.data;
-                const selectedBranch = document.getElementById('edit-branch').value;
-                if (selectedBranch && selectedBranch !== 'All') {
-                    const branchColIndex = (sheetColumns[sheet] || []).indexOf('Branch');
-                    if (branchColIndex !== -1) {
-                        filteredData = filteredData.filter(row => row[branchColIndex] === selectedBranch);
-                    }
-                }
-                renderRecords(filteredData, sheet);
+                window.currentEditRecords = result.data;
+                applyEditModalFilters();
             } else {
                 alert("Error loading records: " + result.message);
             }
@@ -3787,6 +3799,46 @@ document.addEventListener("DOMContentLoaded", function() {
             spinner.classList.add('hidden');
         }
     });
+
+    function applyEditModalFilters() {
+        if (!window.currentEditRecords) return;
+        const sheet = sheetNameInput.value;
+        let filteredData = [...window.currentEditRecords];
+        
+        const selectedBranch = document.getElementById('edit-branch').value;
+        if (selectedBranch && selectedBranch !== 'All') {
+            const branchColIndex = (sheetColumns[sheet] || []).indexOf('Branch');
+            if (branchColIndex !== -1) {
+                filteredData = filteredData.filter(row => row[branchColIndex] === selectedBranch);
+            }
+        }
+        
+        if (sheet === 'Handover') {
+            const selectedStatus = document.getElementById('edit-status-filter').value;
+            if (selectedStatus && selectedStatus !== 'All') {
+                const statusColIndex = (sheetColumns[sheet] || []).indexOf('Status');
+                if (statusColIndex !== -1) {
+                    filteredData = filteredData.filter(row => {
+                        const val = (row[statusColIndex] || '').toString().trim().toLowerCase();
+                        return val === selectedStatus.trim().toLowerCase();
+                    });
+                }
+            }
+        }
+        
+        renderRecords(filteredData, sheet);
+    }
+
+    const editBranchSelect = document.getElementById('edit-branch');
+    if (editBranchSelect) {
+        editBranchSelect.addEventListener('change', applyEditModalFilters);
+    }
+    
+    const editStatusSelect = document.getElementById('edit-status-filter');
+    if (editStatusSelect) {
+        editStatusSelect.addEventListener('change', applyEditModalFilters);
+    }
+
 
     const btnPrintEditReport = document.getElementById('btn-print-edit-report');
     if (btnPrintEditReport) {

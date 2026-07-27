@@ -1047,6 +1047,15 @@
                         <option value="MGH Concepcion">MGH Concepcion</option>
                     </select>
                 </div>
+                <div style="flex: 1; min-width: 200px;">
+                    <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Status</label>
+                    <select id="val-status-filter" style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white;">
+                        <option value="All">All Status</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Sent to RMA">Sent to RMA</option>
+                        <option value="Replaced">Replaced</option>
+                    </select>
+                </div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button type="button" id="btn-val-refresh" class="submit-btn" style="margin: 0; padding: 9px 15px; flex: 0 0 auto; width: auto;">
                         <span class="btn-text"><i class="fas fa-sync-alt"></i> Refresh</span>
@@ -1435,6 +1444,15 @@
                             <option value="All">All Branches</option>
                             <option value="MGH Parang">MGH Parang</option>
                             <option value="MGH Concepcion">MGH Concepcion</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1; min-width: 130px;" id="edit-status-container" class="hidden">
+                        <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Status</label>
+                        <select id="edit-status-filter" style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
+                            <option value="All">All Status</option>
+                            <option value="Pending">Pending</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
                         </select>
                     </div>
                     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
