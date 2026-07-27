@@ -1023,6 +1023,14 @@
                         <p>Validate Warranty Items</p>
                     </div>
                 </button>
+
+                <button class="menu-action-btn" id="btn-item-replacement">
+                    <div class="btn-icon"><i class="fas fa-exchange-alt"></i></div>
+                    <div class="btn-text">
+                        <h3>Item Replacement</h3>
+                        <p>Process Item Replacements</p>
+                    </div>
+                </button>
             </div>
         </main>
     </div>
@@ -1317,7 +1325,9 @@
                     <table style="width: 100%; border-collapse: collapse; font-size: 0.9em; text-align: left;">
                         <thead>
                             <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted);">
-                                <th style="padding: 12px; font-weight: 500;">Date</th>
+                                <th id="sort-survey-date" style="padding: 12px; font-weight: 500; cursor: pointer; user-select: none;">
+                                    Date <i class="fas fa-sort" id="sort-survey-date-icon"></i>
+                                </th>
                                 <th style="padding: 12px; font-weight: 500;">Branch</th>
                                 <th style="padding: 12px; font-weight: 500;">Time</th>
                                 <th style="padding: 12px; font-weight: 500;">Count</th>

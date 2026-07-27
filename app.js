@@ -508,6 +508,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const btnItemReplacement = document.getElementById('btn-item-replacement');
+    if (btnItemReplacement) {
+        btnItemReplacement.addEventListener('click', () => {
+            const currentRole = sessionStorage.getItem('userRole');
+            if (currentRole !== 'Owner' && currentRole !== 'Manager' && currentRole !== 'RMA Admin') {
+                alert('Access Denied. Only Owner, Manager, and RMA Admin can access Item Replacement.');
+                return;
+            }
+            // hideAllContainers();
+            // document.getElementById('item-replacement-container').classList.remove('hidden');
+            alert('Item Replacement module is under construction.');
+        });
+    }
+
     // Attach listeners for live filtering
     const valSearchInput = document.getElementById('val-search-warranty');
     const valBranchSelect = document.getElementById('val-branch');
@@ -3167,85 +3181,9 @@ document.addEventListener('DOMContentLoaded', () => {
                          return;
                     }
 
-                    const chartLabels = [];
-                    const chartData = [];
-
-                    filteredData.forEach(row => {
-                        // row structure: [Date, Branch, Time, Count, Logged In]
-                        const [rowDate, rowBranch, rowTime, rowCount, rowLoggedin] = row;
-                        
-                        let formattedDate = rowDate;
-                        if (rowDate && String(rowDate).includes('T')) {
-                            formattedDate = String(rowDate).split('T')[0];
-                        }
-                        
-                        let formattedTime = rowTime;
-                        if (rowTime && String(rowTime).includes('T')) {
-                            const d = new Date(rowTime);
-                            if (!isNaN(d.getTime())) {
-                                let h = d.getHours();
-                                const m = String(d.getMinutes()).padStart(2, '0');
-                                const ampm = h >= 12 ? 'PM' : 'AM';
-                                h = h % 12;
-                                h = h ? h : 12;
-                                formattedTime = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
-                            }
-                        }
-
-                        chartLabels.push(`${formattedDate} ${formattedTime}`);
-                        chartData.push(parseInt(rowCount) || 0);
-
-                        const tr = document.createElement('tr');
-                        tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
-                        tr.innerHTML = `
-                            <td style="padding: 12px;">${formattedDate}</td>
-                            <td style="padding: 12px;">${rowBranch || ''}</td>
-                            <td style="padding: 12px;">${formattedTime || ''}</td>
-                            <td style="padding: 12px;">${rowCount !== undefined ? rowCount : ''}</td>
-                            <td style="padding: 12px;">${rowLoggedin || ''}</td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-
-                    // Render Chart
-                    if (surveyChartInstance) {
-                        surveyChartInstance.destroy();
-                    }
-                    const ctx = document.getElementById('surveyChart').getContext('2d');
-                    surveyChartInstance = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: chartLabels,
-                            datasets: [{
-                                label: 'Survey Count',
-                                data: chartData,
-                                borderColor: '#3b82f6',
-                                backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                                borderWidth: 2,
-                                pointBackgroundColor: '#3b82f6',
-                                fill: true,
-                                tension: 0.3
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            scales: {
-                                y: {
-                                    beginAtZero: true,
-                                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                                    ticks: { color: 'rgba(255, 255, 255, 0.7)' }
-                                },
-                                x: {
-                                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                                    ticks: { color: 'rgba(255, 255, 255, 0.7)' }
-                                }
-                            },
-                            plugins: {
-                                legend: { labels: { color: 'rgba(255, 255, 255, 0.9)' } }
-                            }
-                        }
-                    });
+                    window.currentSurveyRecords = filteredData;
+                    window.surveySortDesc = true; // default to newest first or whatever, actually default false
+                    window.renderSurveyReport();
 
                 } else {
                     tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this date.</td></tr>';
@@ -3715,9 +3653,16 @@ document.addEventListener("DOMContentLoaded", function() {
             editTitle.textContent = "View & Edit: " + sheet;
             
             const editStatusContainer = document.getElementById('edit-status-container');
-            if (editStatusContainer) {
+            const editStatusFilter = document.getElementById('edit-status-filter');
+            if (editStatusContainer && editStatusFilter) {
                 if (sheet === 'Handover') {
                     editStatusContainer.classList.remove('hidden');
+                    editStatusFilter.innerHTML = '<option value="All">All Status</option><option value="Pending">Pending</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option>';
+                    editStatusFilter.value = 'All';
+                } else if (sheet === 'Warranty Items') {
+                    editStatusContainer.classList.remove('hidden');
+                    editStatusFilter.innerHTML = '<option value="All">All Status</option><option value="Pending">Pending</option><option value="Sent to RMA">Sent to RMA</option><option value="Replaced">Replaced</option>';
+                    editStatusFilter.value = 'All';
                 } else {
                     editStatusContainer.classList.add('hidden');
                 }
@@ -3800,6 +3745,147 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 
+    window.renderSurveyReport = function() {
+        if (!window.currentSurveyRecords) return;
+        
+        let displayData = [...window.currentSurveyRecords];
+        
+        if (window.surveySortDesc) {
+            displayData.sort((a, b) => {
+                const dateA = new Date(a[0]).getTime() || 0;
+                const dateB = new Date(b[0]).getTime() || 0;
+                return dateB - dateA; // descending
+            });
+            const icon = document.getElementById('sort-survey-date-icon');
+            if(icon) icon.className = 'fas fa-sort-down';
+        } else {
+            displayData.sort((a, b) => {
+                const dateA = new Date(a[0]).getTime() || 0;
+                const dateB = new Date(b[0]).getTime() || 0;
+                return dateA - dateB; // ascending
+            });
+            const icon = document.getElementById('sort-survey-date-icon');
+            if(icon) icon.className = 'fas fa-sort-up';
+        }
+
+        const tbody = document.getElementById('survey-report-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        const chartLabels = [];
+        const chartData = [];
+
+        displayData.forEach(row => {
+            const [rowDate, rowBranch, rowTime, rowCount, rowLoggedin] = row;
+            
+            let formattedDate = rowDate;
+            if (rowDate) {
+                let dateStr = String(rowDate);
+                if (dateStr.includes('T')) {
+                    formattedDate = dateStr.split('T')[0];
+                } else if (dateStr.includes(' ')) {
+                    formattedDate = dateStr.split(' ')[0];
+                }
+            }
+            
+            let formattedTime = rowTime;
+            if (rowTime) {
+                let timeStr = String(rowTime);
+                if (timeStr.includes('T')) {
+                    timeStr = timeStr.split('T')[1];
+                } else if (timeStr.includes(' ')) {
+                    timeStr = timeStr.split(' ')[1];
+                }
+                if (timeStr && timeStr.includes(':')) {
+                    let [h, m] = timeStr.split(':');
+                    h = parseInt(h);
+                    if (!isNaN(h)) {
+                        const ampm = h >= 12 ? 'PM' : 'AM';
+                        h = h % 12;
+                        h = h ? h : 12;
+                        formattedTime = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+                    }
+                }
+            }
+
+            chartLabels.push(`${formattedDate} ${formattedTime}`);
+            chartData.push(parseInt(rowCount) || 0);
+
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+            tr.innerHTML = `
+                <td style="padding: 12px;">${formattedDate}</td>
+                <td style="padding: 12px;">${rowBranch || ''}</td>
+                <td style="padding: 12px;">${formattedTime || ''}</td>
+                <td style="padding: 12px;">${rowCount !== undefined ? rowCount : ''}</td>
+                <td style="padding: 12px;">${rowLoggedin || ''}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        try {
+            if (window.surveyChartInstance) {
+                window.surveyChartInstance.destroy();
+            } else if (typeof surveyChartInstance !== 'undefined' && surveyChartInstance) {
+                surveyChartInstance.destroy();
+            }
+            
+            const canvas = document.getElementById('surveyChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            window.surveyChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        label: 'Survey Count',
+                        data: chartData,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                        borderWidth: 2,
+                        pointBackgroundColor: '#3b82f6',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+                        },
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                            ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { labels: { color: 'rgba(255, 255, 255, 0.9)' } }
+                    }
+                }
+            });
+            
+            // Also keep the local variable in sync if it exists in scope
+            if (typeof surveyChartInstance !== 'undefined') {
+                surveyChartInstance = window.surveyChartInstance;
+            }
+        } catch (chartErr) {
+            console.error("Error generating chart:", chartErr);
+        }
+    }
+
+    const sortSurveyDateBtn = document.getElementById('sort-survey-date');
+    if (sortSurveyDateBtn) {
+        sortSurveyDateBtn.addEventListener('click', () => {
+            window.surveySortDesc = !window.surveySortDesc;
+            window.renderSurveyReport();
+        });
+    }
+
     function applyEditModalFilters() {
         if (!window.currentEditRecords) return;
         const sheet = sheetNameInput.value;
@@ -3813,7 +3899,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
         
-        if (sheet === 'Handover') {
+        if (sheet === 'Handover' || sheet === 'Warranty Items') {
             const selectedStatus = document.getElementById('edit-status-filter').value;
             if (selectedStatus && selectedStatus !== 'All') {
                 const statusColIndex = (sheetColumns[sheet] || []).indexOf('Status');
