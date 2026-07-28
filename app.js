@@ -69,6 +69,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function hideAllContainers() {
         loginContainer.classList.add('hidden');
         mainMenuContainer.classList.add('hidden');
+        const marvsPcContainer = document.getElementById('marvspc-menu-container');
+        if (marvsPcContainer) marvsPcContainer.classList.add('hidden');
+        const marvsPcExpensesContainer = document.getElementById('marvspc-expenses-container');
+        if (marvsPcExpensesContainer) marvsPcExpensesContainer.classList.add('hidden');
+        const mghMenuContainer = document.getElementById('mgh-menu-container');
+        if (mghMenuContainer) mghMenuContainer.classList.add('hidden');
         expensesContainer.classList.add('hidden');
         adminContainer.classList.add('hidden');
         reportContainer.classList.add('hidden');
@@ -77,8 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('warranty-menu-container')) document.getElementById('warranty-menu-container').classList.add('hidden');
         if (document.getElementById('warranty-validation-container')) document.getElementById('warranty-validation-container').classList.add('hidden');
         if (document.getElementById('warranty-validation-form-container')) document.getElementById('warranty-validation-form-container').classList.add('hidden');
-        if (document.getElementById('item-replacement-container')) document.getElementById('item-replacement-container').classList.add('hidden');
-        if (document.getElementById('item-replacement-form-container')) document.getElementById('item-replacement-form-container').classList.add('hidden');
         if (handoverContainer) handoverContainer.classList.add('hidden');
         document.getElementById('edit-records-modal').classList.add('hidden');
     }
@@ -127,6 +131,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (menuHandoverBtn) {
             menuHandoverBtn.style.display = (store === 'MarvsPCStufz') ? 'none' : '';
         }
+        
+        // Hide/Show MarvsPCStufz Button based on Store and Role
+        const menuMarvsPcBtnApp = document.getElementById('menu-marvspc-btn');
+        if (menuMarvsPcBtnApp) {
+            const isMarvsPcStore = (store === 'MarvsPCStufz');
+            const isAllowedRole = (role === 'Manager' || role === 'Owner' || role === 'RMA Admin');
+            
+            if (isMarvsPcStore && isAllowedRole) {
+                menuMarvsPcBtnApp.style.display = '';
+            } else {
+                menuMarvsPcBtnApp.style.display = 'none';
+            }
+        }
     }
 
     function showLogin() {
@@ -137,6 +154,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Navigation Listeners
+    const menuMarvsPcBtn = document.getElementById('menu-marvspc-btn');
+    if (menuMarvsPcBtn) {
+        menuMarvsPcBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const marvsPcContainer = document.getElementById('marvspc-menu-container');
+            if (marvsPcContainer) marvsPcContainer.classList.remove('hidden');
+        });
+    }
+
+    const menuMghBtn = document.getElementById('menu-mgh-btn');
+    if (menuMghBtn) {
+        menuMghBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const mghContainer = document.getElementById('mgh-menu-container');
+            if (mghContainer) mghContainer.classList.remove('hidden');
+        });
+    }
+
+    const menuMarvsPcExpensesBtn = document.getElementById('menu-marvspc-expenses-btn');
+    if (menuMarvsPcExpensesBtn) {
+        menuMarvsPcExpensesBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const marvspcExpensesContainer = document.getElementById('marvspc-expenses-container');
+            if (marvspcExpensesContainer) marvspcExpensesContainer.classList.remove('hidden');
+            const marvspcDate = document.getElementById('marvspc-date');
+            if (marvspcDate) marvspcDate.valueAsDate = new Date();
+        });
+    }
+
     menuAdminBtn.addEventListener('click', () => {
         hideAllContainers();
         adminContainer.classList.remove('hidden');
@@ -549,22 +595,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnItemReplacement) {
         btnItemReplacement.addEventListener('click', () => {
             const currentRole = sessionStorage.getItem('userRole');
-            if (currentRole !== 'Owner' && currentRole !== 'Manager' && currentRole !== 'Supervisor') {
-                alert('Access Denied. Only Supervisor, Manager, and Owner can access Item Replacement.');
+            if (currentRole !== 'Owner' && currentRole !== 'Manager' && currentRole !== 'RMA Admin') {
+                alert('Access Denied. Only Owner, Manager, and RMA Admin can access Item Replacement.');
                 return;
             }
-            hideAllContainers();
-            document.getElementById('item-replacement-container').classList.remove('hidden');
-            
-            // Set default dates
-            const today = new Date();
-            const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-            
-            document.getElementById('repl-start-date').valueAsDate = firstDay;
-            document.getElementById('repl-end-date').valueAsDate = today;
-            document.getElementById('repl-search-warranty').value = '';
-            
-            document.getElementById('item-replacement-table').querySelector('tbody').innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">Click "Load Items" to view records.</td></tr>';
+            // hideAllContainers();
+            // document.getElementById('item-replacement-container').classList.remove('hidden');
+            alert('Item Replacement module is under construction.');
         });
     }
 
@@ -1002,6 +1039,60 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('r-date').valueAsDate = new Date();
     document.getElementById('remit-date').valueAsDate = new Date();
     document.getElementById('acc-date').valueAsDate = new Date();
+
+    const marvspcForm = document.getElementById('marvspc-expense-form');
+    if (marvspcForm) {
+        marvspcForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('marvspc-submit-btn');
+            const statusMessage = document.getElementById('marvspc-status-message');
+            
+            if (SCRIPT_URL === 'PASTE_YOUR_URL_HERE' || SCRIPT_URL === '') {
+                showMessage(statusMessage, 'Please set your Google Apps Script URL in app.js', 'error');
+                return;
+            }
+
+            const formData = {
+                action: 'addMarvsPcExpense',
+                date: document.getElementById('marvspc-date').value,
+                category: document.getElementById('marvspc-category').value,
+                description: document.getElementById('marvspc-description').value,
+                amount: document.getElementById('marvspc-amount').value,
+                account: sessionStorage.getItem('loggedInUser'),
+                encodedBy: sessionStorage.getItem('loggedInUser')
+            };
+
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showMessage(statusMessage, 'Expense saved successfully!', 'success');
+                    marvspcForm.reset();
+                    document.getElementById('marvspc-date').valueAsDate = new Date();
+                } else {
+                    showMessage(statusMessage, 'Error saving expense: ' + result.message, 'error');
+                }
+            } catch (err) {
+                showMessage(statusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
 
     cashForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -3273,14 +3364,14 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 let chartImgHTML = '';
                 const canvas = document.getElementById('surveyChart');
-                if (canvas && surveyChartInstance) {
+                if (canvas && window.surveyChartInstance) {
                     // Switch chart text/grid to dark for print
-                    surveyChartInstance.options.scales.x.ticks.color = '#333';
-                    surveyChartInstance.options.scales.x.grid.color = '#ddd';
-                    surveyChartInstance.options.scales.y.ticks.color = '#333';
-                    surveyChartInstance.options.scales.y.grid.color = '#ddd';
-                    surveyChartInstance.options.plugins.legend.labels.color = '#333';
-                    surveyChartInstance.update('none');
+                    window.surveyChartInstance.options.scales.x.ticks.color = '#333';
+                    window.surveyChartInstance.options.scales.x.grid.color = '#ddd';
+                    window.surveyChartInstance.options.scales.y.ticks.color = '#333';
+                    window.surveyChartInstance.options.scales.y.grid.color = '#ddd';
+                    window.surveyChartInstance.options.plugins.legend.labels.color = '#333';
+                    window.surveyChartInstance.update('none');
 
                     // Temporarily fill background with white to avoid transparent PNG rendering as black
                     const ctx = canvas.getContext('2d');
@@ -3292,12 +3383,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     ctx.restore();
                     
                     // Revert chart to light text for UI
-                    surveyChartInstance.options.scales.x.ticks.color = 'rgba(255, 255, 255, 0.7)';
-                    surveyChartInstance.options.scales.x.grid.color = 'rgba(255, 255, 255, 0.1)';
-                    surveyChartInstance.options.scales.y.ticks.color = 'rgba(255, 255, 255, 0.7)';
-                    surveyChartInstance.options.scales.y.grid.color = 'rgba(255, 255, 255, 0.1)';
-                    surveyChartInstance.options.plugins.legend.labels.color = 'rgba(255, 255, 255, 0.9)';
-                    surveyChartInstance.update('none');
+                    window.surveyChartInstance.options.scales.x.ticks.color = 'rgba(255, 255, 255, 0.7)';
+                    window.surveyChartInstance.options.scales.x.grid.color = 'rgba(255, 255, 255, 0.1)';
+                    window.surveyChartInstance.options.scales.y.ticks.color = 'rgba(255, 255, 255, 0.7)';
+                    window.surveyChartInstance.options.scales.y.grid.color = 'rgba(255, 255, 255, 0.1)';
+                    window.surveyChartInstance.options.plugins.legend.labels.color = 'rgba(255, 255, 255, 0.9)';
+                    window.surveyChartInstance.update('none');
 
                     chartImgHTML = `<div style="text-align: center; margin: 20px 0;"><img src="${chartDataUrl}" style="max-width: 100%; height: auto; max-height: 250px; border: 1px solid #ddd; padding: 10px; border-radius: 4px;" /></div>`;
                 }
@@ -3350,21 +3441,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const elementToPrint = hiddenDiv.firstElementChild;
 
-                html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function(pdfUrl) {
-                    if (newTab) {
-                        newTab.location.href = pdfUrl;
-                    }
-                    document.body.removeChild(hiddenDiv);
-                    btnText.innerHTML = originalText;
-                    btnPrintSurvey.disabled = false;
-                }).catch(err => {
-                    console.error(err);
-                    if (newTab) newTab.close();
-                    document.body.removeChild(hiddenDiv);
-                    btnText.innerHTML = originalText;
-                    btnPrintSurvey.disabled = false;
-                    alert('Failed to generate PDF.');
-                });
+                setTimeout(() => {
+                    html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function(pdfUrl) {
+                        if (newTab) {
+                            newTab.location.href = pdfUrl;
+                        }
+                        document.body.removeChild(hiddenDiv);
+                        btnText.innerHTML = originalText;
+                        btnPrintSurvey.disabled = false;
+                    }).catch(err => {
+                        console.error(err);
+                        if (newTab) newTab.close();
+                        document.body.removeChild(hiddenDiv);
+                        btnText.innerHTML = originalText;
+                        btnPrintSurvey.disabled = false;
+                        alert('Failed to generate PDF.');
+                    });
+                }, 500);
             } catch (error) {
                 console.error(error);
                 if (newTab) newTab.close();
@@ -3692,7 +3785,8 @@ document.addEventListener("DOMContentLoaded", function() {
         'Other Expenses': ['Start Date', 'End Date', 'Branch', 'Internet', 'Rent', 'Electricity', 'Water', 'Pondo', 'Food', 'Salary'],
         'Daily Survey': ['Date', 'Branch', 'Time', 'Count', 'Logged In'],
         'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status', 'Warranty#'],
-        'Handover': ['Date', 'Branch', 'Outgoing Staff', 'Handover Description', 'Discussion', 'Status', 'Incoming Staff', 'Remarks', 'Approver']
+        'Handover': ['Date', 'Branch', 'Outgoing Staff', 'Handover Description', 'Discussion', 'Status', 'Incoming Staff', 'Remarks', 'Approver'],
+        'MarvsPCStufz Expenses': ['Date', 'Category', 'Expenses Description', 'Amount', 'Account Name']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -3717,6 +3811,15 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }
             
+            const editBranchContainer = document.getElementById('edit-branch-container');
+            if (editBranchContainer) {
+                if (sheet === 'MarvsPCStufz Expenses') {
+                    editBranchContainer.classList.add('hidden');
+                } else {
+                    editBranchContainer.classList.remove('hidden');
+                }
+            }
+            
             // Set default dates to today
             const today = new Date();
             const y = today.getFullYear();
@@ -3732,7 +3835,18 @@ document.addEventListener("DOMContentLoaded", function() {
             cols.forEach(col => {
                 const th = document.createElement('th');
                 th.style.padding = '8px';
-                th.textContent = col;
+                if (col.toLowerCase().includes('date')) {
+                    if (window.editModalSortDesc === undefined) window.editModalSortDesc = true;
+                    th.style.cursor = 'pointer';
+                    th.innerHTML = `${col} <i class="fas fa-sort${window.editModalSortDesc ? '-down' : '-up'}"></i>`;
+                    th.addEventListener('click', () => {
+                        window.editModalSortDesc = !window.editModalSortDesc;
+                        th.innerHTML = `${col} <i class="fas fa-sort${window.editModalSortDesc ? '-down' : '-up'}"></i>`;
+                        applyEditModalFilters();
+                    });
+                } else {
+                    th.textContent = col;
+                }
                 theadTr.appendChild(th);
             });
             if (sheet !== 'Daily Survey') {
@@ -3959,6 +4073,15 @@ document.addEventListener("DOMContentLoaded", function() {
                     });
                 }
             }
+        }
+
+        const dateColIndex = (sheetColumns[sheet] || []).findIndex(col => col.toLowerCase().includes('date'));
+        if (dateColIndex !== -1 && window.editModalSortDesc !== undefined) {
+            filteredData.sort((a, b) => {
+                const dateA = new Date(a[dateColIndex] || 0);
+                const dateB = new Date(b[dateColIndex] || 0);
+                return window.editModalSortDesc ? dateB - dateA : dateA - dateB;
+            });
         }
         
         renderRecords(filteredData, sheet);
@@ -4222,68 +4345,39 @@ document.addEventListener("DOMContentLoaded", function() {
             saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
             saveBtn.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; display: none;';
             
-            const copyBtn = document.createElement('button');
-            copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy';
-            copyBtn.style.cssText = 'background: rgba(139, 92, 246, 0.2); color: #8b5cf6; border: 1px solid rgba(139,92,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
+            const deleteBtn = document.createElement('button');
+            deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+            deleteBtn.style.cssText = 'background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
             
-            copyBtn.addEventListener('click', () => {
-                if (sheet === 'Cash Expenses') {
-                    document.getElementById('branch').value = row[0] || '';
-                    document.getElementById('date').value = (row[1] || '').split('T')[0];
-                    document.getElementById('description').value = row[2] || '';
-                    document.getElementById('amount').value = String(row[3]).replace(/,/g, '') || '';
-                    document.getElementById('receipt').value = row[4] || '';
-                } else if (sheet === 'Gcash Expenses') {
-                    document.getElementById('g-branch').value = row[0] || '';
-                    document.getElementById('g-date').value = (row[1] || '').split('T')[0];
-                    document.getElementById('g-details').value = row[2] || '';
-                    document.getElementById('g-payment-method').value = row[3] || '';
-                    document.getElementById('g-amount').value = String(row[4]).replace(/,/g, '') || '';
-                    document.getElementById('g-reference').value = row[5] || '';
-                    document.getElementById('g-receipt').value = row[6] || '';
-                } else if (sheet === 'Gcash Receivable') {
-                    document.getElementById('r-branch').value = row[0] || '';
-                    document.getElementById('r-date').value = (row[1] || '').split('T')[0];
-                    document.getElementById('r-customer-name').value = row[2] || '';
-                    document.getElementById('r-no-of-hours').value = row[3] || '';
-                    document.getElementById('r-payment-method').value = row[4] || '';
-                    document.getElementById('r-reference').value = row[5] || '';
-                    document.getElementById('r-amount').value = String(row[6]).replace(/,/g, '') || '';
-                } else if (sheet === 'Cash on Hand') {
-                    document.getElementById('coh-branch').value = row[0] || '';
-                    document.getElementById('coh-date').value = (row[1] || '').split('T')[0];
-                    document.getElementById('coh-amount').value = String(row[2]).replace(/,/g, '') || '';
-                } else if (sheet === 'Remitted amount') {
-                    document.getElementById('remit-date').value = (row[0] || '').split('T')[0];
-                    document.getElementById('remit-bank').value = row[1] || '';
-                    document.getElementById('remit-amount').value = String(row[2]).replace(/,/g, '') || '';
-                    document.getElementById('remit-file').value = row[3] || '';
-                    document.getElementById('remit-branch').value = row[5] || '';
-                } else if (sheet === 'Other Expenses') {
-                    document.getElementById('salary-start-date').value = (row[0] || '').split('T')[0];
-                    document.getElementById('salary-end-date').value = (row[1] || '').split('T')[0];
-                    document.getElementById('salary-branch').value = row[2] || '';
-                    document.getElementById('expense-internet').value = String(row[3]).replace(/,/g, '') || '';
-                    document.getElementById('expense-rent').value = String(row[4]).replace(/,/g, '') || '';
-                    document.getElementById('expense-electricity').value = String(row[5]).replace(/,/g, '') || '';
-                    document.getElementById('expense-water').value = String(row[6]).replace(/,/g, '') || '';
-                    document.getElementById('expense-pondo').value = String(row[7]).replace(/,/g, '') || '';
-                    document.getElementById('expense-food').value = String(row[8]).replace(/,/g, '') || '';
-                    document.getElementById('expense-salary').value = String(row[9]).replace(/,/g, '') || '';
+            deleteBtn.addEventListener('click', async () => {
+                const rowIndex = row[row.length - 1]; // We get rowIndex from the last element
+                if (confirm('Are you sure you want to delete this record? This cannot be undone.')) {
+                    deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                    deleteBtn.disabled = true;
+                    try {
+                        const response = await fetch(SCRIPT_URL, {
+                            method: 'POST',
+                            body: new URLSearchParams({
+                                action: 'deleteRecord',
+                                sheetName: sheet,
+                                rowIndex: rowIndex,
+                                encodedBy: sessionStorage.getItem('loggedInUser')
+                            })
+                        });
+                        const result = await response.json();
+                        if (result.status === 'success') {
+                            document.getElementById('filter-records-form').dispatchEvent(new Event('submit'));
+                        } else {
+                            alert("Error: " + result.message);
+                            deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                            deleteBtn.disabled = false;
+                        }
+                    } catch (error) {
+                        alert("Error: " + error.message);
+                        deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                        deleteBtn.disabled = false;
+                    }
                 }
-                
-                editModal.classList.add('hidden');
-                
-                // Show a quick visual feedback
-                const notification = document.createElement('div');
-                notification.textContent = 'Details copied to form! You can now modify and Save.';
-                notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #8b5cf6; color: white; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; font-weight: 500; transition: opacity 0.5s;';
-                document.body.appendChild(notification);
-                
-                setTimeout(() => {
-                    notification.style.opacity = '0';
-                    setTimeout(() => notification.remove(), 500);
-                }, 3000);
             });
             
             editBtn.addEventListener('click', () => {
@@ -4374,7 +4468,7 @@ document.addEventListener("DOMContentLoaded", function() {
             if (sheet !== 'Daily Survey') {
                 if (viewBtn) actionTd.appendChild(viewBtn);
                 if (sheet !== 'Warranty Items' && sheet !== 'Handover') {
-                    actionTd.appendChild(copyBtn);
+                    actionTd.appendChild(deleteBtn);
                     actionTd.appendChild(editBtn);
                     actionTd.appendChild(saveBtn);
                 } else if (sheet === 'Warranty Items') {
@@ -4545,235 +4639,278 @@ document.addEventListener("DOMContentLoaded", function() {
             tbody.appendChild(tr);
         });
     }
-    // --- Item Replacement Logic ---
-    const btnLoadReplacements = document.getElementById('btn-load-replacements');
-    const replSearchWarranty = document.getElementById('repl-search-warranty');
-    const replBranch = document.getElementById('repl-branch');
-    const replStartDate = document.getElementById('repl-start-date');
-    const replEndDate = document.getElementById('repl-end-date');
-    const replTableBody = document.querySelector('#item-replacement-table tbody');
 
-    let currentReplRecords = [];
+    // Supplier Price List Logic
+    const menuSupplierBtn = document.getElementById('menu-supplier-btn');
+    const supplierListContainer = document.getElementById('supplier-list-container');
+    
+    if (menuSupplierBtn) {
+        menuSupplierBtn.addEventListener('click', () => {
+            const containers = ['login-container', 'main-menu-container', 'expenses-container', 'admin-container', 'report-container', 'daily-survey-container', 'warranty-container', 'warranty-menu-container', 'warranty-validation-container', 'warranty-validation-form-container', 'handover-container', 'item-replacement-container', 'item-replacement-form-container', 'supplier-list-container'];
+            containers.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+            if (supplierListContainer) supplierListContainer.classList.remove('hidden');
+        });
+    }
 
-    if (btnLoadReplacements) {
-        btnLoadReplacements.addEventListener('click', async () => {
-            if (SCRIPT_URL === 'PASTE_YOUR_URL_HERE' || SCRIPT_URL === '') {
-                alert('Please set your Google Apps Script URL in app.js');
+    const supplierFileUpload = document.getElementById('supplier-file-upload');
+    const supplierFileName = document.getElementById('supplier-file-name');
+    const supplierMappingSection = document.getElementById('supplier-mapping-section');
+    const mapSheetName = document.getElementById('map-sheet-name');
+    const mapSupplierName = document.getElementById('map-supplier-name');
+    const mapItemName = document.getElementById('map-item-name');
+    const mapItemCost = document.getElementById('map-item-cost');
+    const mapIsBundle = document.getElementById('map-is-bundle');
+    const btnApplyMapping = document.getElementById('btn-apply-mapping');
+    const supplierSearch = document.getElementById('supplier-search');
+    const supplierTableBody = document.getElementById('supplier-table-body');
+    const supplierRecordCount = document.getElementById('supplier-record-count');
+    const supplierSaveBtn = document.getElementById('supplier-save-btn');
+
+    let currentWorkbook = null;
+    let rawExcelData = [];
+    let parsedSupplierItems = [];
+
+    if (supplierFileUpload) {
+        supplierFileUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            supplierFileName.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                try {
+                    currentWorkbook = window.XLSX.read(data, {type: 'array'});
+                    if (!currentWorkbook || !currentWorkbook.SheetNames || currentWorkbook.SheetNames.length === 0) {
+                        throw new Error('No sheets found in workbook');
+                    }
+                    
+                    mapSheetName.innerHTML = '';
+                    currentWorkbook.SheetNames.forEach((sheetName, index) => {
+                        mapSheetName.innerHTML += `<option value="${index}">${sheetName}</option>`;
+                    });
+
+                    mapSupplierName.value = file.name.replace(/\.[^/.]+$/, '');
+                    
+                    parseSelectedSheet(0);
+                    supplierMappingSection.classList.remove('hidden');
+
+                } catch (err) {
+                    console.error('Error parsing Excel:', err);
+                    supplierTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444; padding: 40px;">Error parsing file. Please make sure it is a valid Excel/CSV file.</td></tr>`;
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    if (mapSheetName) {
+        mapSheetName.addEventListener('change', (e) => {
+            parseSelectedSheet(parseInt(e.target.value));
+        });
+    }
+
+    function parseSelectedSheet(sheetIndex) {
+        if (!currentWorkbook) return;
+        try {
+            const sheetName = currentWorkbook.SheetNames[sheetIndex];
+            const worksheet = currentWorkbook.Sheets[sheetName];
+            const json = window.XLSX.utils.sheet_to_json(worksheet, {header: 1});
+            
+            rawExcelData = json.filter(row => row && row.length > 0 && row.some(cell => cell !== null && cell !== ''));
+            if (rawExcelData.length === 0) {
+                supplierTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #ef4444; padding: 40px;">No data found in the selected sheet.</td></tr>`;
                 return;
             }
 
-            const btnText = btnLoadReplacements.querySelector('.btn-text');
-            const spinner = btnLoadReplacements.querySelector('.spinner');
-            btnLoadReplacements.disabled = true;
-            btnText.classList.add('hidden');
-            spinner.classList.remove('hidden');
-
-            const start = replStartDate.value;
-            const end = replEndDate.value;
-            const branch = replBranch ? replBranch.value : 'All';
-            const searchVal = replSearchWarranty.value.trim().toLowerCase();
-
-            replTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">Loading records...</td></tr>`;
-
-            try {
-                const formData = {
-                    action: 'getExpenseRecords',
-                    sheetName: 'Warranty Items',
-                    startDate: start,
-                    endDate: end,
-                    branch: branch
-                };
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify(formData)
-                });
-                const result = await response.json();
-
-                if (result.status === 'success') {
-                    currentReplRecords = result.data;
-                    renderReplTable(searchVal);
-                } else {
-                    replTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 30px;">Error: ${result.message || 'Could not load records.'}</td></tr>`;
+            let headerRow = [];
+            for(let i=0; i<rawExcelData.length; i++) {
+                if (rawExcelData[i].length > 1) {
+                    headerRow = rawExcelData[i];
+                    break;
                 }
-            } catch (error) {
-                console.error('Error fetching replacement records:', error);
-                replTableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 30px;">Error fetching data: ${error.message}</td></tr>`;
-            } finally {
-                btnLoadReplacements.disabled = false;
-                btnText.classList.remove('hidden');
-                spinner.classList.add('hidden');
+            }
+
+            mapItemName.innerHTML = '';
+            mapItemCost.innerHTML = '';
+            headerRow.forEach((col, index) => {
+                const colName = col ? col.toString().trim() : `Column ${index + 1}`;
+                mapItemName.innerHTML += `<option value="${index}">${colName}</option>`;
+                mapItemCost.innerHTML += `<option value="${index}">${colName}</option>`;
+            });
+
+            let itemNameSet = false;
+            let itemCostSet = false;
+            for (let i = 0; i < headerRow.length; i++) {
+                const h = (headerRow[i] || '').toString().toLowerCase().trim();
+                if (!itemNameSet && (h === 'model' || h === 'item name' || h.includes('item') || h.includes('desc') || h.includes('name'))) {
+                    mapItemName.value = i;
+                    itemNameSet = true;
+                }
+                if (!itemCostSet && (h === 'price' || h === 'cost' || h === 'unit price' || h.includes('cost') || h.includes('price') || h.includes('amount') || h.includes('unit'))) {
+                    mapItemCost.value = i;
+                    itemCostSet = true;
+                }
+            }
+
+            btnApplyMapping.click();
+
+        } catch (error) {
+            console.error('Sheet parse error:', error);
+        }
+    }
+
+    if (btnApplyMapping) {
+        btnApplyMapping.addEventListener('click', () => {
+            const itemIdx = parseInt(mapItemName.value);
+            const costIdx = parseInt(mapItemCost.value);
+            const suppName = mapSupplierName.value.trim() || 'Unknown Supplier';
+            const isBundle = mapIsBundle ? mapIsBundle.checked : true;
+
+            if (isNaN(itemIdx) || isNaN(costIdx)) {
+                alert('Please select columns for Item Name and Cost Price.');
+                return;
+            }
+
+            parsedSupplierItems = [];
+            const today = new Date().toISOString().split('T')[0];
+            let currentGroup = '';
+            let lastRowWasHeader = false;
+
+            rawExcelData.forEach((row) => {
+                const itemName = row[itemIdx] ? row[itemIdx].toString().trim() : '';
+                let costStr = row[costIdx] ? row[costIdx].toString().replace(/,/g, '').replace(/[^\d.-]/g, '') : '';
+                const cost = parseFloat(costStr);
+
+                if (!itemName) return; 
+
+                if (itemName.toLowerCase() === 'model' || itemName.toLowerCase() === 'item name' || itemName.toLowerCase() === 'description' || itemName.toLowerCase() === 'item description') {
+                    lastRowWasHeader = true; // Mark that we just saw a header
+                } else {
+                    const lowerItem = itemName.toLowerCase();
+                    const isMoboBrand = ['asus', 'asrock', 'msi', 'gigabyte', 'giga', 'biostar', 'ecs', 'colorful'].some(b => lowerItem.includes(b));
+                    const hasPrice = !isNaN(cost) && cost > 0 && costStr !== '';
+                    
+                    if (isBundle) {
+                        // If it's NOT a motherboard brand, it must be a Processor/Bundle Category
+                        if (lastRowWasHeader || !isMoboBrand) {
+                            currentGroup = itemName;
+                        } else {
+                            // It is a Motherboard
+                            parsedSupplierItems.push({
+                                itemName: itemName, 
+                                category: currentGroup ? currentGroup : 'N/A',
+                                supplier: suppName,
+                                cost: hasPrice ? cost : 0,
+                                lastUpdated: today
+                            });
+                        }
+                    } else {
+                        // Not bundle mode. Push everything.
+                        parsedSupplierItems.push({
+                            itemName: itemName, 
+                            category: 'N/A',
+                            supplier: suppName,
+                            cost: hasPrice ? cost : 0,
+                            lastUpdated: today
+                        });
+                    }
+                    lastRowWasHeader = false;
+                }
+            });
+
+            // parsedSupplierItems.sort((a, b) => a.itemName.localeCompare(b.itemName));
+            
+            const supplierCategoryFilter = document.getElementById('supplier-category-filter');
+            if (supplierCategoryFilter) {
+                const uniqueCategories = [...new Set(parsedSupplierItems.map(item => item.category))].filter(c => c && c !== 'N/A');
+                supplierCategoryFilter.innerHTML = '<option value="">All Categories</option>' + uniqueCategories.map(c => '<option value="' + c + '">' + c + '</option>').join('');
+            }
+            
+            renderSupplierTable(parsedSupplierItems);
+            
+            if (parsedSupplierItems.length > 0) {
+                supplierSaveBtn.disabled = false;
             }
         });
     }
 
-    if (replSearchWarranty) {
-        replSearchWarranty.addEventListener('input', () => {
-            renderReplTable(replSearchWarranty.value.trim().toLowerCase());
-        });
-    }
+    function renderSupplierTable(items) {
+        supplierTableBody.innerHTML = '';
+        if (supplierRecordCount) supplierRecordCount.textContent = items.length;
 
-    if (replBranch) {
-        replBranch.addEventListener('change', () => {
-            renderReplTable(replSearchWarranty ? replSearchWarranty.value.trim().toLowerCase() : '');
-        });
-    }
-
-    let replSortAsc = true; // default ascending
-    const replSortDateBtn = document.getElementById('repl-sort-date');
-    const replSortIcon = document.getElementById('repl-sort-icon');
-    if (replSortDateBtn) {
-        replSortDateBtn.addEventListener('click', () => {
-            replSortAsc = !replSortAsc;
-            replSortIcon.textContent = replSortAsc ? '↑' : '↓';
-            replSortDateBtn.style.color = '#60a5fa';
-            renderReplTable(replSearchWarranty ? replSearchWarranty.value.trim().toLowerCase() : '');
-        });
-    }
-
-    function renderReplTable(searchStr) {
-        if (!currentReplRecords || currentReplRecords.length === 0) {
-            replTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 30px;">No records found.</td></tr>`;
+        if (items.length === 0) {
+            supplierTableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px;">No valid items found based on the mapping.</td></tr>`;
             return;
         }
 
-        let filtered = currentReplRecords;
-        
-        // Filter by branch (client-side)
-        const selectedBranch = replBranch ? replBranch.value : 'All';
-        if (selectedBranch && selectedBranch !== 'All') {
-            filtered = filtered.filter(row => {
-                return (row[1] || '').toString().trim() === selectedBranch;
-            });
-        }
-
-        if (searchStr) {
-            filtered = filtered.filter(row => {
-                const warrantyNum = (row[10] || '').toString().toLowerCase();
-                return warrantyNum.includes(searchStr);
-            });
-        }
-
-        replTableBody.innerHTML = '';
-        
-        if (filtered.length === 0) {
-            replTableBody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 30px;">No matching records found.</td></tr>`;
-            return;
-        }
-
-        // Sort by date
-        filtered.sort((a, b) => {
-            const da = new Date(a[0] || '1970-01-01');
-            const db = new Date(b[0] || '1970-01-01');
-            return replSortAsc ? da - db : db - da;
-        });
-
-        filtered.forEach((row, idx) => {
+        items.forEach(item => {
             const tr = document.createElement('tr');
-            tr.style.cssText = `border-bottom: 1px solid rgba(255,255,255,0.05); background: ${idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'}; transition: background 0.15s;`;
-            tr.addEventListener('mouseenter', () => tr.style.background = 'rgba(255,255,255,0.06)');
-            tr.addEventListener('mouseleave', () => tr.style.background = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)');
+            tr.style.cssText = `border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s;`;
             
-            // A:0 Date, B:1 Branch, D:3 Item Desc, E:4 Serial#, J:9 Status, K:10 Warranty#
-            let dateStr = row[0] || '';
-            if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
-
-            // Col N (index 13) = Validation Status
-            const statusVal = (row[13] || '').toString();
-            const statusColor = statusVal === 'Replaced' ? '#10b981' : statusVal === 'Sent to RMA' ? '#f59e0b' : statusVal === 'Pending' ? '#94a3b8' : statusVal === 'Item Fixed' ? '#34d399' : statusVal === 'New Replaced Item' ? '#60a5fa' : '#a78bfa';
-
+            const costFormatted = item.cost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             tr.innerHTML = `
-                <td style="padding: 10px 12px; white-space: nowrap; color: #cbd5e1;">${dateStr}</td>
-                <td style="padding: 10px 12px; white-space: nowrap; color: #e2e8f0; font-size: 0.85em;">${row[1] || ''}</td>
-                <td style="padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #e2e8f0;" title="${row[3] || ''}">${row[3] || ''}</td>
-                <td style="padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fcd34d; font-style: italic; font-size: 0.85em;" title="${row[7] || ''}">${row[7] || '-'}</td>
-                <td style="padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 0.85em; color: #93c5fd;" title="${row[4] || ''}">${row[4] || ''}</td>
-                <td style="padding: 10px 12px;"><span style="display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.78em; font-weight: 600; background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}44; white-space: nowrap;">${statusVal || '-'}</span></td>
-                <td style="padding: 10px 12px; font-family: monospace; font-size: 0.82em; font-weight: 700; color: #a78bfa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${row[10] || ''}">${row[10] || ''}</td>
+                <td style="padding: 10px 12px; color: #e2e8f0; font-weight: 500;">${item.itemName}</td>
+                <td style="padding: 10px 12px; color: #fbbf24; font-size: 0.85em; font-weight: 600;">${item.category}</td>
+                <td style="padding: 10px 12px; color: #94a3b8;">${item.supplier}</td>
+                <td style="padding: 10px 12px; text-align: right; color: #10b981; font-weight: 600; font-family: monospace;">₱${costFormatted}</td>
+                <td style="padding: 10px 12px; color: #cbd5e1; font-size: 0.85em;">${item.lastUpdated}</td>
+                <td style="padding: 10px 12px; text-align: center;"><button class="submit-btn" style="margin:0; padding:4px 8px; font-size:0.75em; width:auto; background:rgba(239, 68, 68, 0.15); color:#ef4444; border:1px solid rgba(239, 68, 68, 0.4);" onclick="this.closest('tr').remove(); updateSupplierCount();"><i class="fas fa-trash"></i></button></td>
             `;
-
-            const actionTd = document.createElement('td');
-            actionTd.style.cssText = 'padding: 8px 12px; text-align: center; white-space: nowrap;';
-            
-            const btn = document.createElement('button');
-            btn.innerHTML = `<i class="fas fa-edit"></i> Update`;
-            btn.style.cssText = `background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 0.8em; font-weight: 600; transition: background 0.2s; white-space: nowrap;`;
-            btn.addEventListener('mouseenter', () => btn.style.background = 'rgba(16,185,129,0.35)');
-            btn.addEventListener('mouseleave', () => btn.style.background = 'rgba(16,185,129,0.15)');
-            btn.addEventListener('click', () => openItemReplacementForm(row));
-            
-            actionTd.appendChild(btn);
-            tr.appendChild(actionTd);
-            replTableBody.appendChild(tr);
+            supplierTableBody.appendChild(tr);
         });
     }
 
-    function openItemReplacementForm(row) {
-        document.getElementById('item-replacement-container').classList.add('hidden');
-        document.getElementById('item-replacement-form-container').classList.remove('hidden');
+    const supplierCategoryFilter = document.getElementById('supplier-category-filter');
+    
+    function applySupplierFilters() {
+        if (!parsedSupplierItems) return;
+        let filtered = parsedSupplierItems;
         
-        // rowIndex is pushed as the last element of the array by the backend
-        const rowIndex = row[row.length - 1];
-        document.getElementById('repl-form-row-index').value = rowIndex;
+        if (supplierCategoryFilter && supplierCategoryFilter.value) {
+            filtered = filtered.filter(item => item.category === supplierCategoryFilter.value);
+        }
         
-        let dateStr = row[0] || '';
-        if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
-
-        document.getElementById('repl-form-warranty-num').textContent = row[10] || '-';
-        document.getElementById('repl-form-recorded-date').textContent = dateStr || '-';
-        document.getElementById('repl-form-branch').textContent = row[1] || '-';
-        document.getElementById('repl-form-tech').textContent = row[2] || '-';
-        document.getElementById('repl-form-item-desc').textContent = row[3] || '-';
-        document.getElementById('repl-form-serial').textContent = row[4] || '-';
-        document.getElementById('repl-form-status').textContent = row[9] || '-';
-        document.getElementById('repl-form-val-status').textContent = row[13] || '-';
-        document.getElementById('repl-form-assigned-tech').textContent = row[14] || '-';
-        document.getElementById('repl-form-issue').textContent = row[7] || '-';
-
-        const today = new Date();
-        document.getElementById('repl-form-date-received').valueAsDate = today;
-        document.getElementById('repl-form-repl-item-desc').value = '';
-        document.getElementById('repl-form-repl-serial').value = '';
-        document.getElementById('repl-form-overall-status').value = '';
+        if (supplierSearch && supplierSearch.value) {
+            const term = supplierSearch.value.toLowerCase();
+            filtered = filtered.filter(item => 
+                (item.itemName && item.itemName.toLowerCase().includes(term)) || 
+                (item.category && item.category.toLowerCase().includes(term))
+            );
+        }
         
-        const loggedInUser = sessionStorage.getItem('loggedInUser') || '';
-        document.getElementById('repl-form-sup-approver').value = loggedInUser;
-        
-        document.getElementById('item-replacement-status-message').classList.add('hidden');
+        renderSupplierTable(filtered);
     }
 
-    const itemReplacementForm = document.getElementById('item-replacement-form');
-    if (itemReplacementForm) {
-        itemReplacementForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const rowIndex = document.getElementById('repl-form-row-index').value;
-            if (!rowIndex) return;
+    if (supplierCategoryFilter) {
+        supplierCategoryFilter.addEventListener('change', applySupplierFilters);
+    }
+    
+    if (supplierSearch) {
+        supplierSearch.addEventListener('keyup', applySupplierFilters);
+    }
 
-            const dateReceived = document.getElementById('repl-form-date-received').value;
-            const replItemDesc = document.getElementById('repl-form-repl-item-desc').value;
-            const replSerial = document.getElementById('repl-form-repl-serial').value;
-            const supApprover = document.getElementById('repl-form-sup-approver').value;
-            const overallStatus = document.getElementById('repl-form-overall-status').value;
+    window.updateSupplierCount = function() {
+        if (supplierTableBody && supplierRecordCount) {
+            supplierRecordCount.textContent = supplierTableBody.querySelectorAll('tr').length;
+        }
+    };
 
-            const replacementData = [dateReceived, replItemDesc, replSerial, supApprover, overallStatus];
+    if (supplierSaveBtn) {
+        supplierSaveBtn.addEventListener('click', async () => {
+            if (parsedSupplierItems.length === 0) return;
 
-            const btnSubmit = document.getElementById('btn-submit-item-replacement');
-            const btnText = btnSubmit.querySelector('.btn-text');
-            const spinner = btnSubmit.querySelector('.spinner');
-            const statusMsg = document.getElementById('item-replacement-status-message');
-            
-            btnSubmit.disabled = true;
-            btnText.classList.add('hidden');
-            spinner.classList.remove('hidden');
-            statusMsg.classList.add('hidden');
+            supplierSaveBtn.disabled = true;
+            supplierSaveBtn.innerHTML = `<div class="spinner" style="display:inline-block; border-color:white; border-right-color:transparent; margin-right:5px; width:12px; height:12px; border-width:2px;"></div> Saving...`;
 
             try {
                 const formData = {
-                    action: 'updateItemReplacement',
-                    rowIndex: rowIndex,
-                    replacementData: replacementData,
-                    encodedBy: sessionStorage.getItem('loggedInUser')
+                    action: 'saveSupplierPrices',
+                    items: parsedSupplierItems,
+                    encodedBy: sessionStorage.getItem('loggedInUser') || 'Unknown'
                 };
 
                 const response = await fetch(SCRIPT_URL, {
@@ -4785,32 +4922,24 @@ document.addEventListener("DOMContentLoaded", function() {
                 const result = await response.json();
                 
                 if (result.status === 'success') {
-                    statusMsg.textContent = 'Replacement submitted successfully!';
-                    statusMsg.className = 'success';
-                    statusMsg.classList.remove('hidden');
-                    
+                    supplierSaveBtn.innerHTML = `<i class="fas fa-check"></i> Saved!`;
+                    supplierSaveBtn.style.background = 'rgba(16, 185, 129, 0.4)';
                     setTimeout(() => {
-                        document.getElementById('item-replacement-form-container').classList.add('hidden');
-                        document.getElementById('item-replacement-container').classList.remove('hidden');
-                        btnLoadReplacements.click(); 
-                    }, 1500);
+                        supplierSaveBtn.innerHTML = `<i class="fas fa-save"></i> Save to Database`;
+                        supplierSaveBtn.style.background = 'rgba(16, 185, 129, 0.15)';
+                    }, 2000);
                 } else {
-                    statusMsg.textContent = result.message || 'Error updating record.';
-                    statusMsg.className = 'error';
-                    statusMsg.classList.remove('hidden');
+                    alert('Error saving to database: ' + result.message);
+                    supplierSaveBtn.innerHTML = `<i class="fas fa-save"></i> Save to Database`;
+                    supplierSaveBtn.disabled = false;
                 }
-            } catch (error) {
-                console.error('Error submitting replacement:', error);
-                statusMsg.textContent = 'Network error. Please try again.';
-                statusMsg.className = 'error';
-                statusMsg.classList.remove('hidden');
-            } finally {
-                btnSubmit.disabled = false;
-                btnText.classList.remove('hidden');
-                spinner.classList.add('hidden');
+            } catch (err) {
+                console.error("Save error:", err);
+                alert("Network error. Could not save to database.");
+                supplierSaveBtn.innerHTML = `<i class="fas fa-save"></i> Save to Database`;
+                supplierSaveBtn.disabled = false;
             }
         });
     }
 
-
-});
+}); // end of DOMContentLoaded

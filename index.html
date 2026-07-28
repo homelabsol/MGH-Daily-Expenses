@@ -11,6 +11,8 @@
     <link rel="stylesheet" href="style.css?v=2">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS for Excel parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
     <div class="background-blobs">
@@ -55,13 +57,111 @@
                 <span class="icon">⚙️</span>
                 Admin
             </button>
-            <button class="menu-action-btn" id="menu-expenses-btn">
-                <span class="icon">💰</span>
-                Expenses
+            <button class="menu-action-btn" id="menu-marvspc-btn">
+                <span class="icon">🖥️</span>
+                MarvsPCStufz
+            </button>
+            <button class="menu-action-btn" id="menu-mgh-btn">
+                <span class="icon">🎮</span>
+                Marvs Gaming Hub
             </button>
             <button class="menu-action-btn" id="menu-report-btn">
                 <span class="icon">📊</span>
                 Report
+            </button>
+            <button class="menu-action-btn" id="menu-warranty-btn">
+                <span class="icon">🛡️</span>
+                Warranty
+            </button>
+            <button class="menu-action-btn" id="menu-supplier-btn" style="display: none;">
+                <span class="icon">🏢</span>
+                Supplier List
+            </button>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Menu Container -->
+    <div class="container hidden" id="marvspc-menu-container">
+        <header>
+            <h1>MarvsPCStufz</h1>
+            <p>Select an option below</p>
+            <button class="back-btn" data-target="main-menu-container"><i class="fas fa-arrow-left"></i> Back to Main Menu</button>
+        </header>
+        <main class="glass-panel main-menu">
+            <button class="menu-action-btn" id="menu-marvspc-expenses-btn">
+                <span class="icon">💰</span>
+                MarvsPCStufz Expenses
+            </button>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Expenses Container -->
+    <div class="container hidden" id="marvspc-expenses-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; max-height: 90vh; overflow-y: auto;">
+        <header id="marvspc-expenses-header" style="cursor: move; user-select: none;">
+            <h1>MarvsPCStufz Expenses</h1>
+            <p>Record your expenses</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <div onmousedown="event.stopPropagation()">
+                <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+            </div>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin: 0;">Add Expense</h2>
+                <button type="button" class="view-records-btn" data-sheet="MarvsPCStufz Expenses" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View & Edit Records"><i class="fas fa-list-alt"></i> View</button>
+            </div>
+            <form id="marvspc-expense-form">
+                <input type="hidden" id="marvspc-row-index" name="rowIndex" value="">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="marvspc-date">Date</label>
+                        <input type="date" id="marvspc-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="marvspc-category">Category</label>
+                        <select id="marvspc-category" required>
+                            <option value="" disabled selected>Select Category</option>
+                            <option value="Logistics/Shipping">Logistics/Shipping</option>
+                            <option value="Marketing/Ads">Marketing/Ads</option>
+                            <option value="Supplies">Supplies</option>
+                            <option value="Tools/Equipment">Tools/Equipment</option>
+                            <option value="Labor">Labor</option>
+                            <option value="Food">Food</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="marvspc-description">Expenses Description</label>
+                    <textarea id="marvspc-description" rows="2" required placeholder="Enter expense details"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="width: 100%;">
+                        <label for="marvspc-amount">Amount</label>
+                        <input type="number" id="marvspc-amount" step="0.01" required placeholder="0.00">
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn" id="marvspc-submit-btn">
+                    <span class="btn-text">Submit Expense</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <div id="marvspc-status-message" class="hidden"></div>
+            </form>
+        </main>
+    </div>
+
+    <!-- Marvs Gaming Hub Menu Container -->
+    <div class="container hidden" id="mgh-menu-container">
+        <header>
+            <h1>Marvs Gaming Hub</h1>
+            <p>Select an option below</p>
+            <button class="back-btn" data-target="main-menu-container"><i class="fas fa-arrow-left"></i> Back to Main Menu</button>
+        </header>
+        <main class="glass-panel main-menu">
+            <button class="menu-action-btn" id="menu-expenses-btn">
+                <span class="icon">💰</span>
+                Expenses
             </button>
             <button class="menu-action-btn" id="menu-survey-btn">
                 <span class="icon">📝</span>
@@ -70,10 +170,6 @@
             <button class="menu-action-btn" id="menu-handover-btn">
                 <span class="icon">🤝</span>
                 Daily Handover
-            </button>
-            <button class="menu-action-btn" id="menu-warranty-btn">
-                <span class="icon">🛡️</span>
-                Warranty
             </button>
         </main>
     </div>
@@ -1459,7 +1555,7 @@
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">End Date</label>
                         <input type="date" id="edit-end-date" required style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
                     </div>
-                    <div style="flex: 1; min-width: 130px;">
+                    <div id="edit-branch-container" style="flex: 1; min-width: 130px;">
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Branch</label>
                         <select id="edit-branch" style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
                             <option value="All">All Branches</option>
@@ -1649,6 +1745,106 @@
                 <div id="item-replacement-status-message" class="hidden" style="margin-top: 15px;"></div>
             </form>
         </main>
+    </div>
+
+    <!-- Supplier List Container -->
+    <div class="container hidden" id="supplier-list-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1200px; height: 95vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <!-- Header -->
+            <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); flex-shrink: 0;">
+                <h2 style="margin: 0; font-size: 1.3em; color: var(--primary);"><i class="fas fa-building" style="margin-right: 8px;"></i>Supplier Price List</h2>
+                <button type="button" class="back-btn" data-target="main-menu-container" style="background: none; border: 1px solid rgba(255,255,255,0.2); color: var(--text-light); font-size: 0.85em; cursor: pointer; padding: 6px 14px; border-radius: 6px;"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+            </div>
+
+            <!-- Toolbar & Upload -->
+            <div style="padding: 16px 20px; display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border-bottom: 1px solid rgba(255,255,255,0.05); flex-shrink: 0; flex-wrap: wrap;">
+                <div style="flex: 1; display: flex; gap: 10px; align-items: center;">
+                    <label for="supplier-file-upload" class="submit-btn" style="margin: 0; padding: 8px 16px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; font-size: 0.9em; border-radius: 6px; width: auto; background: var(--primary);">
+                        <i class="fas fa-upload"></i> Upload Excel/CSV
+                    </label>
+                    <input type="file" id="supplier-file-upload" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" style="display: none;">
+                    <span id="supplier-file-name" style="font-size: 0.85em; color: var(--text-muted); font-style: italic;">No file selected</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="submit-btn" id="supplier-save-btn" style="margin: 0; padding: 8px 16px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; border-radius: 6px; font-weight: 500; font-size: 0.9em; width: auto;" disabled>
+                        <i class="fas fa-save"></i> Save to Database
+                    </button>
+                </div>
+            </div>
+
+            <!-- Column Mapping Section (Hidden by default) -->
+            <div id="supplier-mapping-section" class="hidden" style="padding: 16px 20px; background: rgba(59, 130, 246, 0.05); border-bottom: 1px solid rgba(59, 130, 246, 0.1); flex-shrink: 0;">
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+                    <div style="flex: 1; min-width: 150px;">
+                        <label for="map-sheet-name" style="font-size: 0.8em; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block;">Select Sheet Tab</label>
+                        <select id="map-sheet-name" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: white;"></select>
+                    </div>
+                    <div style="flex: 1; min-width: 180px;">
+                        <label for="map-supplier-name" style="font-size: 0.8em; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block;">Supplier Name</label>
+                        <input type="text" id="map-supplier-name" placeholder="Enter Supplier Name" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: white;">
+                    </div>
+                    <div style="flex: 1; min-width: 180px;">
+                        <label for="supplier-category-filter" style="font-size: 0.8em; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block;">Filter by Model</label>
+                        <select id="supplier-category-filter" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: white;">
+                            <option value="">All Models (Processors)</option>
+                        </select>
+                    </div>
+                    <div style="flex: 2; min-width: 200px;">
+                        <label for="supplier-search" style="font-size: 0.8em; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block;">Search Item</label>
+                        <div class="search-box" style="margin-bottom: 0; position: relative;">
+                            <i class="fas fa-search search-icon" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%);"></i>
+                            <input type="text" id="supplier-search" placeholder="Search Item..." style="width: 100%; padding: 8px 12px 8px 35px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: white; box-sizing: border-box;">
+                        </div>
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label for="map-item-name" style="font-size: 0.8em; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block;">Category (Item / Model Column)</label>
+                        <select id="map-item-name" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: white;"></select>
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label for="map-item-cost" style="font-size: 0.8em; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block;">Cost Price Column</label>
+                        <select id="map-item-cost" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: white;"></select>
+                    </div>
+                    <div style="flex: 1; min-width: 120px; display: flex; align-items: center; padding-bottom: 8px;">
+                        <input type="checkbox" id="map-is-bundle" checked style="margin-right: 8px; cursor: pointer;">
+                        <label for="map-is-bundle" style="font-size: 0.85em; color: var(--text-light); cursor: pointer;" title="Treat items without price as Group Headers (e.g. Processors)">Bundle Format</label>
+                    </div>
+                    <button id="btn-apply-mapping" class="submit-btn" style="margin: 0; padding: 8px 20px; width: auto; font-size: 0.9em;">
+                        Apply Mapping
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div style="flex: 1; overflow-y: auto; overflow-x: auto;">
+                <table id="supplier-table" style="width: 100%; border-collapse: collapse; font-size: 0.88em; table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 250px;">
+                        <col style="width: 180px;">
+                        <col style="width: 150px;">
+                        <col style="width: 120px;">
+                        <col style="width: 150px;">
+                        <col style="width: 100px;">
+                    </colgroup>
+                    <thead style="position: sticky; top: 0; z-index: 10; background: #1a1a1a;">
+                        <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Item Name</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Model (Processor)</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Supplier</th>
+                            <th style="padding: 10px 12px; text-align: right; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Cost Price (₱)</th>
+                            <th style="padding: 10px 12px; text-align: left; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Last Updated</th>
+                            <th style="padding: 10px 12px; text-align: center; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 600;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="supplier-table-body">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 40px; font-size: 0.9em;">Upload an Excel/CSV file to view items.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div style="padding: 10px 20px; border-top: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); flex-shrink: 0; font-size: 0.8em; color: var(--text-muted); text-align: right;">
+                <span id="supplier-record-count">0</span> items total
+            </div>
+        </div>
     </div>
 </body>
 
