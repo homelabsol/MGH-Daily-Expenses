@@ -3916,16 +3916,16 @@ document.addEventListener("DOMContentLoaded", function() {
         
         if (window.surveySortDesc) {
             displayData.sort((a, b) => {
-                const dateA = new Date(a[0]).getTime() || 0;
-                const dateB = new Date(b[0]).getTime() || 0;
+                const dateA = new Date(`${a[0]} ${a[2]}`).getTime() || new Date(a[0]).getTime() || 0;
+                const dateB = new Date(`${b[0]} ${b[2]}`).getTime() || new Date(b[0]).getTime() || 0;
                 return dateB - dateA; // descending
             });
             const icon = document.getElementById('sort-survey-date-icon');
             if(icon) icon.className = 'fas fa-sort-down';
         } else {
             displayData.sort((a, b) => {
-                const dateA = new Date(a[0]).getTime() || 0;
-                const dateB = new Date(b[0]).getTime() || 0;
+                const dateA = new Date(`${a[0]} ${a[2]}`).getTime() || new Date(a[0]).getTime() || 0;
+                const dateB = new Date(`${b[0]} ${b[2]}`).getTime() || new Date(b[0]).getTime() || 0;
                 return dateA - dateB; // ascending
             });
             const icon = document.getElementById('sort-survey-date-icon');
