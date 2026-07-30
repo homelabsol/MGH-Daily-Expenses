@@ -83,6 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('warranty-menu-container')) document.getElementById('warranty-menu-container').classList.add('hidden');
         if (document.getElementById('warranty-validation-container')) document.getElementById('warranty-validation-container').classList.add('hidden');
         if (document.getElementById('warranty-validation-form-container')) document.getElementById('warranty-validation-form-container').classList.add('hidden');
+        if (document.getElementById('item-replacement-container')) document.getElementById('item-replacement-container').classList.add('hidden');
+        if (document.getElementById('item-replacement-form-container')) document.getElementById('item-replacement-form-container').classList.add('hidden');
         if (handoverContainer) handoverContainer.classList.add('hidden');
         document.getElementById('edit-records-modal').classList.add('hidden');
     }
@@ -591,7 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const btnItemReplacement = document.getElementById('btn-item-replacement');
+            const btnItemReplacement = document.getElementById('btn-item-replacement');
     if (btnItemReplacement) {
         btnItemReplacement.addEventListener('click', () => {
             const currentRole = sessionStorage.getItem('userRole');
@@ -599,9 +601,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Access Denied. Only Owner, Manager, and RMA Admin can access Item Replacement.');
                 return;
             }
-            // hideAllContainers();
-            // document.getElementById('item-replacement-container').classList.remove('hidden');
-            alert('Item Replacement module is under construction.');
+            hideAllContainers();
+            document.getElementById('item-replacement-container').classList.remove('hidden');
         });
     }
 
@@ -4943,3 +4944,269 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
 }); // end of DOMContentLoaded
+document.addEventListener('DOMContentLoaded', () => {
+
+    // --- Item Replacement Logic ---
+    const btnLoadReplacements = document.getElementById('btn-load-replacements');
+    const replSearchWarranty = document.getElementById('repl-search-warranty');
+    const replStartDate = document.getElementById('repl-start-date');
+    const replEndDate = document.getElementById('repl-end-date');
+    const replTableBody = document.querySelector('#item-replacement-table tbody');
+
+    let currentReplRecords = [];
+
+    if (btnLoadReplacements) {
+        btnLoadReplacements.addEventListener('click', async () => {
+            if (SCRIPT_URL === 'PASTE_YOUR_URL_HERE' || SCRIPT_URL === '') {
+                alert('Please set your Google Apps Script URL in app.js');
+                return;
+            }
+
+            const btnText = btnLoadReplacements.querySelector('.btn-text');
+            const spinner = btnLoadReplacements.querySelector('.spinner');
+            btnLoadReplacements.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+
+            const start = replStartDate.value;
+            const end = replEndDate.value;
+            const searchVal = replSearchWarranty.value.trim().toLowerCase();
+
+            replTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">Loading records...</td></tr>';
+
+            try {
+                const formData = {
+                    action: 'getExpenseRecords',
+                    sheetName: 'Warranty Items',
+                    startDate: start,
+                    endDate: end,
+                    branch: document.getElementById('repl-branch').value
+                };
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    currentReplRecords = result.data;
+                    renderReplTable(searchVal);
+                } else {
+                    replTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 30px;">Error loading records.</td></tr>';
+                }
+            } catch (error) {
+                console.error('Error fetching replacement records:', error);
+                replTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #ef4444; padding: 30px;">Error fetching data. Check network.</td></tr>';
+            } finally {
+                btnLoadReplacements.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    if (replSearchWarranty) {
+        replSearchWarranty.addEventListener('input', () => {
+            renderReplTable(replSearchWarranty.value.trim().toLowerCase());
+        });
+    }
+
+    const replBranchSelect = document.getElementById('repl-branch');
+    if (replBranchSelect) {
+        replBranchSelect.addEventListener('change', () => {
+            const searchVal = replSearchWarranty ? replSearchWarranty.value.trim().toLowerCase() : '';
+            renderReplTable(searchVal);
+        });
+    }
+
+    const replSortDate = document.getElementById('repl-sort-date');
+    const replSortIcon = document.getElementById('repl-sort-icon');
+    if (replSortDate) {
+        replSortDate.addEventListener('click', () => {
+            if (window.replSortAsc === undefined) window.replSortAsc = true;
+            window.replSortAsc = !window.replSortAsc;
+            if (replSortIcon) {
+                replSortIcon.innerHTML = window.replSortAsc ? '↑' : '↓';
+            }
+            const searchVal = replSearchWarranty ? replSearchWarranty.value.trim().toLowerCase() : '';
+            renderReplTable(searchVal);
+        });
+    }
+
+    function renderReplTable(searchStr) {
+        if (!currentReplRecords || currentReplRecords.length === 0) {
+            replTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">No records found.</td></tr>';
+            return;
+        }
+
+        let filtered = currentReplRecords;
+        
+        const branchFilter = document.getElementById('repl-branch').value;
+        if (branchFilter && branchFilter !== 'All') {
+            filtered = filtered.filter(row => row[1] === branchFilter);
+        }
+
+        // Filter out items that are already replaced? Or show all?
+        // Let's just show all that match the search string
+        if (searchStr) {
+            filtered = filtered.filter(row => {
+                const warrantyNum = (row[10] || '').toString().toLowerCase(); // Col K (10)
+                return warrantyNum.includes(searchStr);
+            });
+        }
+
+        if (window.replSortAsc === undefined) window.replSortAsc = true;
+        filtered.sort((a, b) => {
+            const dateA = new Date(a[0] || 0).getTime();
+            const dateB = new Date(b[0] || 0).getTime();
+            return window.replSortAsc ? dateA - dateB : dateB - dateA;
+        });
+
+        replTableBody.innerHTML = '';
+        
+        if (filtered.length === 0) {
+            replTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">No matching records found.</td></tr>';
+            return;
+        }
+
+        filtered.forEach(row => {
+            const tr = document.createElement('tr');
+            
+            // A:0 Date, B:1 Branch, D:3 Item Desc, E:4 Serial#, J:9 Status, K:10 Warranty#
+            let dateStr = row[0] || '';
+            if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+
+                          const valStatusHtml = row[13] ? `<span class="status-badge status-${row[13].toString().toLowerCase().replace(/\s+/g, '-')}">${row[13]}</span>` : `<span style="display: inline-flex; justify-content: center; align-items: center; width: 24px; height: 24px; border-radius: 50%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #64748b; font-size: 0.8em;">-</span>`;
+              const warrantyHtml = row[10] ? `<span style="font-family: monospace; font-size: 0.85em; color: #c084fc; font-weight: 600;">${row[10]}</span>` : '';
+
+              tr.innerHTML = 
+                  `<td>${dateStr}</td>
+                  <td>${row[1] || ''}</td>
+                  <td>${row[3] || ''}</td>
+                  <td style="color: #fbbf24; font-style: italic;">${row[7] || ''}</td>
+                  <td>${row[4] || ''}</td>
+                  <td>${valStatusHtml}</td>
+                  <td>${warrantyHtml}</td>`;
+
+              const actionTd = document.createElement('td');
+              
+              const currentStatus = (row[13] || '').toString().toLowerCase();
+              
+              const btn = document.createElement('button');
+              btn.innerHTML = '<i class="fas fa-edit"></i> Update';
+              btn.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
+              btn.addEventListener('click', () => openItemReplacementForm(row));
+              actionTd.appendChild(btn);
+              tr.appendChild(actionTd);
+              replTableBody.appendChild(tr);
+        });
+    }
+
+    function openItemReplacementForm(row) {
+        document.getElementById('item-replacement-container').classList.add('hidden');
+        document.getElementById('item-replacement-form-container').classList.remove('hidden');
+        
+        // A:0 to Q:16
+        const rowIndex = row[row.length - 1]; // row object from backend appends rowIndex at the end
+        document.getElementById('repl-form-row-index').value = rowIndex;
+        
+        let dateStr = row[0] || '';
+        if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+
+        document.getElementById('repl-form-warranty-num').textContent = row[10] || '-';
+        document.getElementById('repl-form-recorded-date').textContent = dateStr || '-';
+        document.getElementById('repl-form-branch').textContent = row[1] || '-';
+        document.getElementById('repl-form-tech').textContent = row[2] || '-';
+        document.getElementById('repl-form-item-desc').textContent = row[3] || '-';
+        document.getElementById('repl-form-serial').textContent = row[4] || '-';
+        document.getElementById('repl-form-status').textContent = row[9] || '-';
+        document.getElementById('repl-form-val-status').textContent = row[13] || '-';
+        document.getElementById('repl-form-assigned-tech').textContent = row[14] || '-';
+        document.getElementById('repl-form-issue').textContent = row[7] || '-';
+
+        // Clear input fields (R to V)
+        const today = new Date();
+        document.getElementById('repl-form-date-received').valueAsDate = today;
+        document.getElementById('repl-form-repl-item-desc').value = '';
+        document.getElementById('repl-form-repl-serial').value = '';
+        document.getElementById('repl-form-overall-status').value = '';
+        
+        const loggedInUser = sessionStorage.getItem('loggedInUser') || '';
+        document.getElementById('repl-form-sup-approver').value = loggedInUser;
+        
+        document.getElementById('item-replacement-status-message').classList.add('hidden');
+    }
+
+    const itemReplacementForm = document.getElementById('item-replacement-form');
+    if (itemReplacementForm) {
+        itemReplacementForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const rowIndex = document.getElementById('repl-form-row-index').value;
+            if (!rowIndex) return;
+
+            const dateReceived = document.getElementById('repl-form-date-received').value;
+            const replItemDesc = document.getElementById('repl-form-repl-item-desc').value;
+            const replSerial = document.getElementById('repl-form-repl-serial').value;
+            const supApprover = document.getElementById('repl-form-sup-approver').value;
+            const overallStatus = document.getElementById('repl-form-overall-status').value;
+
+            const replacementData = [dateReceived, replItemDesc, replSerial, supApprover, overallStatus];
+
+            const btnSubmit = document.getElementById('btn-submit-item-replacement');
+            const btnText = btnSubmit.querySelector('.btn-text');
+            const spinner = btnSubmit.querySelector('.spinner');
+            const statusMsg = document.getElementById('item-replacement-status-message');
+            
+            btnSubmit.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMsg.classList.add('hidden');
+
+            try {
+                const formData = {
+                    action: 'updateItemReplacement',
+                    rowIndex: rowIndex,
+                    replacementData: replacementData,
+                    encodedBy: sessionStorage.getItem('loggedInUser')
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    statusMsg.textContent = 'Replacement submitted successfully!';
+                    statusMsg.className = 'success';
+                    statusMsg.classList.remove('hidden');
+                    
+                    setTimeout(() => {
+                        document.getElementById('item-replacement-form-container').classList.add('hidden');
+                        document.getElementById('item-replacement-container').classList.remove('hidden');
+                        btnLoadReplacements.click(); // reload list
+                    }, 1500);
+                } else {
+                    statusMsg.textContent = result.message || 'Error updating record.';
+                    statusMsg.className = 'error';
+                    statusMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error submitting replacement:', error);
+                statusMsg.textContent = 'Network error. Please try again.';
+                statusMsg.className = 'error';
+                statusMsg.classList.remove('hidden');
+            } finally {
+                btnSubmit.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+});
+
+
