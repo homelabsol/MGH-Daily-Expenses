@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById('item-replacement-container')) document.getElementById('item-replacement-container').classList.add('hidden');
         if (document.getElementById('item-replacement-form-container')) document.getElementById('item-replacement-form-container').classList.add('hidden');
         if (handoverContainer) handoverContainer.classList.add('hidden');
+        if (document.getElementById('purchased-items-container')) document.getElementById('purchased-items-container').classList.add('hidden');
         document.getElementById('edit-records-modal').classList.add('hidden');
     }
 
@@ -229,6 +230,391 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const menuPurchasedBtn = document.getElementById('menu-purchased-btn');
+    if (menuPurchasedBtn) {
+        menuPurchasedBtn.addEventListener('click', () => {
+            const currentRole = sessionStorage.getItem('userRole');
+            if (currentRole !== 'RMA Admin' && currentRole !== 'Manager' && currentRole !== 'Owner') {
+                alert('Access Denied. Only RMA Admin, Manager, or Owner can access Purchased Items.');
+                return;
+            }
+            hideAllContainers();
+            document.getElementById('purchased-items-container').classList.remove('hidden');
+            document.getElementById('purchased-date').valueAsDate = new Date();
+            const accountableInput = document.getElementById('purchased-accountable');
+            if (accountableInput && !accountableInput.value) {
+                accountableInput.value = sessionStorage.getItem('loggedInUser') || '';
+            }
+            loadCategoryDropdown();
+            loadSupplierDropdown();
+        });
+    }
+
+    async function loadSupplierDropdown() {
+        const sel = document.getElementById('purchased-supplier');
+        if (!sel) return;
+        sel.innerHTML = '<option value="" disabled selected>Loading...</option>';
+        try {
+            const res = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getItemSuppliers' })
+            });
+            const data = await res.json();
+            sel.innerHTML = '<option value="" disabled selected>Select Supplier</option>';
+            const editSel = document.getElementById('edit-supplier-filter');
+            if (editSel) editSel.innerHTML = '<option value="All">All Suppliers</option>';
+            if (data.status === 'success' && data.data && data.data.length > 0) {
+                data.data.forEach(sup => {
+                    const opt = document.createElement('option');
+                    opt.value = sup;
+                    opt.textContent = sup;
+                    sel.appendChild(opt);
+                    if (editSel) {
+                        const opt2 = document.createElement('option');
+                        opt2.value = sup;
+                        opt2.textContent = sup;
+                        editSel.appendChild(opt2);
+                    }
+                });
+            } else if (data.status === 'error') {
+                sel.innerHTML = `<option value="" disabled selected>Error: ${data.message}</option>`;
+            } else {
+                sel.innerHTML = '<option value="" disabled selected>No suppliers found</option>';
+            }
+        } catch (e) {
+            sel.innerHTML = '<option value="" disabled selected>Failed to load</option>';
+        }
+    }
+
+    async function loadCategoryDropdown() {
+        const sel = document.getElementById('purchased-category');
+        if (!sel) return;
+        sel.innerHTML = '<option value="" disabled selected>Loading...</option>';
+        try {
+            const res = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getItemCategories' })
+            });
+            const data = await res.json();
+            sel.innerHTML = '<option value="" disabled selected>Select Category</option>';
+            const editSel = document.getElementById('edit-category-filter');
+            if (editSel) editSel.innerHTML = '<option value="All">All Categories</option>';
+            if (data.status === 'success' && data.data && data.data.length > 0) {
+                data.data.forEach(cat => {
+                    const opt = document.createElement('option');
+                    opt.value = cat;
+                    opt.textContent = cat;
+                    sel.appendChild(opt);
+                    if (editSel) {
+                        const opt2 = document.createElement('option');
+                        opt2.value = cat;
+                        opt2.textContent = cat;
+                        editSel.appendChild(opt2);
+                    }
+                });
+            } else if (data.status === 'error') {
+                sel.innerHTML = `<option value="" disabled selected>Error: ${data.message}</option>`;
+            } else {
+                sel.innerHTML = '<option value="" disabled selected>No categories found</option>';
+            }
+        } catch (e) {
+            sel.innerHTML = '<option value="" disabled selected>Failed to load</option>';
+        }
+    }
+
+    // Purchased Items Form Submit
+    const purchasedItemsForm = document.getElementById('purchased-items-form');
+    if (purchasedItemsForm) {
+        purchasedItemsForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const date = document.getElementById('purchased-date').value;
+            const supplierName = document.getElementById('purchased-supplier').value;
+            const itemCategory = document.getElementById('purchased-category').value;
+            const itemDescription = document.getElementById('purchased-item-desc').value;
+            const serialNumber = document.getElementById('purchased-serial').value;
+            const status = document.getElementById('purchased-status').value;
+            const accountablePerson = document.getElementById('purchased-accountable').value;
+
+            const btnSave = document.getElementById('btn-save-purchased');
+            const btnText = btnSave.querySelector('.btn-text');
+            const spinner = btnSave.querySelector('.spinner');
+            const statusMessage = document.getElementById('purchased-status-message');
+
+            btnSave.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                const formData = {
+                    action: 'savePurchasedItem',
+                    date: date,
+                    supplierName: supplierName,
+                    itemCategory: itemCategory,
+                    itemDescription: itemDescription,
+                    serialNumber: serialNumber,
+                    status: status,
+                    accountablePerson: accountablePerson,
+                    encodedBy: sessionStorage.getItem('loggedInUser')
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    statusMessage.textContent = 'Purchased item saved successfully!';
+                    statusMessage.className = 'status-message success';
+                    statusMessage.classList.remove('hidden');
+                    purchasedItemsForm.reset();
+                    document.getElementById('purchased-date').valueAsDate = new Date();
+                    const accountableInput = document.getElementById('purchased-accountable');
+                    if (accountableInput) accountableInput.value = sessionStorage.getItem('loggedInUser') || '';
+                } else {
+                    statusMessage.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    statusMessage.className = 'status-message error';
+                    statusMessage.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error saving purchased item:', error);
+                statusMessage.textContent = 'Network error. Please try again.';
+                statusMessage.className = 'status-message error';
+                statusMessage.classList.remove('hidden');
+            } finally {
+                btnSave.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    const btnUploadMultiplePurchased = document.getElementById('btn-upload-multiple-purchased');
+    const purchasedCsvUpload = document.getElementById('purchased-csv-upload');
+
+    if (btnUploadMultiplePurchased && purchasedCsvUpload) {
+        btnUploadMultiplePurchased.addEventListener('click', () => {
+            purchasedCsvUpload.click();
+        });
+
+        purchasedCsvUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const btnText = btnUploadMultiplePurchased.querySelector('.btn-text');
+            const originalText = btnText.innerHTML;
+            btnUploadMultiplePurchased.disabled = true;
+            btnText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const text = event.target.result;
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                    const items = [];
+                    
+                    // Start from index 1 to skip header if it exists
+                    let startIndex = 0;
+                    if (lines[0].toLowerCase().includes('date') || lines[0].toLowerCase().includes('supplier')) {
+                        startIndex = 1;
+                    }
+
+                    for (let i = startIndex; i < lines.length; i++) {
+                        // Regex to handle commas inside quotes
+                        const row = lines[i].match(/(\s*"[^"]+"\s*|\s*[^,]+|,)(?=,|$)/g);
+                        if (!row) continue;
+                        
+                        const cleanRow = row.map(val => {
+                            let v = val.trim();
+                            if (v.startsWith('"') && v.endsWith('"')) {
+                                v = v.substring(1, v.length - 1).trim();
+                            }
+                            if (v === ',') return '';
+                            if (v.endsWith(',')) v = v.slice(0, -1);
+                            return v;
+                        });
+
+                        // Expected format: Date, Supplier, Category, Description, Serial, Status, Accountable
+                        let rawDate = cleanRow[0] || '';
+                        let formattedDate = rawDate;
+                        if (rawDate) {
+                            const d = new Date(rawDate);
+                            if (!isNaN(d)) {
+                                const y = d.getFullYear();
+                                const m = String(d.getMonth() + 1).padStart(2, '0');
+                                const day = String(d.getDate()).padStart(2, '0');
+                                formattedDate = `${y}-${m}-${day}`;
+                            }
+                        }
+
+                        items.push({
+                            date: formattedDate,
+                            supplierName: cleanRow[1] || '',
+                            itemCategory: cleanRow[2] || '',
+                            itemDescription: cleanRow[3] || '',
+                            serialNumber: cleanRow[4] || '',
+                            status: cleanRow[5] || '',
+                            accountablePerson: cleanRow[6] || ''
+                        });
+                    }
+
+                    if (items.length === 0) {
+                        alert("No valid data found in CSV.");
+                        return;
+                    }
+
+                    const formData = {
+                        action: 'saveMultiplePurchasedItems',
+                        items: items,
+                        encodedBy: sessionStorage.getItem('loggedInUser')
+                    };
+
+                    const response = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify(formData)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        alert(`Successfully uploaded ${items.length} items!`);
+                    } else {
+                        alert('Error: ' + (result.message || 'Failed to save items.'));
+                    }
+
+                } catch (err) {
+                    console.error("CSV parse/upload error:", err);
+                    alert("Error parsing or uploading CSV: " + err.message);
+                } finally {
+                    btnUploadMultiplePurchased.disabled = false;
+                    btnText.innerHTML = originalText;
+                    purchasedCsvUpload.value = ''; // Reset input
+                }
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    // Category & Supplier Modal Logic
+    const categoryModal = document.getElementById('category-modal');
+    const supplierModal = document.getElementById('supplier-modal');
+
+    const btnPurchasedCategory = document.getElementById('btn-purchased-category');
+    if (btnPurchasedCategory) {
+        btnPurchasedCategory.addEventListener('click', () => {
+            document.getElementById('category-name-input').value = '';
+            const msg = document.getElementById('category-modal-message');
+            msg.style.display = 'none';
+            categoryModal.style.display = 'flex';
+        });
+    }
+    document.getElementById('close-category-modal')?.addEventListener('click', () => { categoryModal.style.display = 'none'; });
+    document.getElementById('cancel-category-modal')?.addEventListener('click', () => { categoryModal.style.display = 'none'; });
+
+    const categoryForm = document.getElementById('category-form');
+    if (categoryForm) {
+        categoryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const categoryName = document.getElementById('category-name-input').value.trim();
+            if (!categoryName) return;
+            const btn = document.getElementById('btn-save-category');
+            const msg = document.getElementById('category-modal-message');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'saveItemCategory', categoryName: categoryName, encodedBy: sessionStorage.getItem('loggedInUser') })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    msg.textContent = 'Category saved successfully!';
+                    msg.style.display = 'block';
+                    msg.style.background = 'rgba(16,185,129,0.15)';
+                    msg.style.color = '#10b981';
+                    msg.style.border = '1px solid rgba(16,185,129,0.3)';
+                    document.getElementById('category-name-input').value = '';
+                    setTimeout(() => { categoryModal.style.display = 'none'; loadCategoryDropdown(); }, 1200);
+                } else {
+                    msg.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    msg.style.display = 'block';
+                    msg.style.background = 'rgba(239,68,68,0.15)';
+                    msg.style.color = '#ef4444';
+                    msg.style.border = '1px solid rgba(239,68,68,0.3)';
+                }
+            } catch (err) {
+                msg.textContent = 'Network error. Please try again.';
+                msg.style.display = 'block';
+                msg.style.background = 'rgba(239,68,68,0.15)';
+                msg.style.color = '#ef4444';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save"></i> Save Category';
+            }
+        });
+    }
+
+    const btnPurchasedSupplier = document.getElementById('btn-purchased-supplier');
+    if (btnPurchasedSupplier) {
+        btnPurchasedSupplier.addEventListener('click', () => {
+            document.getElementById('supplier-name-input').value = '';
+            const msg = document.getElementById('supplier-modal-message');
+            msg.style.display = 'none';
+            supplierModal.style.display = 'flex';
+        });
+    }
+    document.getElementById('close-supplier-modal')?.addEventListener('click', () => { supplierModal.style.display = 'none'; });
+    document.getElementById('cancel-supplier-modal')?.addEventListener('click', () => { supplierModal.style.display = 'none'; });
+
+    const supplierModalForm = document.getElementById('supplier-modal-form');
+    if (supplierModalForm) {
+        supplierModalForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const supplierName = document.getElementById('supplier-name-input').value.trim();
+            if (!supplierName) return;
+            const btn = document.getElementById('btn-save-supplier-modal');
+            const msg = document.getElementById('supplier-modal-message');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'saveItemSupplier', supplierName: supplierName, encodedBy: sessionStorage.getItem('loggedInUser') })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    msg.textContent = 'Supplier saved successfully!';
+                    msg.style.display = 'block';
+                    msg.style.background = 'rgba(16,185,129,0.15)';
+                    msg.style.color = '#10b981';
+                    msg.style.border = '1px solid rgba(16,185,129,0.3)';
+                    document.getElementById('supplier-name-input').value = '';
+                    setTimeout(() => { supplierModal.style.display = 'none'; loadSupplierDropdown(); }, 1200);
+                } else {
+                    msg.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    msg.style.display = 'block';
+                    msg.style.background = 'rgba(239,68,68,0.15)';
+                    msg.style.color = '#ef4444';
+                    msg.style.border = '1px solid rgba(239,68,68,0.3)';
+                }
+            } catch (err) {
+                msg.textContent = 'Network error. Please try again.';
+                msg.style.display = 'block';
+                msg.style.background = 'rgba(239,68,68,0.15)';
+                msg.style.color = '#ef4444';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save"></i> Save Supplier';
+            }
+        });
+    }
     const btnWarrantyRecords = document.getElementById('btn-warranty-records');
     if (btnWarrantyRecords) {
         btnWarrantyRecords.addEventListener('click', async () => {
@@ -3787,7 +4173,8 @@ document.addEventListener("DOMContentLoaded", function() {
         'Daily Survey': ['Date', 'Branch', 'Time', 'Count', 'Logged In'],
         'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status', 'Warranty#'],
         'Handover': ['Date', 'Branch', 'Outgoing Staff', 'Handover Description', 'Discussion', 'Status', 'Incoming Staff', 'Remarks', 'Approver'],
-        'MarvsPCStufz Expenses': ['Date', 'Category', 'Expenses Description', 'Amount', 'Account Name']
+        'MarvsPCStufz Expenses': ['Date', 'Category', 'Expenses Description', 'Amount', 'Account Name'],
+        'Item Purchased': ['Date', 'Supplier Name', 'Item Category', 'Item Description', 'Serial Number', 'Status', 'Accountable Person']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -3807,17 +4194,31 @@ document.addEventListener("DOMContentLoaded", function() {
                     editStatusContainer.classList.remove('hidden');
                     editStatusFilter.innerHTML = '<option value="All">All Status</option><option value="Pending">Pending</option><option value="Sent to RMA">Sent to RMA</option><option value="Replaced">Replaced</option>';
                     editStatusFilter.value = 'All';
+                } else if (sheet === 'Item Purchased') {
+                    editStatusContainer.classList.remove('hidden');
+                    editStatusFilter.innerHTML = '<option value="All">All Status</option><option value="Received">Received</option><option value="Returned">Returned</option><option value="Replaced">Replaced</option>';
+                    editStatusFilter.value = 'All';
                 } else {
                     editStatusContainer.classList.add('hidden');
                 }
             }
             
             const editBranchContainer = document.getElementById('edit-branch-container');
+            const editSupplierContainer = document.getElementById('edit-supplier-container');
+            const editCategoryContainer = document.getElementById('edit-category-container');
             if (editBranchContainer) {
                 if (sheet === 'MarvsPCStufz Expenses') {
                     editBranchContainer.classList.add('hidden');
+                    if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
+                    if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
+                } else if (sheet === 'Item Purchased') {
+                    editBranchContainer.classList.add('hidden');
+                    if (editSupplierContainer) editSupplierContainer.classList.remove('hidden');
+                    if (editCategoryContainer) editCategoryContainer.classList.remove('hidden');
                 } else {
                     editBranchContainer.classList.remove('hidden');
+                    if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
+                    if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
                 }
             }
             
@@ -3883,7 +4284,10 @@ document.addEventListener("DOMContentLoaded", function() {
                 sheetName: sheet,
                 startDate: startDateInput.value,
                 endDate: endDateInput.value,
-                branch: document.getElementById('edit-branch').value
+                branch: document.getElementById('edit-branch').value,
+                supplier: document.getElementById('edit-supplier-filter') ? document.getElementById('edit-supplier-filter').value : 'All',
+                category: document.getElementById('edit-category-filter') ? document.getElementById('edit-category-filter').value : 'All',
+                status: document.getElementById('edit-status-filter') ? document.getElementById('edit-status-filter').value : 'All'
             };
             
             const response = await fetch(SCRIPT_URL, {
@@ -4063,7 +4467,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
         
-        if (sheet === 'Handover' || sheet === 'Warranty Items') {
+        if (sheet === 'Handover' || sheet === 'Warranty Items' || sheet === 'Item Purchased') {
             const selectedStatus = document.getElementById('edit-status-filter').value;
             if (selectedStatus && selectedStatus !== 'All') {
                 const statusColIndex = (sheetColumns[sheet] || []).indexOf('Status');
@@ -4072,6 +4476,23 @@ document.addEventListener("DOMContentLoaded", function() {
                         const val = (row[statusColIndex] || '').toString().trim().toLowerCase();
                         return val === selectedStatus.trim().toLowerCase();
                     });
+                }
+            }
+        }
+        
+        if (sheet === 'Item Purchased') {
+            const selectedSupplier = document.getElementById('edit-supplier-filter') ? document.getElementById('edit-supplier-filter').value : 'All';
+            if (selectedSupplier && selectedSupplier !== 'All') {
+                const supplierColIndex = (sheetColumns[sheet] || []).indexOf('Supplier Name');
+                if (supplierColIndex !== -1) {
+                    filteredData = filteredData.filter(row => row[supplierColIndex] === selectedSupplier);
+                }
+            }
+            const selectedCategory = document.getElementById('edit-category-filter') ? document.getElementById('edit-category-filter').value : 'All';
+            if (selectedCategory && selectedCategory !== 'All') {
+                const categoryColIndex = (sheetColumns[sheet] || []).indexOf('Item Category');
+                if (categoryColIndex !== -1) {
+                    filteredData = filteredData.filter(row => row[categoryColIndex] === selectedCategory);
                 }
             }
         }
@@ -4096,6 +4517,16 @@ document.addEventListener("DOMContentLoaded", function() {
     const editStatusSelect = document.getElementById('edit-status-filter');
     if (editStatusSelect) {
         editStatusSelect.addEventListener('change', applyEditModalFilters);
+    }
+    
+    const editSupplierSelect = document.getElementById('edit-supplier-filter');
+    if (editSupplierSelect) {
+        editSupplierSelect.addEventListener('change', applyEditModalFilters);
+    }
+    
+    const editCategorySelect = document.getElementById('edit-category-filter');
+    if (editCategorySelect) {
+        editCategorySelect.addEventListener('change', applyEditModalFilters);
     }
 
 
@@ -4469,7 +4900,9 @@ document.addEventListener("DOMContentLoaded", function() {
             if (sheet !== 'Daily Survey') {
                 if (viewBtn) actionTd.appendChild(viewBtn);
                 if (sheet !== 'Warranty Items' && sheet !== 'Handover') {
-                    actionTd.appendChild(deleteBtn);
+                    if (sheet !== 'Item Purchased') {
+                        actionTd.appendChild(deleteBtn);
+                    }
                     actionTd.appendChild(editBtn);
                     actionTd.appendChild(saveBtn);
                 } else if (sheet === 'Warranty Items') {
