@@ -4206,19 +4206,23 @@ document.addEventListener("DOMContentLoaded", function() {
             const editBranchContainer = document.getElementById('edit-branch-container');
             const editSupplierContainer = document.getElementById('edit-supplier-container');
             const editCategoryContainer = document.getElementById('edit-category-container');
+            const editSerialContainer = document.getElementById('edit-serial-container');
             if (editBranchContainer) {
                 if (sheet === 'MarvsPCStufz Expenses') {
                     editBranchContainer.classList.add('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
                     if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
+                    if (editSerialContainer) editSerialContainer.classList.add('hidden');
                 } else if (sheet === 'Item Purchased') {
                     editBranchContainer.classList.add('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.remove('hidden');
                     if (editCategoryContainer) editCategoryContainer.classList.remove('hidden');
+                    if (editSerialContainer) editSerialContainer.classList.remove('hidden');
                 } else {
                     editBranchContainer.classList.remove('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
                     if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
+                    if (editSerialContainer) editSerialContainer.classList.add('hidden');
                 }
             }
             
@@ -4495,6 +4499,17 @@ document.addEventListener("DOMContentLoaded", function() {
                     filteredData = filteredData.filter(row => row[categoryColIndex] === selectedCategory);
                 }
             }
+            
+            const serialFilter = document.getElementById('edit-serial-filter') ? document.getElementById('edit-serial-filter').value.trim().toLowerCase() : '';
+            if (serialFilter) {
+                const serialColIndex = (sheetColumns[sheet] || []).indexOf('Serial Number');
+                if (serialColIndex !== -1) {
+                    filteredData = filteredData.filter(row => {
+                        const val = (row[serialColIndex] || '').toString().toLowerCase();
+                        return val.includes(serialFilter);
+                    });
+                }
+            }
         }
 
         const dateColIndex = (sheetColumns[sheet] || []).findIndex(col => col.toLowerCase().includes('date'));
@@ -4527,6 +4542,11 @@ document.addEventListener("DOMContentLoaded", function() {
     const editCategorySelect = document.getElementById('edit-category-filter');
     if (editCategorySelect) {
         editCategorySelect.addEventListener('change', applyEditModalFilters);
+    }
+    
+    const editSerialInput = document.getElementById('edit-serial-filter');
+    if (editSerialInput) {
+        editSerialInput.addEventListener('input', applyEditModalFilters);
     }
 
 
@@ -4573,14 +4593,15 @@ document.addEventListener("DOMContentLoaded", function() {
                     theadTr.style.borderBottom = '2px solid #cbd5e1';
                     Array.from(theadTr.cells).forEach((cell, index) => {
                         cell.style.color = '#334155';
-                        cell.style.whiteSpace = 'normal';
-                        cell.style.wordWrap = 'break-word';
                         cell.style.textAlign = 'left';
                         
                         const headerText = cell.textContent.trim();
-                        if (headerText === 'Date' || headerText === 'Recorded Date') cell.style.width = '8%';
-                        if (headerText === 'Branch') cell.style.width = '12%';
-                        if (headerText === 'Tech') cell.style.width = '12%';
+                        if (headerText === 'Date' || headerText === 'Recorded Date' || headerText === 'Branch' || headerText === 'Status' || headerText === 'Incoming Staff' || headerText === 'Approver' || headerText === 'Tech' || headerText === 'Serial Number') {
+                            cell.style.whiteSpace = 'nowrap';
+                        } else {
+                            cell.style.whiteSpace = 'normal';
+                            cell.style.wordWrap = 'break-word';
+                        }
                         
                         // Mark 'Actions', 'Outgoing Staff', and 'Discussion' for removal
                         if (headerText === 'Actions' || 
@@ -4609,11 +4630,21 @@ document.addEventListener("DOMContentLoaded", function() {
                             }
                         });
                         
-                        Array.from(row.cells).forEach(cell => {
+                        Array.from(row.cells).forEach((cell, index) => {
                             cell.style.color = '#334155';
-                            cell.style.whiteSpace = 'normal'; // Allow text wrapping
-                            cell.style.wordWrap = 'break-word';
                             cell.style.textAlign = 'left';
+                            
+                            let headerText = '';
+                            if (theadTr && theadTr.cells[index]) {
+                                headerText = theadTr.cells[index].textContent.trim();
+                            }
+                            
+                            if (headerText === 'Date' || headerText === 'Recorded Date' || headerText === 'Branch' || headerText === 'Status' || headerText === 'Incoming Staff' || headerText === 'Approver' || headerText === 'Tech' || headerText === 'Serial Number') {
+                                cell.style.whiteSpace = 'nowrap';
+                            } else {
+                                cell.style.whiteSpace = 'normal';
+                                cell.style.wordWrap = 'break-word';
+                            }
                             // Replace input fields with their values
                             const input = cell.querySelector('input, select, textarea, div[class^="edit-input-"]');
                             if (input) {
@@ -4712,7 +4743,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 // format date string if it's a date cell
                 let isDateCol = false;
-                if (sheet === 'Remitted amount' || sheet === 'Daily Survey' || sheet === 'Warranty Items' || sheet === 'Handover') {
+                if (sheet === 'Remitted amount' || sheet === 'Daily Survey' || sheet === 'Warranty Items' || sheet === 'Handover' || sheet === 'Item Purchased') {
                     isDateCol = (i === 0);
                 } else if (sheet === 'Other Expenses') {
                     isDateCol = (i === 0 || i === 1);
