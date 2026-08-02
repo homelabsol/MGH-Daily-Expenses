@@ -1,16 +1,27 @@
 :root {
-    --bg-color: #0f172a;
+    /* ===== Fixed brand variables (required) ===== */
+    --primary: #3b82f6;
+    --bg-dark: #0f172a;
+    --secondary: #8b5cf6;
+
+    /* Aliases kept so existing inline var() references keep working */
+    --bg-color: var(--bg-dark);
     --text-main: #f8fafc;
+    --text-light: #f8fafc;
     --text-muted: #94a3b8;
     --glass-bg: rgba(30, 41, 59, 0.7);
     --glass-border: rgba(255, 255, 255, 0.1);
-    --primary-color: #3b82f6;
+    --primary-color: var(--primary);
     --primary-hover: #2563eb;
     --input-bg: rgba(15, 23, 42, 0.6);
     --input-border: rgba(255, 255, 255, 0.15);
     --input-focus: rgba(59, 130, 246, 0.5);
     --success: #10b981;
     --error: #ef4444;
+    --radius: 20px;
+    --radius-sm: 10px;
+
+    --sidebar-width: 280px;
 }
 
 * {
@@ -21,23 +32,28 @@
 
 body {
     font-family: 'Inter', sans-serif;
-    background-color: var(--bg-color);
+    background-color: var(--bg-dark);
     color: var(--text-main);
     min-height: 100vh;
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
+    padding: 20px;
     position: relative;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
-/* Dynamic Animated Background Blobs */
+/* ===== Animated Background Blobs ===== */
 .background-blobs {
-    position: absolute;
+    position: fixed;
     width: 100vw;
     height: 100vh;
+    top: 0;
+    left: 0;
     z-index: -1;
     overflow: hidden;
+    pointer-events: none;
 }
 
 .blob {
@@ -51,7 +67,7 @@ body {
 .blob-1 {
     width: 400px;
     height: 400px;
-    background: #3b82f6;
+    background: var(--primary);
     top: -100px;
     left: -100px;
     animation-delay: 0s;
@@ -60,9 +76,9 @@ body {
 .blob-2 {
     width: 300px;
     height: 300px;
-    background: #8b5cf6;
+    background: var(--secondary);
     bottom: -50px;
-    right: -50px;
+    right: 50px;
     animation-delay: -5s;
 }
 
@@ -72,67 +88,76 @@ body {
     66% { transform: translate(-20px, 20px) scale(0.9); }
 }
 
-/* Container & Layout */
+/* ===== Container & Layout ===== */
 .container {
     width: 100%;
     max-width: 500px;
     padding: 20px;
     z-index: 1;
+    animation: fadeIn 0.4s ease;
+}
+
+/* Keep position:fixed (draggable / modal) containers centered & scrollable.
+   Their inline styles win naturally; this only adds a scroll safety net. */
+.container[style*="position: fixed"] {
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 header {
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
 }
 
 header h1 {
     font-weight: 700;
-    font-size: 2rem;
-    margin-bottom: 8px;
+    font-size: 1.9rem;
+    margin-bottom: 6px;
     background: linear-gradient(to right, #60a5fa, #c084fc);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
 header p {
     color: var(--text-muted);
-    font-size: 0.95rem;
+    font-size: 0.9rem;
 }
 
-/* Glass Panel */
+/* ===== Glass Panel ===== */
 .glass-panel {
-    background: var(--glass-bg);
+    background: rgba(30, 41, 59, 0.7);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    padding: 30px;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    border-radius: var(--radius);
+    padding: 28px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
 }
 
-/* Tabs */
+/* ===== Tabs ===== */
 .tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    margin-bottom: 25px;
-    padding-bottom: 20px;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
     border-bottom: 1px solid var(--glass-border);
 }
 
 .tab-btn {
-    flex: 1 1 calc(30% - 10px);
-    min-width: 140px;
+    flex: 1 1 calc(33% - 8px);
+    min-width: 110px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
     color: var(--text-muted);
     font-family: inherit;
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     font-weight: 500;
     cursor: pointer;
-    padding: 12px 10px;
+    padding: 10px 8px;
     border-radius: 10px;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s ease;
     text-align: center;
     display: flex;
     align-items: center;
@@ -143,14 +168,14 @@ header p {
     color: var(--text-main);
     background: rgba(255, 255, 255, 0.08);
     border-color: rgba(255, 255, 255, 0.15);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
 }
 
 .tab-btn.active {
     color: #ffffff;
     background: linear-gradient(135deg, var(--primary), var(--secondary));
     border: none;
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.35);
     font-weight: 600;
 }
 
@@ -161,7 +186,7 @@ header p {
 
 .tab-content {
     display: none;
-    animation: fadeIn 0.4s ease forwards;
+    animation: fadeIn 0.35s ease forwards;
 }
 
 .tab-content.active {
@@ -169,94 +194,107 @@ header p {
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
 }
 
 h2 {
-    font-size: 1.25rem;
-    margin-bottom: 20px;
+    font-size: 1.2rem;
+    margin-bottom: 16px;
     font-weight: 600;
 }
 
-/* Forms */
+/* ===== Forms ===== */
 .form-group {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
+}
+
+.form-row {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+.form-row .form-group {
+    flex: 1;
+    min-width: 140px;
 }
 
 label {
     display: block;
-    margin-bottom: 8px;
-    font-size: 0.9rem;
+    margin-bottom: 6px;
+    font-size: 0.8rem;
     color: var(--text-muted);
     font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
 }
 
 input, select, textarea {
     width: 100%;
-    padding: 12px 16px;
+    padding: 11px 14px;
     background: var(--input-bg);
     border: 1px solid var(--input-border);
     border-radius: 10px;
     color: var(--text-main);
     font-family: inherit;
-    font-size: 1rem;
-    transition: all 0.3s ease;
+    font-size: 0.92rem;
+    transition: all 0.2s ease;
 }
 
 select {
     appearance: none;
     background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
     background-repeat: no-repeat;
-    background-position: right 16px top 50%;
+    background-position: right 14px top 50%;
     background-size: 10px auto;
-    padding-right: 40px;
+    padding-right: 36px;
 }
 
 input:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: var(--primary-color);
+    border-color: var(--primary);
     box-shadow: 0 0 0 3px var(--input-focus);
 }
 
-input::placeholder {
+input::placeholder, textarea::placeholder {
     color: rgba(148, 163, 184, 0.5);
 }
 
 select option {
-    background-color: var(--bg-color);
+    background-color: var(--bg-dark);
     color: var(--text-main);
 }
 
-/* Date input specific fixes for dark mode */
 input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(1);
     cursor: pointer;
+    opacity: 0.6;
 }
 
-/* Button */
+/* ===== Buttons ===== */
 .submit-btn {
     width: 100%;
-    padding: 14px;
-    background: var(--primary-color);
+    padding: 13px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
     color: white;
     border: none;
     border-radius: 10px;
     font-family: inherit;
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     display: flex;
     justify-content: center;
     align-items: center;
+    gap: 8px;
     margin-top: 10px;
 }
 
 .submit-btn:hover {
-    background: var(--primary-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px -3px rgba(59, 130, 246, 0.4);
+    filter: brightness(1.1);
 }
 
 .submit-btn:active {
@@ -264,7 +302,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .submit-btn:disabled {
-    background: var(--text-muted);
+    opacity: 0.6;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
@@ -276,10 +314,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     border: 1px solid rgba(239, 68, 68, 0.3);
     padding: 6px 12px;
     border-radius: 6px;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     margin-top: 10px;
 }
 
@@ -288,64 +326,125 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     border-color: var(--error);
 }
 
-/* Main Menu Navigation */
+/* ===== Main Menu ===== */
 .main-menu {
     display: flex;
     flex-direction: column;
-    gap: 15px;
-    padding: 20px;
+    gap: 12px;
+    padding: 4px;
 }
 
+/* Premium menu action buttons with icon circle + hover glow */
 .menu-action-btn {
-    background: var(--input-bg);
-    border: 1px solid var(--input-border);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: var(--text-main);
-    padding: 20px;
-    border-radius: 12px;
-    font-size: 1.2rem;
+    padding: 16px 18px;
+    border-radius: 14px;
+    font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 15px;
+    gap: 14px;
+    text-align: left;
+    position: relative;
+    overflow: hidden;
+}
+
+.menu-action-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(139, 92, 246, 0.16));
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    pointer-events: none;
+}
+
+.menu-action-btn:hover::before {
+    opacity: 1;
 }
 
 .menu-action-btn:hover {
-    background: var(--primary);
-    border-color: var(--primary-hover);
+    border-color: rgba(59, 130, 246, 0.45);
+    background: rgba(255, 255, 255, 0.06);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 12px 28px rgba(2, 6, 23, 0.45),
+                0 0 0 1px rgba(59, 130, 246, 0.25) inset,
+                0 0 24px rgba(59, 130, 246, 0.28);
 }
 
-.menu-action-btn .icon {
-    font-size: 1.5rem;
+.menu-action-btn:active {
+    transform: translateY(0);
+}
+
+/* Icon circle — supports both .icon (span) and .btn-icon (div) variants */
+.menu-action-btn .icon,
+.menu-action-btn .btn-icon {
+    font-size: 1.35rem;
+    width: 46px;
+    height: 46px;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(139, 92, 246, 0.22));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+    color: #dbeafe;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.menu-action-btn:hover .icon,
+.menu-action-btn:hover .btn-icon {
+    transform: scale(1.06);
+    box-shadow: 0 0 18px rgba(59, 130, 246, 0.45);
+}
+
+.menu-action-btn .btn-text {
+    position: relative;
+    z-index: 1;
+}
+.menu-action-btn .btn-text h3 {
+    font-size: 0.95rem;
+    margin: 0;
+    font-weight: 600;
+}
+.menu-action-btn .btn-text p {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin: 2px 0 0;
 }
 
 .back-btn {
-    background: transparent;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     color: var(--text-muted);
-    border: none;
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     cursor: pointer;
-    margin-top: 15px;
-    padding: 5px 10px;
-    transition: color 0.3s ease;
+    margin-top: 14px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
 }
 
 .back-btn:hover {
     color: var(--text-main);
+    background: rgba(255, 255, 255, 0.08);
 }
 
-/* Spinner */
+/* ===== Spinner ===== */
 .spinner {
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(255, 255, 255, 0.3);
+    width: 18px;
+    height: 18px;
+    border: 2.5px solid rgba(255, 255, 255, 0.3);
     border-radius: 50%;
     border-top-color: white;
-    animation: spin 1s ease-in-out infinite;
+    animation: spin 0.8s ease-in-out infinite;
 }
 
 @keyframes spin {
@@ -356,31 +455,116 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     display: none !important;
 }
 
-/* Status Message */
-.status-msg, #status-message {
-    margin-top: 15px;
-    padding: 12px;
+/* ===== Status Message ===== */
+.status-msg, #status-message, .status-message {
+    margin-top: 14px;
+    padding: 10px 12px;
     border-radius: 8px;
     text-align: center;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     font-weight: 500;
     animation: fadeIn 0.3s ease forwards;
 }
 
 .success {
-    background: rgba(16, 185, 129, 0.2) !important;
+    background: rgba(16, 185, 129, 0.15) !important;
     color: #34d399 !important;
-    border: 1px solid rgba(16, 185, 129, 0.3) !important;
+    border: 1px solid rgba(16, 185, 129, 0.25) !important;
 }
 
 .error {
-    background: rgba(239, 68, 68, 0.2) !important;
+    background: rgba(239, 68, 68, 0.15) !important;
     color: #f87171 !important;
-    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+    border: 1px solid rgba(239, 68, 68, 0.25) !important;
 }
 
 textarea {
     font-family: inherit;
     resize: vertical;
+    line-height: 1.4;
 }
 
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+/* =========================================================
+   DESKTOP: Left Sidebar (280px) + Right Main Content
+   Applies to the main menu screen only. Feature screens keep
+   their existing centered / draggable (position:fixed) layout.
+   ========================================================= */
+@media (min-width: 900px) {
+    #main-menu-container {
+        max-width: 1100px;
+        display: flex;
+        align-items: flex-start;
+        gap: 28px;
+        padding: 40px 24px;
+        margin: 0 auto;
+    }
+
+    /* Left sidebar: logo + welcome + logout */
+    #main-menu-container > header {
+        flex: 0 0 var(--sidebar-width);
+        width: var(--sidebar-width);
+        position: sticky;
+        top: 40px;
+        text-align: left;
+        margin-bottom: 0;
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radius);
+        padding: 28px 24px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    }
+
+    #main-menu-container > header h1 {
+        font-size: 1.7rem;
+    }
+
+    #main-menu-container > header p {
+        margin-top: 4px;
+    }
+
+    #main-menu-container > header .logout-btn {
+        display: block;
+        width: 100%;
+        margin-top: 20px;
+        text-align: center;
+    }
+
+    /* Right main content: menu buttons */
+    #main-menu-container > .main-menu {
+        flex: 1 1 auto;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        align-content: start;
+        padding: 4px;
+    }
+
+    #main-menu-container > .main-menu .menu-action-btn {
+        padding: 18px 20px;
+    }
+}
+
+@media (min-width: 900px) {
+    body {
+        align-items: flex-start;
+    }
+}

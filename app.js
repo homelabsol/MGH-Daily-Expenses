@@ -67,28 +67,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function hideAllContainers() {
-        loginContainer.classList.add('hidden');
-        mainMenuContainer.classList.add('hidden');
-        const marvsPcContainer = document.getElementById('marvspc-menu-container');
-        if (marvsPcContainer) marvsPcContainer.classList.add('hidden');
-        const marvsPcExpensesContainer = document.getElementById('marvspc-expenses-container');
-        if (marvsPcExpensesContainer) marvsPcExpensesContainer.classList.add('hidden');
-        const mghMenuContainer = document.getElementById('mgh-menu-container');
-        if (mghMenuContainer) mghMenuContainer.classList.add('hidden');
-        expensesContainer.classList.add('hidden');
-        adminContainer.classList.add('hidden');
-        reportContainer.classList.add('hidden');
-        dailySurveyContainer.classList.add('hidden');
-        if (warrantyContainer) warrantyContainer.classList.add('hidden');
-        if (document.getElementById('warranty-menu-container')) document.getElementById('warranty-menu-container').classList.add('hidden');
-        if (document.getElementById('warranty-validation-container')) document.getElementById('warranty-validation-container').classList.add('hidden');
-        if (document.getElementById('warranty-validation-form-container')) document.getElementById('warranty-validation-form-container').classList.add('hidden');
-        if (document.getElementById('item-replacement-container')) document.getElementById('item-replacement-container').classList.add('hidden');
-        if (document.getElementById('item-replacement-form-container')) document.getElementById('item-replacement-form-container').classList.add('hidden');
-        if (handoverContainer) handoverContainer.classList.add('hidden');
-        if (document.getElementById('purchased-items-container')) document.getElementById('purchased-items-container').classList.add('hidden');
-        document.getElementById('edit-records-modal').classList.add('hidden');
+        // Hides every top-level screen/modal in one pass instead of a hardcoded id list.
+        document.querySelectorAll('.container').forEach(function(el) {
+            el.classList.add('hidden');
+        });
+        // These two legacy elements act as containers but don't carry the .container
+        // class (their full-screen overlay styling depends on not inheriting it),
+        // so they're hidden explicitly to keep behavior identical to before.
+        var editRecordsModal = document.getElementById('edit-records-modal');
+        if (editRecordsModal) editRecordsModal.classList.add('hidden');
+        var itemReplacementFormContainer = document.getElementById('item-replacement-form-container');
+        if (itemReplacementFormContainer) itemReplacementFormContainer.classList.add('hidden');
     }
+    window.hideAllContainers = hideAllContainers;
 
     function showApp(name) {
         hideAllContainers();
@@ -5111,11 +5102,7 @@ document.addEventListener("DOMContentLoaded", function() {
     
     if (menuSupplierBtn) {
         menuSupplierBtn.addEventListener('click', () => {
-            const containers = ['login-container', 'main-menu-container', 'expenses-container', 'admin-container', 'report-container', 'daily-survey-container', 'warranty-container', 'warranty-menu-container', 'warranty-validation-container', 'warranty-validation-form-container', 'handover-container', 'item-replacement-container', 'item-replacement-form-container', 'supplier-list-container'];
-            containers.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.classList.add('hidden');
-            });
+            window.hideAllContainers();
             if (supplierListContainer) supplierListContainer.classList.remove('hidden');
         });
     }
