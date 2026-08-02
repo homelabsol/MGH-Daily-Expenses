@@ -570,6 +570,61 @@ textarea {
     }
 }
 
+/* ===== Charts Grid ===== */
+#report-container {
+  max-width: 650px;
+  width: 90%;
+  margin: 0 auto;
+  transition: max-width 0.3s ease;
+}
+
+/* Expand parent container ONLY when Staff Report is open */
+#report-container:has(#staff-report-content:not(.hidden)) {
+  max-width: 1200px !important;
+  width: 95% !important;
+}
+
+#staff-report-content {
+  width: 100%;
+}
+
+.staff-form-wrapper {
+  max-width: 480px;
+  margin: 0 auto 24px auto;
+  background: rgba(30,41,59,0.5);
+  padding: 20px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.report-charts-section {
+  max-width: 1100px;
+  margin: 0 auto 20px auto;
+  width: 100%;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+.chart-card {
+  background: rgba(30,41,59,0.7);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 16px;
+  height: 260px;
+  backdrop-filter: blur(12px);
+}
+
+.chart-card canvas { flex: 1; width: 100%!important; }
+.chart-card .chart-title { font-size: 12px; font-weight: 600; color: #e2e8f0; margin-bottom: 8px; text-align: center; }
+
+@media(max-width:1100px){ .charts-grid{ grid-template-columns: repeat(2,1fr); } }
+@media(max-width:600px){ .charts-grid{ grid-template-columns:1fr; } .chart-card{ height:280px; } }
+
 /* ===== Toast Notification ===== */
 #toast-container {
     position: fixed;

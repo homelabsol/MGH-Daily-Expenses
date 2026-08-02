@@ -164,9 +164,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const menuMarvsPcBtnApp = document.getElementById('menu-marvspc-btn');
         if (menuMarvsPcBtnApp) {
             const isMarvsPcStore = (store === 'MarvsPCStufz');
-            const isAllowedRole = (role === 'Manager' || role === 'Owner' || role === 'RMA Admin');
-            
-            if (isMarvsPcStore && isAllowedRole) {
+            const isOwner = (role === 'Owner');
+            const isAllowedRole = (role === 'Manager' || role === 'RMA Admin');
+
+            // Owner always sees it; Manager/RMA Admin only if their store is MarvsPCStufz
+            if (isOwner || (isMarvsPcStore && isAllowedRole)) {
                 menuMarvsPcBtnApp.style.display = '';
             } else {
                 menuMarvsPcBtnApp.style.display = 'none';
@@ -234,10 +236,15 @@ document.addEventListener('DOMContentLoaded', () => {
         expensesContainer.classList.remove('hidden');
     });
 
-    menuReportBtn.addEventListener('click', () => {
-        hideAllContainers();
-        reportContainer.classList.remove('hidden');
-    });
+    if (menuReportBtn) {
+        menuReportBtn.addEventListener('click', () => {
+            hideAllContainers();
+            reportContainer.classList.remove('hidden');
+            // FIX: Always reset to main menu
+            hideAllReportSections();
+            reportMainMenu.classList.remove('hidden');
+        });
+    }
 
     if (menuSurveyBtn) {
         menuSurveyBtn.addEventListener('click', () => {
@@ -1035,7 +1042,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 hideAllContainers();
                 document.getElementById(targetId).classList.remove('hidden');
                 
-                // Clear validation form when going back to validation list
+                if (targetId === 'main-menu-container') {
+                    // FIX: Reset reports to main menu for next open
+                    hideAllReportSections();
+                    reportMainMenu.classList.remove('hidden');
+                }
+
                 if (targetId === 'warranty-validation-container') {
                     const valForm = document.getElementById('warranty-validation-form');
                     if (valForm) valForm.reset();
@@ -2095,6 +2107,104 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // PDF Report Generator Logic
+    let chartInstances = {};
+
+    function aggregateChartData(data, reportType) {
+        const grouped = { monthly: {}, category: {}, payment: {}, store: {} };
+        let dateIdx = 1, amountIdx = 3, categoryIdx = 2, paymentIdx = -1, branchIdx = 0;
+        
+        if (reportType === 'Cash Expense') { dateIdx = 1; amountIdx = 3; categoryIdx = 2; }
+        if (reportType === 'Gcash Expense') { dateIdx = 1; amountIdx = 4; categoryIdx = 2; paymentIdx = 3; } 
+        if (reportType === 'Gcash Receivable') { dateIdx = 1; amountIdx = 6; categoryIdx = 2; paymentIdx = 4; }
+        if (reportType === 'Remitted Amount') { dateIdx = 0; amountIdx = 2; categoryIdx = -1; }
+        if (reportType === 'Cash on Hand') { dateIdx = 1; amountIdx = 2; categoryIdx = -1; }
+
+        data.forEach(row => {
+            let dateVal = row[dateIdx] || '';
+            let amountStr = (row[amountIdx] || 0).toString().replace(/[^0-9.-]+/g, '');
+            let amount = parseFloat(amountStr) || 0;
+            let branch = row[branchIdx] || 'Unknown';
+            
+            let month = 'Unknown';
+            if (dateVal) {
+                try {
+                    let d = new Date(dateVal);
+                    if (!isNaN(d)) month = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+                } catch(e) {}
+            }
+            grouped.monthly[month] = (grouped.monthly[month] || 0) + amount;
+            grouped.store[branch] = (grouped.store[branch] || 0) + amount;
+
+            if (categoryIdx > -1) {
+                let cat = row[categoryIdx] || 'Uncategorized';
+                grouped.category[cat] = (grouped.category[cat] || 0) + amount;
+            }
+
+            if (paymentIdx > -1) {
+                let pay = row[paymentIdx] || 'Unknown';
+                grouped.payment[pay] = (grouped.payment[pay] || 0) + amount;
+            } else if (reportType.includes('Cash')) {
+                grouped.payment['Cash'] = (grouped.payment['Cash'] || 0) + amount;
+            }
+        });
+        return grouped;
+    }
+
+    function renderDashboardCharts(data, reportType) {
+        const chartsGrid = document.getElementById('dashboard-charts-grid');
+        if(chartsGrid) chartsGrid.classList.remove('hidden');
+        const aggData = aggregateChartData(data, reportType);
+        ['monthlyExpensesChart','categoryExpensesChart','paymentMethodChart','storeComparisonChart'].forEach(id=>{ if(chartInstances[id]) chartInstances[id].destroy(); });
+
+        const gridColor = 'rgba(255,255,255,0.06)';
+        const tickColor = '#94a3b8';
+        const labelColor = '#e2e8f0';
+
+        const baseOpts = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: labelColor, padding: 12, boxWidth: 12, font: { size: 11 } } },
+                title: { display: true, color: labelColor, font: { size: 13, weight: '600' } }
+            }
+        };
+
+        const ctxM = document.getElementById('monthlyExpensesChart');
+        if(ctxM) chartInstances['monthlyExpensesChart'] = new Chart(ctxM, {
+            type: 'bar',
+            data: { labels: Object.keys(aggData.monthly), datasets: [{ label: 'Amount', data: Object.values(aggData.monthly), backgroundColor: 'rgba(59,130,246,0.6)', borderColor: '#3b82f6', borderWidth: 1, borderRadius: 6 }] },
+            options: {...baseOpts, plugins: {...baseOpts.plugins, title: {...baseOpts.plugins.title, text: 'Monthly Expenses' } }, scales: { x: { ticks: { color: tickColor }, grid: { color: gridColor } }, y: { ticks: { color: tickColor }, grid: { color: gridColor } } } }
+        });
+
+        const ctxC = document.getElementById('categoryExpensesChart');
+        if(ctxC) chartInstances['categoryExpensesChart'] = new Chart(ctxC, {
+            type: 'doughnut',
+            data: { labels: Object.keys(aggData.category).slice(0,8), datasets: [{ data: Object.values(aggData.category).slice(0,8), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#6366f1'], borderWidth: 0 }] },
+            options: {...baseOpts, cutout: '65%', plugins: {...baseOpts.plugins, title: {...baseOpts.plugins.title, text: 'By Category (Top 8)' } } }
+        });
+
+        const ctxP = document.getElementById('paymentMethodChart');
+        if(ctxP) chartInstances['paymentMethodChart'] = new Chart(ctxP, {
+            type: 'pie',
+            data: { labels: Object.keys(aggData.payment), datasets: [{ data: Object.values(aggData.payment), backgroundColor: ['#10b981','#3b82f6','#f59e0b'], borderWidth: 0 }] },
+            options: {...baseOpts, plugins: {...baseOpts.plugins, title: {...baseOpts.plugins.title, text: 'By Payment Method' } } }
+        });
+
+        const ctxS = document.getElementById('storeComparisonChart');
+        const storeCard = document.getElementById('storeComparisonCard');
+        const role = sessionStorage.getItem('userRole');
+        if(ctxS && storeCard) {
+            if(role==='Owner'||role==='Manager'||role==='RMA Admin') {
+                storeCard.style.display='block';
+                chartInstances['storeComparisonChart'] = new Chart(ctxS, {
+                    type: 'bar',
+                    data: { labels: Object.keys(aggData.store), datasets: [{ label: 'Total', data: Object.values(aggData.store), backgroundColor: 'rgba(139,92,246,0.6)', borderColor: '#8b5cf6', borderWidth: 1, borderRadius: 6 }] },
+                    options: {...baseOpts, plugins: {...baseOpts.plugins, title: {...baseOpts.plugins.title, text: 'By Store/Branch' } }, scales: { x: { ticks: { color: tickColor }, grid: { display: false } }, y: { ticks: { color: tickColor }, grid: { color: gridColor } } } }
+                });
+            } else storeCard.style.display='none';
+        }
+    }
+
     async function generateReport(role, prefix) {
         const startDate = document.getElementById(`${prefix}-start-date`).value;
         const endDate = document.getElementById(`${prefix}-end-date`).value;
@@ -2137,9 +2247,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 if (htmlString.includes('No records found')) {
                     resultsContainer.innerHTML = htmlString;
+                    const chartsGrid = document.getElementById('dashboard-charts-grid');
+                    if(chartsGrid) chartsGrid.classList.add('hidden');
                     return;
                 }
                 
+                if (typeof renderDashboardCharts === 'function') {
+                    renderDashboardCharts(result.data, reportType);
+                }
+
                 resultsContainer.innerHTML = '<p>Generating PDF... Please check the new tab that will open.</p>';
                 
                 // Open new tab synchronously to avoid popup blocker
