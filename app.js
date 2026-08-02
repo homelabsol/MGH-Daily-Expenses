@@ -1895,6 +1895,290 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ======= Attendance Logic =======
+    const btnAttendance = document.getElementById('btn-attendance');
+    const attendanceContainer = document.getElementById('attendance-container');
+    const attendanceEmployeeInput = document.getElementById('attendance-employee');
+    const attendanceBranchInput = document.getElementById('attendance-branch');
+    const attendanceDateInput = document.getElementById('attendance-date');
+    const attendanceTimeInDisplay = document.getElementById('attendance-time-in-display');
+    const attendanceTimeOutDisplay = document.getElementById('attendance-time-out-display');
+    const attendanceStatusMessage = document.getElementById('attendance-status-message');
+    const attendanceTableBody = document.getElementById('attendance-table-body');
+    const btnTimeIn = document.getElementById('btn-time-in');
+    const btnTimeOut = document.getElementById('btn-time-out');
+    const btnAttendanceRefresh = document.getElementById('btn-attendance-refresh');
+
+    function todayDateStr() {
+        const now = new Date();
+        return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    }
+
+    function renderAttendanceTable(rows) {
+        if (!attendanceTableBody) return;
+        if (!rows || rows.length === 0) {
+            attendanceTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">No attendance records yet today.</td></tr>';
+            return;
+        }
+        attendanceTableBody.innerHTML = rows.map(row => {
+            const employee = row[2] || '';
+            const branch = row[3] || '';
+            const timeIn = row[4] || '--';
+            const timeOut = row[5] || '--';
+            const hours = row[6] || '--';
+            const status = row[7] || '';
+            const statusColor = status === 'Completed' ? '#34d399' : '#fbbf24';
+            return `<tr style="border-bottom: 1px solid var(--glass-border);">
+                <td style="padding: 8px 10px;">${employee}</td>
+                <td style="padding: 8px 10px;">${branch}</td>
+                <td style="padding: 8px 10px;">${timeIn}</td>
+                <td style="padding: 8px 10px;">${timeOut}</td>
+                <td style="padding: 8px 10px;">${hours}</td>
+                <td style="padding: 8px 10px; color: ${statusColor}; font-weight: 600;">${status}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    // ===== View All Attendance Modal Logic =====
+    let allAttendanceData = [];
+    
+    window.deleteAttendanceRecord = function(rowIndex) {
+        showConfirm('Delete Record', 'Are you sure you want to delete this attendance record?', async () => {
+            const loggedInUser = sessionStorage.getItem('loggedInUser') || 'Unknown';
+            showToast('Deleting record...', 'info');
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        action: 'deleteAttendance',
+                        rowIndex: rowIndex,
+                        encodedBy: loggedInUser
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast('Record deleted successfully', 'success');
+                    loadAllAttendance(); 
+                    loadAttendanceToday(); 
+                } else {
+                    showToast(result.message || 'Error deleting record', 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting attendance:', error);
+                showToast('Network error while deleting', 'error');
+            }
+        });
+    };
+
+    function renderAttendanceTableList(rows) {
+        const tbody = document.getElementById('attendanceTableBodyList');
+        if (!tbody) return;
+        
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">No attendance records found.</td></tr>';
+            return;
+        }
+        
+        const sortedRows = [...rows].sort((a, b) => new Date(b[1]) - new Date(a[1]));
+        
+        tbody.innerHTML = sortedRows.map(row => {
+            const date = row[1] || '';
+            const employee = row[2] || '';
+            const branch = row[3] || '';
+            const timeIn = row[4] || '--';
+            const timeOut = row[5] || '--';
+            const hours = row[6] || '--';
+            const status = row[7] || '';
+            const otHours = row[8] || '0';
+            const rowIndex = row[9];
+            
+            const statusColor = status === 'Completed' ? '#34d399' : '#fbbf24';
+            
+            return `
+                <tr>
+                    <td>${date}</td>
+                    <td style="font-weight: 500;">${employee}</td>
+                    <td style="color: var(--text-muted);">${branch}</td>
+                    <td>${timeIn}</td>
+                    <td>${timeOut}</td>
+                    <td style="font-weight: 600;">${hours}</td>
+                    <td style="font-weight: 600;">${otHours}</td>
+                    <td><span style="background: rgba(255,255,255,0.1); color: ${statusColor}; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500;">${status}</span></td>
+                    <td>
+                        <button class="delete-btn" onclick="deleteAttendanceRecord(${rowIndex})" style="background: rgba(239,68,68,0.15); border: none; color: #ef4444; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" title="Delete Record">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function filterAttendanceByDate() {
+        const fromVal = document.getElementById('attendanceFilterFrom').value;
+        const toVal = document.getElementById('attendanceFilterTo').value;
+        
+        let filtered = allAttendanceData;
+        if (fromVal && toVal) {
+            filtered = allAttendanceData.filter(row => {
+                const rowDate = row[1] || '';
+                return rowDate >= fromVal && rowDate <= toVal;
+            });
+        } else if (fromVal) {
+            filtered = allAttendanceData.filter(row => {
+                return (row[1] || '') >= fromVal;
+            });
+        }
+        
+        renderAttendanceTableList(filtered);
+    }
+
+    async function loadAllAttendance() {
+        const grid = document.getElementById('attendance-flex-grid');
+        if (grid) grid.innerHTML = '<div style="padding: 20px; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading records...</div>';
+        
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ action: 'getAllAttendance' })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                allAttendanceData = result.data;
+                filterAttendanceByDate();
+            } else {
+                showToast('Failed to load records', 'error');
+                if (grid) grid.innerHTML = '<div style="color: var(--error); padding: 20px;">Failed to load records.</div>';
+            }
+        } catch (error) {
+            console.error('Error loading all attendance:', error);
+            if (grid) grid.innerHTML = '<div style="color: var(--error); padding: 20px;">Error connecting to server.</div>';
+        }
+    }
+
+    async function loadAttendanceToday() {
+        if (!attendanceTableBody) return;
+        attendanceTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ action: 'getAttendanceToday' })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                renderAttendanceTable(result.data);
+            } else {
+                attendanceTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--error);">Failed to load attendance.</td></tr>';
+            }
+        } catch (error) {
+            console.error('Error loading attendance:', error);
+            attendanceTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--error);">Error connecting.</td></tr>';
+        }
+    }
+
+    if (btnAttendance) {
+        btnAttendance.addEventListener('click', () => {
+            hideAllContainers();
+            attendanceContainer.classList.remove('hidden');
+            if (attendanceEmployeeInput) attendanceEmployeeInput.value = sessionStorage.getItem('loggedInUser') || '';
+            if (attendanceDateInput) attendanceDateInput.value = todayDateStr();
+            if (attendanceBranchInput) attendanceBranchInput.value = sessionStorage.getItem('userStore') || '';
+            if (attendanceTimeInDisplay) attendanceTimeInDisplay.value = '';
+            if (attendanceTimeOutDisplay) attendanceTimeOutDisplay.value = '';
+            loadAttendanceToday();
+        });
+    }
+
+    if (btnAttendanceRefresh) {
+        btnAttendanceRefresh.addEventListener('click', loadAttendanceToday);
+    }
+
+    // Modal Event Listeners
+    const btnViewAllAttendance = document.getElementById('btn-view-all-attendance');
+    const viewAllAttendanceModal = document.getElementById('viewAllAttendanceModal');
+    const closeAttendanceModalBtn = document.getElementById('close-attendance-modal-btn');
+    const applyAttendanceFilterBtn = document.getElementById('applyAttendanceFilterBtn');
+    const clearAttendanceFilterBtn = document.getElementById('clearAttendanceFilterBtn');
+    const attendanceFilterFrom = document.getElementById('attendanceFilterFrom');
+    const attendanceFilterTo = document.getElementById('attendanceFilterTo');
+
+    if (btnViewAllAttendance) {
+        btnViewAllAttendance.addEventListener('click', () => {
+            if (viewAllAttendanceModal) viewAllAttendanceModal.classList.remove('hidden');
+            loadAllAttendance();
+        });
+    }
+    
+    if (closeAttendanceModalBtn) {
+        closeAttendanceModalBtn.addEventListener('click', () => {
+            if (viewAllAttendanceModal) viewAllAttendanceModal.classList.add('hidden');
+        });
+    }
+
+    if (applyAttendanceFilterBtn) {
+        applyAttendanceFilterBtn.addEventListener('click', filterAttendanceByDate);
+    }
+    
+    if (clearAttendanceFilterBtn) {
+        clearAttendanceFilterBtn.addEventListener('click', () => {
+            if (attendanceFilterFrom) attendanceFilterFrom.value = '';
+            if (attendanceFilterTo) attendanceFilterTo.value = '';
+            filterAttendanceByDate();
+        });
+    }
+
+    async function submitAttendance(action, btn) {
+        if (!attendanceEmployeeInput || !attendanceEmployeeInput.value) {
+            showMessage(attendanceStatusMessage, 'Employee not found. Please log in again.', 'error');
+            return;
+        }
+        const btnText = btn.querySelector('.btn-text');
+        const spinner = btn.querySelector('.spinner');
+        btn.disabled = true;
+        if (btnText) btnText.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    action: action,
+                    employee: attendanceEmployeeInput.value,
+                    branch: attendanceBranchInput ? attendanceBranchInput.value : '',
+                    date: attendanceDateInput ? attendanceDateInput.value : todayDateStr(),
+                    encodedBy: sessionStorage.getItem('loggedInUser') || 'Unknown'
+                })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                showMessage(attendanceStatusMessage, result.message, 'success');
+                if (action === 'timeIn' && attendanceTimeInDisplay) attendanceTimeInDisplay.value = result.timeIn || '';
+                if (action === 'timeOut' && attendanceTimeOutDisplay) attendanceTimeOutDisplay.value = result.timeOut || '';
+                loadAttendanceToday();
+            } else {
+                showMessage(attendanceStatusMessage, result.message || 'Something went wrong.', 'error');
+            }
+        } catch (error) {
+            console.error('Attendance error:', error);
+            showMessage(attendanceStatusMessage, 'Error connecting to server.', 'error');
+        } finally {
+            btn.disabled = false;
+            if (btnText) btnText.classList.remove('hidden');
+            if (spinner) spinner.classList.add('hidden');
+        }
+    }
+
+    if (btnTimeIn) {
+        btnTimeIn.addEventListener('click', () => submitAttendance('timeIn', btnTimeIn));
+    }
+    if (btnTimeOut) {
+        btnTimeOut.addEventListener('click', () => submitAttendance('timeOut', btnTimeOut));
+    }
+
     // Role-based logic and form submissions
     const cohForm = document.getElementById('cash-on-hand-form');
     const cohSubmitBtn = document.getElementById('coh-submit-btn');

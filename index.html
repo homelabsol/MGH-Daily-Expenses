@@ -77,10 +77,98 @@
                 <span class="icon">🛒</span>
                 Purchased Items
             </button>
+            <button class="menu-action-btn" id="btn-attendance">
+                <span class="icon">🕒</span>
+                Attendance
+            </button>
             <button class="menu-action-btn" id="menu-supplier-btn" style="display: none;">
                 <span class="icon">🏢</span>
                 Supplier List
             </button>
+        </main>
+    </div>
+
+    <!-- Attendance Container -->
+    <div class="container hidden" id="attendance-container" style="max-width: 600px;">
+        <header>
+            <h1><i class="fas fa-clock" style="margin-right: 8px;"></i>Attendance</h1>
+            <p>Daily Time In / Time Out</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="attendance-employee">Employee</label>
+                    <input type="text" id="attendance-employee" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;">
+                </div>
+                <div class="form-group">
+                    <label for="attendance-branch">Branch</label>
+                    <select id="attendance-branch" required>
+                        <option value="" disabled selected>Select Branch</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                        <option value="MarvsPCStufz">MarvsPCStufz</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="attendance-date">Date</label>
+                <input type="date" id="attendance-date" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;">
+            </div>
+
+            <div class="form-row" style="margin-top: 4px;">
+                <div class="form-group">
+                    <label for="attendance-time-in-display">Time In</label>
+                    <input type="text" id="attendance-time-in-display" readonly placeholder="--:--:--" style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed; font-weight: 600;">
+                </div>
+                <div class="form-group">
+                    <label for="attendance-time-out-display">Time Out</label>
+                    <input type="text" id="attendance-time-out-display" readonly placeholder="--:--:--" style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed; font-weight: 600;">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 6px;">
+                <button type="button" class="submit-btn" id="btn-time-in" style="margin-top: 0; background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);">
+                    <span class="btn-text"><i class="fas fa-sign-in-alt"></i> Time In</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <button type="button" class="submit-btn" id="btn-time-out" style="margin-top: 0; background: linear-gradient(135deg, #71717a, #52525b); box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);">
+                    <span class="btn-text"><i class="fas fa-sign-out-alt"></i> Time Out</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div id="attendance-status-message" class="hidden" style="margin-top: 15px;"></div>
+
+            <div style="margin-top: 26px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h2 style="margin: 0;">Today's Attendance</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" id="btn-view-all-attendance" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-list-alt"></i> View All</button>
+                        <button type="button" id="btn-attendance-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-rotate"></i> Refresh</button>
+                    </div>
+                </div>
+                <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.82em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Employee</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Branch</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Time In</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Time Out</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Hours</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendance-table-body">
+                            <tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -2010,6 +2098,47 @@
             <div class="confirm-actions">
                 <button id="confirm-cancel-btn"><i class="fas fa-times"></i> Cancel</button>
                 <button id="confirm-ok-btn"><i class="fas fa-trash"></i> Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- View All Attendance Modal -->
+    <div id="viewAllAttendanceModal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1000px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <div style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3);">
+                <h2 style="margin: 0; font-size: 1.4em; color: var(--primary);"><i class="fas fa-clock"></i> All Attendance Records</h2>
+                <button type="button" id="close-attendance-modal-btn" style="background: none; border: none; color: var(--text-muted); font-size: 1.5em; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            
+            <div style="padding: 15px 20px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <label style="color: var(--text-muted); font-size: 0.85em;">From:</label>
+                <input type="date" id="attendanceFilterFrom" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 0.9em; outline: none;">
+                <label style="color: var(--text-muted); font-size: 0.85em; margin-left: 10px;">To:</label>
+                <input type="date" id="attendanceFilterTo" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 0.9em; outline: none;">
+                
+                <button id="applyAttendanceFilterBtn" style="background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #3b82f6; border-radius: 6px; padding: 6px 15px; font-size: 0.85em; cursor: pointer; margin-left: 10px; transition: 0.2s;"><i class="fas fa-filter"></i> Filter</button>
+                <button id="clearAttendanceFilterBtn" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #cbd5e1; border-radius: 6px; padding: 6px 15px; font-size: 0.85em; cursor: pointer; transition: 0.2s;"><i class="fas fa-times"></i> Clear</button>
+            </div>
+
+            <div style="padding: 20px; overflow-y: auto; flex: 1;">
+                <div style="overflow-x:auto; max-height:60vh; overflow-y:auto;">
+                    <table id="attendanceTableList" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Employee</th>
+                                <th>Branch</th>
+                                <th>Time In</th>
+                                <th>Time Out</th>
+                                <th>Total Hours</th>
+                                <th>OT Hours</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="attendanceTableBodyList"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

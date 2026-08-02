@@ -773,3 +773,9 @@ textarea {
 
 @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+
+/* ===== Data Table (View All Modals) ===== */
+.data-table { width:100%; border-collapse:collapse; background:#1e293b; }
+.data-table th { color:#94a3b8; text-align:left; padding:12px; border-bottom:1px solid #334155; }
+.data-table td { padding:12px; border-bottom:1px solid rgba(255,255,255,0.05); color:#e2e8f0; }
+.data-table tr:hover { background:#2d3a4f; }
