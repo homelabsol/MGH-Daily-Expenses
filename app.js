@@ -7,6 +7,40 @@ function formatCurrency(amount) {
 
 let allValidationRecords = []; // Global scope for validation records
 
+/* ===== Toast System ===== */
+function showToast(message, type = 'info', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const icons = { success: 'fa-check-circle', error: 'fa-times-circle', info: 'fa-info-circle' };
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<i class="fas ${icons[type] || icons.info} toast-icon"></i><span>${message}</span>`;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.classList.add('hiding');
+        setTimeout(() => toast.remove(), 400);
+    }, duration);
+}
+
+/* ===== Custom Confirmation Modal ===== */
+function showConfirm(title, message, onConfirm) {
+    const overlay = document.getElementById('confirm-modal-overlay');
+    const titleEl = document.getElementById('confirm-modal-title');
+    const msgEl   = document.getElementById('confirm-modal-message');
+    const okBtn   = document.getElementById('confirm-ok-btn');
+    const cancelBtn = document.getElementById('confirm-cancel-btn');
+    if (!overlay) { if (onConfirm) onConfirm(); return; }
+    titleEl.textContent = title;
+    msgEl.textContent   = message;
+    overlay.classList.remove('hidden');
+    const close = () => overlay.classList.add('hidden');
+    const handleOk = () => { close(); okBtn.removeEventListener('click', handleOk); cancelBtn.removeEventListener('click', handleCancel); if (onConfirm) onConfirm(); };
+    const handleCancel = () => { close(); okBtn.removeEventListener('click', handleOk); cancelBtn.removeEventListener('click', handleCancel); };
+    okBtn.addEventListener('click', handleOk);
+    cancelBtn.addEventListener('click', handleCancel);
+}
+
+
 document.addEventListener('DOMContentLoaded', () => {
     const cashForm = document.getElementById('cash-expense-form');
     const cashSubmitBtn = document.getElementById('cash-submit-btn');
@@ -1482,12 +1516,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Get form data
+        const cashDate = document.getElementById('date').value;
+        const cashDesc = document.getElementById('description').value.trim();
+        const cashAmountRaw = document.getElementById('amount').value;
+        const cashAmount = parseFloat(cashAmountRaw);
+
+        // --- Frontend Validation Guards ---
+        if (!cashDate || !cashDesc || !cashAmountRaw) {
+            showMessage(cashStatusMessage, 'Please fill in all required fields', 'error');
+            return;
+        }
+        if (isNaN(cashAmount) || cashAmount <= 0) {
+            showMessage(cashStatusMessage, 'Amount must be greater than 0', 'error');
+            return;
+        }
+        const todayCash = new Date(); todayCash.setHours(0,0,0,0);
+        const expDateCash = new Date(cashDate); expDateCash.setHours(0,0,0,0);
+        if (expDateCash > todayCash) {
+            showMessage(cashStatusMessage, 'Date cannot be in the future', 'error');
+            return;
+        }
+        // --- End Frontend Validation ---
+
         const formData = {
             action: 'addCashExpense',
             branch: document.getElementById('branch').value,
-            date: document.getElementById('date').value,
-            description: document.getElementById('description').value,
-            amount: document.getElementById('amount').value,
+            date: cashDate,
+            description: cashDesc,
+            amount: cashAmountRaw,
             receipt: document.getElementById('receipt').value,
             encodedBy: sessionStorage.getItem('loggedInUser')
         };
@@ -1513,10 +1569,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (result.status === 'success') {
                 showMessage(cashStatusMessage, 'Expense saved to Google Sheets successfully!', 'success');
+                showToast('Cash expense saved!', 'success');
                 cashForm.reset();
                 document.getElementById('date').valueAsDate = new Date(); // reset date to today
             } else {
-                showMessage(cashStatusMessage, 'Error saving to Sheets: ' + result.message, 'error');
+                showMessage(cashStatusMessage, result.message || ('Error: ' + result.message), 'error');
+                showToast(result.message || 'Error saving expense.', 'error');
             }
         } catch (error) {
             console.error('Error:', error);
@@ -1544,13 +1602,35 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const gcashDate = document.getElementById('g-date').value;
+        const gcashAmountRaw = document.getElementById('g-amount').value;
+        const gcashAmount = parseFloat(gcashAmountRaw);
+        const gcashPayment = document.getElementById('g-payment-method').value.trim();
+
+        // --- Frontend Validation Guards ---
+        if (!gcashDate || !gcashAmountRaw) {
+            showMessage(gcashStatusMessage, 'Please fill in all required fields', 'error');
+            return;
+        }
+        if (isNaN(gcashAmount) || gcashAmount <= 0) {
+            showMessage(gcashStatusMessage, 'Amount must be greater than 0', 'error');
+            return;
+        }
+        const todayGcash = new Date(); todayGcash.setHours(0,0,0,0);
+        const expDateGcash = new Date(gcashDate); expDateGcash.setHours(0,0,0,0);
+        if (expDateGcash > todayGcash) {
+            showMessage(gcashStatusMessage, 'Date cannot be in the future', 'error');
+            return;
+        }
+        // --- End Frontend Validation ---
+
         const formData = {
             action: 'addGcashExpense',
             branch: document.getElementById('g-branch').value,
-            date: document.getElementById('g-date').value,
+            date: gcashDate,
             employee: document.getElementById('g-details').value, // Used to be employee, now details
-            paymentMethod: document.getElementById('g-payment-method').value,
-            amount: document.getElementById('g-amount').value,
+            paymentMethod: gcashPayment,
+            amount: gcashAmountRaw,
             reference: document.getElementById('g-reference').value,
             receipt: document.getElementById('g-receipt').value,
             encodedBy: sessionStorage.getItem('loggedInUser')
@@ -1578,10 +1658,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (result.status === 'success') {
                 showMessage(gcashStatusMessage, 'Gcash Expense saved successfully!', 'success');
+                showToast('GCash expense saved!', 'success');
                 gcashForm.reset();
                 document.getElementById('g-date').valueAsDate = new Date();
             } else {
-                showMessage(gcashStatusMessage, 'Error saving to Sheets: ' + result.message, 'error');
+                showMessage(gcashStatusMessage, result.message || ('Error: ' + result.message), 'error');
+                showToast(result.message || 'Error saving GCash expense.', 'error');
             }
         } catch (error) {
             console.error('Error:', error);
@@ -2814,10 +2896,12 @@ document.addEventListener('DOMContentLoaded', () => {
                             const deleteBtn = tr.querySelector('.delete-daily-check-btn');
                             if (deleteBtn) {
                                 deleteBtn.addEventListener('click', async () => {
-                                    if (confirm('Are you sure you want to delete this Daily Check record?')) {
+                                showConfirm(
+                                    'Delete Daily Check Record',
+                                    'Are you sure you want to delete this record? This cannot be undone.',
+                                    async () => {
                                         deleteBtn.disabled = true;
                                         deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                                        
                                         try {
                                             const deleteResponse = await fetch(SCRIPT_URL, {
                                                 method: 'POST',
@@ -2830,20 +2914,21 @@ document.addEventListener('DOMContentLoaded', () => {
                                             });
                                             const deleteResult = await deleteResponse.json();
                                             if (deleteResult.status === 'success') {
-                                                // Trigger the load button again to refresh the list
+                                                showToast('Daily check record deleted.', 'success');
                                                 btnDailySalesCheck.click();
                                             } else {
-                                                alert("Error deleting record: " + deleteResult.message);
+                                                showToast('Error deleting record: ' + deleteResult.message, 'error');
                                                 deleteBtn.disabled = false;
                                                 deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
                                             }
                                         } catch (err) {
-                                            alert("Failed to delete record: " + err.message);
+                                            showToast('Failed to delete record: ' + err.message, 'error');
                                             deleteBtn.disabled = false;
                                             deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
                                         }
                                     }
-                                });
+                                );
+                            });
                             }
                             
                             tbody.appendChild(tr);
@@ -4804,34 +4889,39 @@ document.addEventListener("DOMContentLoaded", function() {
             deleteBtn.style.cssText = 'background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
             
             deleteBtn.addEventListener('click', async () => {
-                const rowIndex = row[row.length - 1]; // We get rowIndex from the last element
-                if (confirm('Are you sure you want to delete this record? This cannot be undone.')) {
-                    deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                    deleteBtn.disabled = true;
-                    try {
-                        const response = await fetch(SCRIPT_URL, {
-                            method: 'POST',
-                            body: new URLSearchParams({
-                                action: 'deleteRecord',
-                                sheetName: sheet,
-                                rowIndex: rowIndex,
-                                encodedBy: sessionStorage.getItem('loggedInUser')
-                            })
-                        });
-                        const result = await response.json();
-                        if (result.status === 'success') {
-                            document.getElementById('filter-records-form').dispatchEvent(new Event('submit'));
-                        } else {
-                            alert("Error: " + result.message);
+                const rowIndex = row[row.length - 1];
+                showConfirm(
+                    'Delete Record',
+                    'Are you sure you want to delete this record? This cannot be undone.',
+                    async () => {
+                        deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                        deleteBtn.disabled = true;
+                        try {
+                            const response = await fetch(SCRIPT_URL, {
+                                method: 'POST',
+                                body: new URLSearchParams({
+                                    action: 'deleteRecord',
+                                    sheetName: sheet,
+                                    rowIndex: rowIndex,
+                                    encodedBy: sessionStorage.getItem('loggedInUser')
+                                })
+                            });
+                            const result = await response.json();
+                            if (result.status === 'success') {
+                                showToast('Record deleted successfully.', 'success');
+                                document.getElementById('filter-records-form').dispatchEvent(new Event('submit'));
+                            } else {
+                                showToast('Error: ' + result.message, 'error');
+                                deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                                deleteBtn.disabled = false;
+                            }
+                        } catch (error) {
+                            showToast('Error: ' + error.message, 'error');
                             deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
                             deleteBtn.disabled = false;
                         }
-                    } catch (error) {
-                        alert("Error: " + error.message);
-                        deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
-                        deleteBtn.disabled = false;
                     }
-                }
+                );
             });
             
             editBtn.addEventListener('click', () => {
