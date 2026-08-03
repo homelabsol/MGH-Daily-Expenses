@@ -6113,7 +6113,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function openItemReplacementForm(row) {
         document.getElementById('item-replacement-container').classList.add('hidden');
-        document.getElementById('item-replacement-form-container').classList.remove('hidden');
+        const formContainer = document.getElementById('item-replacement-form-container');
+        formContainer.classList.remove('hidden');
+        const innerContainer = formContainer.querySelector('.container');
+        if (innerContainer) innerContainer.classList.remove('hidden');
         
         // A:0 to Q:16
         const rowIndex = row[row.length - 1]; // row object from backend appends rowIndex at the end
