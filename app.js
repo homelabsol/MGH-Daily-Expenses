@@ -4750,17 +4750,49 @@ document.addEventListener("DOMContentLoaded", function() {
             const editSupplierContainer = document.getElementById('edit-supplier-container');
             const editCategoryContainer = document.getElementById('edit-category-container');
             const editSerialContainer = document.getElementById('edit-serial-container');
+            const editCategoryFilter = document.getElementById('edit-category-filter');
+
             if (editBranchContainer) {
                 if (sheet === 'MarvsPCStufz Expenses') {
                     editBranchContainer.classList.add('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
-                    if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
+                    if (editCategoryContainer) editCategoryContainer.classList.remove('hidden');
                     if (editSerialContainer) editSerialContainer.classList.add('hidden');
+                    
+                    if (editCategoryFilter) {
+                        editCategoryFilter.innerHTML = '<option value="All">All Categories</option>';
+                        const marvsCat = document.getElementById('marvspc-category');
+                        if (marvsCat) {
+                            Array.from(marvsCat.options).forEach(opt => {
+                                if (opt.value && opt.value !== '') {
+                                    const newOpt = document.createElement('option');
+                                    newOpt.value = opt.value;
+                                    newOpt.textContent = opt.textContent;
+                                    editCategoryFilter.appendChild(newOpt);
+                                }
+                            });
+                        }
+                    }
                 } else if (sheet === 'Item Purchased') {
                     editBranchContainer.classList.add('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.remove('hidden');
                     if (editCategoryContainer) editCategoryContainer.classList.remove('hidden');
                     if (editSerialContainer) editSerialContainer.classList.remove('hidden');
+                    
+                    if (editCategoryFilter) {
+                        editCategoryFilter.innerHTML = '<option value="All">All Categories</option>';
+                        const purCat = document.getElementById('purchased-category');
+                        if (purCat) {
+                            Array.from(purCat.options).forEach(opt => {
+                                if (opt.value && opt.value !== '') {
+                                    const newOpt = document.createElement('option');
+                                    newOpt.value = opt.value;
+                                    newOpt.textContent = opt.textContent;
+                                    editCategoryFilter.appendChild(newOpt);
+                                }
+                            });
+                        }
+                    }
                 } else {
                     editBranchContainer.classList.remove('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
@@ -5037,7 +5069,10 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             const selectedCategory = document.getElementById('edit-category-filter') ? document.getElementById('edit-category-filter').value : 'All';
             if (selectedCategory && selectedCategory !== 'All') {
-                const categoryColIndex = (sheetColumns[sheet] || []).indexOf('Item Category');
+                let categoryColIndex = (sheetColumns[sheet] || []).indexOf('Item Category');
+                if (categoryColIndex === -1) {
+                    categoryColIndex = (sheetColumns[sheet] || []).indexOf('Category');
+                }
                 if (categoryColIndex !== -1) {
                     filteredData = filteredData.filter(row => row[categoryColIndex] === selectedCategory);
                 }
