@@ -167,8 +167,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const isOwner = (role === 'Owner');
             const isAllowedRole = (role === 'Manager' || role === 'RMA Admin');
 
-            // Owner always sees it; Manager/RMA Admin only if their store is MarvsPCStufz
-            if (isOwner || (isMarvsPcStore && isAllowedRole)) {
+            // Owner always sees it; Manager/RMA Admin also see it regardless of store
+            if (isOwner || isAllowedRole) {
                 menuMarvsPcBtnApp.style.display = '';
             } else {
                 menuMarvsPcBtnApp.style.display = 'none';
@@ -1942,33 +1942,96 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===== View All Attendance Modal Logic =====
     let allAttendanceData = [];
     
+    let attendanceRowToDelete = null;
+    const attDeleteAuthModal = document.getElementById('attendance-delete-auth-modal');
+    const closeAttDeleteAuthBtn = document.getElementById('close-att-delete-auth-btn');
+    const attDeleteAuthForm = document.getElementById('attendance-delete-auth-form');
+    const attDeleteUsernameInput = document.getElementById('att-delete-username');
+    const attDeletePasswordInput = document.getElementById('att-delete-password');
+    const attDeleteAuthBtn = document.getElementById('att-delete-auth-btn');
+
     window.deleteAttendanceRecord = function(rowIndex) {
-        showConfirm('Delete Record', 'Are you sure you want to delete this attendance record?', async () => {
-            const loggedInUser = sessionStorage.getItem('loggedInUser') || 'Unknown';
-            showToast('Deleting record...', 'info');
-            try {
-                const response = await fetch(SCRIPT_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({
-                        action: 'deleteAttendance',
-                        rowIndex: rowIndex,
-                        encodedBy: loggedInUser
-                    })
-                });
-                const result = await response.json();
-                if (result.status === 'success') {
-                    showToast('Record deleted successfully', 'success');
-                    loadAllAttendance(); 
-                    loadAttendanceToday(); 
-                } else {
-                    showToast(result.message || 'Error deleting record', 'error');
-                }
-            } catch (error) {
-                console.error('Error deleting attendance:', error);
-                showToast('Network error while deleting', 'error');
-            }
+        attendanceRowToDelete = rowIndex;
+        if (attDeleteAuthModal) {
+            if (attDeleteUsernameInput) attDeleteUsernameInput.value = '';
+            if (attDeletePasswordInput) attDeletePasswordInput.value = '';
+            attDeleteAuthModal.classList.remove('hidden');
+        }
+    };
+
+    if (closeAttDeleteAuthBtn) {
+        closeAttDeleteAuthBtn.addEventListener('click', () => {
+            attDeleteAuthModal.classList.add('hidden');
+            attendanceRowToDelete = null;
         });
+    }
+
+    window.handleAttendanceDeleteAuth = async function(e) {
+        e.preventDefault();
+        
+        if (!attendanceRowToDelete) return;
+        
+        const username = attDeleteUsernameInput.value;
+        const password = attDeletePasswordInput.value;
+        
+        const btnText = attDeleteAuthBtn.querySelector('.btn-text');
+        const spinner = attDeleteAuthBtn.querySelector('.spinner');
+        
+        attDeleteAuthBtn.disabled = true;
+        if (btnText) btnText.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+        
+        try {
+            // Verify identity first
+            const verifyRes = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    action: 'login',
+                    username: username,
+                    password: password
+                })
+            });
+            const verifyData = await verifyRes.json();
+            
+            if (verifyData.status === 'success') {
+                const role = verifyData.role; 
+                if (role === 'Owner' || role === 'Manager') {
+                    // User is authorized, proceed to delete
+                    showToast('Verification success. Deleting record...', 'info');
+                    const deleteRes = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({
+                            action: 'deleteAttendance',
+                            rowIndex: attendanceRowToDelete,
+                            encodedBy: verifyData.name || username
+                        })
+                    });
+                    const deleteData = await deleteRes.json();
+                    
+                    if (deleteData.status === 'success') {
+                        showToast('Record deleted successfully', 'success');
+                        attDeleteAuthModal.classList.add('hidden');
+                        loadAllAttendance(); 
+                        loadAttendanceToday(); 
+                    } else {
+                        showToast(deleteData.message || 'Error deleting record', 'error');
+                    }
+                } else {
+                    showToast('Access denied. Manager or Owner role required.', 'error');
+                }
+            } else {
+                showToast('Invalid username or password', 'error');
+            }
+        } catch (error) {
+            console.error('Delete auth error:', error);
+            showToast('Network error', 'error');
+        } finally {
+            attDeleteAuthBtn.disabled = false;
+            if (btnText) btnText.classList.remove('hidden');
+            if (spinner) spinner.classList.add('hidden');
+        }
     };
 
     function renderAttendanceTableList(rows) {
@@ -2133,6 +2196,10 @@ document.addEventListener('DOMContentLoaded', () => {
     async function submitAttendance(action, btn) {
         if (!attendanceEmployeeInput || !attendanceEmployeeInput.value) {
             showMessage(attendanceStatusMessage, 'Employee not found. Please log in again.', 'error');
+            return;
+        }
+        if (!attendanceBranchInput || !attendanceBranchInput.value) {
+            showMessage(attendanceStatusMessage, 'Please select your branch.', 'error');
             return;
         }
         const btnText = btn.querySelector('.btn-text');
