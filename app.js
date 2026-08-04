@@ -732,14 +732,28 @@ document.addEventListener('DOMContentLoaded', () => {
         // Define columns directly since sheetColumns is scoped elsewhere
         const cols = ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status', 'Warranty#'];
         
-        // Render headers if not already done
-        if (valTheadTr.innerHTML.trim() === '') {
-            let theadHTML = '';
-            cols.forEach(col => {
+        // Render headers and support sort toggles
+        valTheadTr.innerHTML = '';
+        if (window.valSortDesc === undefined) window.valSortDesc = true; // Default sorting
+        
+        let theadHTML = '';
+        cols.forEach(col => {
+            if (col === 'Date') {
+                const icon = window.valSortDesc ? '<i class="fas fa-sort-down"></i>' : '<i class="fas fa-sort-up"></i>';
+                theadHTML += `<th id="val-sort-date" style="padding: 12px 8px; cursor: pointer; user-select: none;">${col} ${icon}</th>`;
+            } else {
                 theadHTML += `<th style="padding: 12px 8px;">${col}</th>`;
+            }
+        });
+        theadHTML += `<th style="padding: 12px 8px;">Actions</th>`;
+        valTheadTr.innerHTML = theadHTML;
+        
+        const valSortDateBtn = document.getElementById('val-sort-date');
+        if (valSortDateBtn) {
+            valSortDateBtn.addEventListener('click', () => {
+                window.valSortDesc = !window.valSortDesc;
+                renderValidationTable();
             });
-            theadHTML += `<th style="padding: 12px 8px;">Actions</th>`;
-            valTheadTr.innerHTML = theadHTML;
         }
 
         valTableBody.innerHTML = '';
@@ -755,6 +769,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const matchSearch = String(warrantyNum).toLowerCase().includes(searchFilter);
             
             return matchBranch && matchStatus && matchSearch;
+        });
+
+        // Sort filteredRecords by Date
+        filteredRecords.sort((a, b) => {
+            const dateA = new Date(a[0] || 0).getTime(); // Date is column index 0
+            const dateB = new Date(b[0] || 0).getTime();
+            return window.valSortDesc ? dateB - dateA : dateA - dateB;
         });
 
         if (filteredRecords.length === 0) {
@@ -815,7 +836,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('val-form-issue').innerText = row[7] || '';
                     
                     document.getElementById('val-form-received-date').value = (row[11] || '').split('T')[0];
-                    document.getElementById('val-form-rma-office').value = row[12] || '';
+                    
+                    const rmaOfficeEl = document.getElementById('val-form-rma-office');
+                    const loggedInUser = sessionStorage.getItem('loggedInUser');
+                    let userExists = false;
+                    for (let i = 0; i < rmaOfficeEl.options.length; i++) {
+                        if (rmaOfficeEl.options[i].value === loggedInUser) userExists = true;
+                    }
+                    if (!userExists && loggedInUser) {
+                        const opt = document.createElement('option');
+                        opt.value = loggedInUser;
+                        opt.textContent = loggedInUser;
+                        rmaOfficeEl.appendChild(opt);
+                    }
+                    rmaOfficeEl.value = loggedInUser || '';
+                    rmaOfficeEl.disabled = true;
+
                     document.getElementById('val-form-status').value = row[13] || 'Pending';
                     document.getElementById('val-form-assigned-tech').value = row[14] || '';
                     document.getElementById('val-form-remarks').value = row[15] || '';
@@ -1015,8 +1051,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnItemReplacement) {
         btnItemReplacement.addEventListener('click', () => {
             const currentRole = sessionStorage.getItem('userRole');
-            if (currentRole !== 'Owner' && currentRole !== 'Manager' && currentRole !== 'RMA Admin') {
-                alert('Access Denied. Only Owner, Manager, and RMA Admin can access Item Replacement.');
+            if (currentRole !== 'Owner' && currentRole !== 'Manager' && currentRole !== 'Supervisor') {
+                alert('Access Denied. Only Owner, Manager, and Supervisor can access Item Replacement.');
                 return;
             }
             hideAllContainers();
@@ -4451,6 +4487,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         allValidationRecords[recordIndex][14] = validationData[3];
                         allValidationRecords[recordIndex][15] = validationData[4];
                         allValidationRecords[recordIndex][16] = validationData[5];
+                        allValidationRecords[recordIndex][9] = validationData[2]; // Update main Status column
                     }
                     
                     // Switch back to validation container and refresh table visually
@@ -4750,6 +4787,7 @@ document.addEventListener("DOMContentLoaded", function() {
             const editSupplierContainer = document.getElementById('edit-supplier-container');
             const editCategoryContainer = document.getElementById('edit-category-container');
             const editSerialContainer = document.getElementById('edit-serial-container');
+            const editWarrantyNoContainer = document.getElementById('edit-warranty-no-container');
             const editCategoryFilter = document.getElementById('edit-category-filter');
 
             if (editBranchContainer) {
@@ -4758,6 +4796,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
                     if (editCategoryContainer) editCategoryContainer.classList.remove('hidden');
                     if (editSerialContainer) editSerialContainer.classList.add('hidden');
+                    if (editWarrantyNoContainer) editWarrantyNoContainer.classList.add('hidden');
                     
                     if (editCategoryFilter) {
                         editCategoryFilter.innerHTML = '<option value="All">All Categories</option>';
@@ -4778,6 +4817,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (editSupplierContainer) editSupplierContainer.classList.remove('hidden');
                     if (editCategoryContainer) editCategoryContainer.classList.remove('hidden');
                     if (editSerialContainer) editSerialContainer.classList.remove('hidden');
+                    if (editWarrantyNoContainer) editWarrantyNoContainer.classList.add('hidden');
                     
                     if (editCategoryFilter) {
                         editCategoryFilter.innerHTML = '<option value="All">All Categories</option>';
@@ -4793,11 +4833,18 @@ document.addEventListener("DOMContentLoaded", function() {
                             });
                         }
                     }
+                } else if (sheet === 'Warranty Items') {
+                    editBranchContainer.classList.remove('hidden');
+                    if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
+                    if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
+                    if (editSerialContainer) editSerialContainer.classList.add('hidden');
+                    if (editWarrantyNoContainer) editWarrantyNoContainer.classList.remove('hidden');
                 } else {
                     editBranchContainer.classList.remove('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
                     if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
                     if (editSerialContainer) editSerialContainer.classList.add('hidden');
+                    if (editWarrantyNoContainer) editWarrantyNoContainer.classList.add('hidden');
                 }
             }
             
@@ -4837,8 +4884,11 @@ document.addEventListener("DOMContentLoaded", function() {
                 theadTr.appendChild(actionTh);
             }
             
-            tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">Click Load Records to view data.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading data...</td></tr>';
             editModal.classList.remove('hidden');
+            
+            // Auto-load records when modal opens
+            filterForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
         });
     });
 
@@ -5089,6 +5139,19 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }
         }
+        
+        if (sheet === 'Warranty Items') {
+            const warrantyNoFilter = document.getElementById('edit-warranty-no-filter') ? document.getElementById('edit-warranty-no-filter').value.trim().toLowerCase() : '';
+            if (warrantyNoFilter) {
+                const warrantyNoColIndex = (sheetColumns[sheet] || []).indexOf('Warranty#');
+                if (warrantyNoColIndex !== -1) {
+                    filteredData = filteredData.filter(row => {
+                        const val = (row[warrantyNoColIndex] || '').toString().toLowerCase();
+                        return val.includes(warrantyNoFilter);
+                    });
+                }
+            }
+        }
 
         const dateColIndex = (sheetColumns[sheet] || []).findIndex(col => col.toLowerCase().includes('date'));
         if (dateColIndex !== -1 && window.editModalSortDesc !== undefined) {
@@ -5125,6 +5188,11 @@ document.addEventListener("DOMContentLoaded", function() {
     const editSerialInput = document.getElementById('edit-serial-filter');
     if (editSerialInput) {
         editSerialInput.addEventListener('input', applyEditModalFilters);
+    }
+    
+    const editWarrantyNoInput = document.getElementById('edit-warranty-no-filter');
+    if (editWarrantyNoInput) {
+        editWarrantyNoInput.addEventListener('input', applyEditModalFilters);
     }
 
 
@@ -5472,16 +5540,17 @@ document.addEventListener("DOMContentLoaded", function() {
                     const result = await response.json();
                     
                     if (result.status === 'success') {
-                        // Reset UI
-                        inputs.forEach(input => {
-                            input.readOnly = true;
-                            input.style.background = 'transparent';
-                            input.style.border = 'none';
-                            input.style.padding = '0';
-                        });
-                        saveBtn.style.display = 'none';
-                        editBtn.style.display = 'inline-block';
-                        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+                        // Update local array for real-time refresh
+                        if (window.currentEditRecords) {
+                            const recIndex = window.currentEditRecords.findIndex(r => r[r.length - 1] === rowIndex);
+                            if (recIndex !== -1) {
+                                for(let i = 0; i < updatedData.length; i++) {
+                                    window.currentEditRecords[recIndex][i] = updatedData[i];
+                                }
+                            }
+                        }
+                        showToast('Record updated successfully.', 'success');
+                        applyEditModalFilters();
                     } else {
                         alert("Error saving: " + result.message);
                         saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';

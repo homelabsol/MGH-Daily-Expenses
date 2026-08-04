@@ -1410,9 +1410,8 @@
                     </button>
                 </div>
             </div>
-            <div style="flex: 1; overflow-y: auto; padding: 20px;">
-                <div style="overflow-x: auto;">
-                    <table id="val-records-table" style="width: 100%; border-collapse: collapse; font-size: 0.9em; text-align: left;">
+            <div style="flex: 1; overflow-y: auto; overflow-x: auto; padding: 20px;">
+                <table id="val-records-table" style="width: 100%; border-collapse: collapse; font-size: 0.9em; text-align: left; min-width: 1300px;">
                         <thead>
                             <tr id="val-records-thead-tr" style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted);">
                                 <!-- Populated dynamically -->
@@ -1422,7 +1421,6 @@
                             <tr><td colspan="15" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading warranty validation records... <i class="fas fa-spinner fa-spin"></i></td></tr>
                         </tbody>
                     </table>
-                </div>
             </div>
         </div>
     </div>
@@ -1810,6 +1808,10 @@
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Serial No.</label>
                         <input type="text" id="edit-serial-filter" placeholder="Scan or type..." style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; box-sizing: border-box; color: inherit; font-size: 1em;">
                     </div>
+                    <div id="edit-warranty-no-container" class="hidden" style="flex: 1; min-width: 130px;">
+                        <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Warranty#</label>
+                        <input type="text" id="edit-warranty-no-filter" placeholder="e.g. WAR-2026..." style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; box-sizing: border-box; color: inherit; font-size: 1em;">
+                    </div>
                     <div style="flex: 1; min-width: 130px;" id="edit-status-container" class="hidden">
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Status</label>
                         <select id="edit-status-filter" style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
@@ -1830,9 +1832,8 @@
                     </div>
                 </form>
             </div>
-            <div style="flex: 1; overflow-y: auto; padding: 20px;">
-                <div style="overflow-x: auto;">
-                    <table id="edit-records-table" style="width: 100%; border-collapse: collapse; font-size: 0.9em; text-align: left;">
+            <div style="flex: 1; overflow-y: auto; overflow-x: auto; padding: 20px;">
+                <table id="edit-records-table" style="width: 100%; border-collapse: collapse; font-size: 0.9em; text-align: left; min-width: 1300px;">
                         <thead>
                             <tr id="edit-records-thead-tr" style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted);">
                                 <!-- Populated dynamically -->
@@ -1842,7 +1843,6 @@
                             <tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">Select a date range to load records.</td></tr>
                         </tbody>
                     </table>
-                </div>
             </div>
         </div>
     </div>
@@ -1887,7 +1887,7 @@
             </div>
             <!-- Table -->
             <div style="flex: 1; overflow-y: auto; overflow-x: auto;">
-                <table id="item-replacement-table" style="width: 100%; border-collapse: collapse; font-size: 0.88em; table-layout: fixed;">
+                <table id="item-replacement-table" style="width: 100%; border-collapse: collapse; font-size: 0.88em; table-layout: fixed; min-width: 1300px;">
                     <colgroup>
                         <col style="width: 95px;">
                         <col style="width: 115px;">
