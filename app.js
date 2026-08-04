@@ -5296,6 +5296,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (tbodyClone) {
                     Array.from(tbodyClone.rows).forEach(row => {
                         row.style.borderBottom = '1px solid #cbd5e1';
+                        row.style.pageBreakInside = 'avoid';
                         
                         // Remove marked columns from tbody
                         columnsToRemove.sort((a, b) => b - a).forEach(index => {
@@ -5360,7 +5361,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     filename:     `${sheet.replace(/\s+/g, '_')}_Report_${startDate}_to_${endDate}.pdf`,
                     image:        { type: 'jpeg', quality: 0.98 },
                     html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' },
+                    pagebreak:    { mode: ['css', 'legacy'], avoid: 'tr' }
                 };
 
                 const elementToPrint = hiddenDiv.firstElementChild;
