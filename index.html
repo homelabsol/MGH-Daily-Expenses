@@ -928,6 +928,9 @@
                     <button id="btn-print-report" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;">
                         <span class="btn-text"><i class="fas fa-file-pdf" style="margin-right: 5px;"></i> Check & Balance</span>
                     </button>
+                    <button type="button" class="view-records-btn" data-sheet="Daily Check and Balance" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 5px; transition: 0.2s;" title="View Daily Check and Balance">
+                        <i class="fas fa-list-alt"></i> View
+                    </button>
                 </div>
             </div>
             
@@ -1262,7 +1265,7 @@
                     <table id="monthly-daily-record-list-table" style="width: 100%; border-collapse: collapse; font-size: 0.85em; text-align: left;">
                         <thead>
                             <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted);">
-                                <th style="padding: 8px;">Date</th>
+                                <th id="monthly-daily-date-header" style="padding: 8px; cursor: pointer;">Date <i class="fas fa-sort"></i></th>
                                 <th style="padding: 8px;">Branch</th>
                                 <th style="padding: 8px; text-align: right;">Cash Exp</th>
                                 <th style="padding: 8px; text-align: right;">Gcash Exp</th>

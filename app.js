@@ -1314,6 +1314,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (savedChecksTbody) savedChecksTbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">No saved checks found</td></tr>';
                 const container = document.getElementById('daily-sales-list-container');
                 if (container) container.classList.add('hidden');
+                
+                // Clear and hide the monthly daily records list
+                const monthlyDailyContainer = document.getElementById('monthly-daily-record-list-container');
+                if (monthlyDailyContainer) monthlyDailyContainer.classList.add('hidden');
+                const monthlyDailyTbody = document.querySelector('#monthly-daily-record-list-table tbody');
+                if (monthlyDailyTbody) monthlyDailyTbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No records loaded.</td></tr>';
             }
         });
     });
@@ -3231,6 +3237,64 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    window.monthlyDailyRecords = [];
+    window.monthlyDailySortDesc = true;
+    
+    const renderMonthlyDailyRecords = () => {
+        const tbody = document.querySelector('#monthly-daily-record-list-table tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+        
+        if (!window.monthlyDailyRecords || window.monthlyDailyRecords.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No saved Daily Records found for the selected date range and branch.</td></tr>';
+            return;
+        }
+        
+        const sorted = [...window.monthlyDailyRecords].sort((a, b) => {
+            let dateA = new Date(a[0]);
+            let dateB = new Date(b[0]);
+            return window.monthlyDailySortDesc ? dateB - dateA : dateA - dateB;
+        });
+
+        const formatRowCurrency = (val) => {
+            let num = parseFloat(val);
+            if (isNaN(num)) return val;
+            return '₱' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        };
+
+        sorted.forEach(row => {
+            const [rowDate, rowBranch, cashExp, gcashExp, gcashRec, cashOnHand, dailySales, pondoAmt, discrepancy] = row;
+            let formattedDate = rowDate;
+            if (rowDate && String(rowDate).includes('T')) {
+                formattedDate = String(rowDate).split('T')[0];
+            }
+
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+            tr.innerHTML = `
+                <td style="padding: 8px;">${formattedDate}</td>
+                <td style="padding: 8px;">${rowBranch}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(cashExp)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(gcashExp)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(gcashRec)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace; color: #a78bfa;">${formatRowCurrency(cashOnHand)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace; color: #10b981;">${formatRowCurrency(dailySales)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace; color: #60a5fa;">${formatRowCurrency(pondoAmt)}</td>
+                <td style="padding: 8px; text-align: right; font-family: monospace; color: ${parseFloat(discrepancy) < 0 ? '#ef4444' : (parseFloat(discrepancy) > 0 ? '#34d399' : '#e2e8f0')};">${formatRowCurrency(discrepancy)}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    };
+
+    const monthlyDailyHeader = document.getElementById('monthly-daily-date-header');
+    if (monthlyDailyHeader) {
+        monthlyDailyHeader.addEventListener('click', () => {
+            window.monthlyDailySortDesc = !window.monthlyDailySortDesc;
+            monthlyDailyHeader.innerHTML = `Date <i class="fas fa-sort-${window.monthlyDailySortDesc ? 'down' : 'up'}"></i>`;
+            renderMonthlyDailyRecords();
+        });
+    }
+
     const btnMonthlySalesCheck = document.getElementById('btn-monthly-sales-check');
     if (btnMonthlySalesCheck) {
         btnMonthlySalesCheck.addEventListener('click', async () => {
@@ -3266,46 +3330,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    const rows = result.data;
-                    const container = document.getElementById('monthly-daily-record-list-container');
-                    const tbody = document.querySelector('#monthly-daily-record-list-table tbody');
-                    tbody.innerHTML = '';
-
-                    if (!rows || rows.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No saved Daily Records found for the selected date range and branch.</td></tr>';
-                    } else {
-                        rows.forEach(row => {
-                            const [rowDate, rowBranch, cashExp, gcashExp, gcashRec, cashOnHand, dailySales, pondoAmt, discrepancy] = row;
-                            
-                            // Format date properly if it's an ISO string
-                            let formattedDate = rowDate;
-                            if (rowDate && String(rowDate).includes('T')) {
-                                formattedDate = String(rowDate).split('T')[0];
-                            }
-
-                            const formatRowCurrency = (val) => {
-                                let num = parseFloat(val);
-                                if (isNaN(num)) return val;
-                                return '₱' + num.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                            };
-
-                            const tr = document.createElement('tr');
-                            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
-                            tr.innerHTML = `
-                                <td style="padding: 8px;">${formattedDate}</td>
-                                <td style="padding: 8px;">${rowBranch}</td>
-                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(cashExp)}</td>
-                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(gcashExp)}</td>
-                                <td style="padding: 8px; text-align: right; font-family: monospace;">${formatRowCurrency(gcashRec)}</td>
-                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #a78bfa;">${formatRowCurrency(cashOnHand)}</td>
-                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #10b981;">${formatRowCurrency(dailySales)}</td>
-                                <td style="padding: 8px; text-align: right; font-family: monospace; color: #60a5fa;">${formatRowCurrency(pondoAmt)}</td>
-                                <td style="padding: 8px; text-align: right; font-family: monospace; color: ${parseFloat(discrepancy) < 0 ? '#ef4444' : (parseFloat(discrepancy) > 0 ? '#34d399' : '#e2e8f0')};">${formatRowCurrency(discrepancy)}</td>
-                            `;
-                            tbody.appendChild(tr);
-                        });
-                    }
-                    container.classList.remove('hidden');
+                    window.monthlyDailyRecords = result.data;
+                    renderMonthlyDailyRecords();
+                    document.getElementById('monthly-daily-record-list-container').classList.remove('hidden');
                 } else {
                     alert("Error: " + result.message);
                 }
@@ -4754,7 +4781,8 @@ document.addEventListener("DOMContentLoaded", function() {
         'Warranty Items': ['Date', 'Branch', 'Tech', 'Item Description', 'Serial#', 'PC#', 'Qty', 'Issue and Concern', 'Sup Approver', 'Status', 'Warranty#'],
         'Handover': ['Date', 'Branch', 'Outgoing Staff', 'Handover Description', 'Discussion', 'Status', 'Incoming Staff', 'Remarks', 'Approver'],
         'MarvsPCStufz Expenses': ['Date', 'Category', 'Expenses Description', 'Amount', 'Account Name'],
-        'Item Purchased': ['Date', 'Supplier Name', 'Item Category', 'Item Description', 'Serial Number', 'Status', 'Accountable Person']
+        'Item Purchased': ['Date', 'Supplier Name', 'Item Category', 'Item Description', 'Serial Number', 'Status', 'Accountable Person'],
+        'Daily Check and Balance': ['Date', 'Branch', 'Cash Expense', 'Gcash Expenses', 'Gcash Receivable', 'Cash on hand', 'Daily Sales', 'Pondo Amount', 'Discrepancy', 'Remarks', 'Login Account']
     };
 
     viewRecordsBtns.forEach(btn => {
