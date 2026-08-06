@@ -1241,6 +1241,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminSalaryContent = document.getElementById('admin-salary-expenses-content');
     const adminMonthlyContent = document.getElementById('admin-monthly-income-content');
     const adminSurveyContent = document.getElementById('admin-survey-report-content');
+    const adminAttendanceReportContent = document.getElementById('admin-attendance-report-content');
     
     const reportAdminLoginSection = document.getElementById('report-admin-login-section');
     const reportBackBtns = document.querySelectorAll('.report-back-btn');
@@ -1259,6 +1260,7 @@ document.addEventListener('DOMContentLoaded', () => {
         adminSalaryContent.classList.add('hidden');
         adminMonthlyContent.classList.add('hidden');
         adminSurveyContent.classList.add('hidden');
+        adminAttendanceReportContent.classList.add('hidden');
         reportAdminLoginSection.classList.add('hidden');
     }
 
@@ -1386,6 +1388,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('btn-admin-audit-report').style.display = isAuditor ? 'none' : '';
                     document.getElementById('btn-admin-salary-expenses').style.display = isAuditor ? 'none' : '';
                     document.getElementById('btn-admin-survey-report').style.display = isAuditor ? 'none' : '';
+                    document.getElementById('btn-admin-attendance-report').style.display = isAuditor ? 'none' : '';
                     document.getElementById('btn-admin-monthly-income').style.display = isAuditor ? 'none' : '';
                 } else {
                     // Valid credentials, but not allowed
@@ -1456,6 +1459,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-admin-survey-report').addEventListener('click', () => {
         hideAllReportSections();
         adminSurveyContent.classList.remove('hidden');
+    });
+
+    document.getElementById('btn-admin-attendance-report').addEventListener('click', () => {
+        hideAllReportSections();
+        adminAttendanceReportContent.classList.remove('hidden');
+        
+        // Auto-set current month range
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        document.getElementById('report-attendance-start-date').value = firstDay.toISOString().split('T')[0];
+        document.getElementById('report-attendance-end-date').value = lastDay.toISOString().split('T')[0];
     });
 
     document.getElementById('btn-admin-monthly-income').addEventListener('click', () => {
@@ -1959,7 +1974,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAttendanceTable(rows) {
         if (!attendanceTableBody) return;
         if (!rows || rows.length === 0) {
-            attendanceTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">No attendance records yet today.</td></tr>';
+            attendanceTableBody.innerHTML = '<tr><td colspan="7" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">No attendance records yet today.</td></tr>';
             return;
         }
         attendanceTableBody.innerHTML = rows.map(row => {
@@ -1969,14 +1984,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const timeOut = row[5] || '--';
             const hours = row[6] || '--';
             const status = row[7] || '';
+            const late = row[9] === undefined || row[9] === null || row[9] === '' ? '0' : row[9];
             const statusColor = status === 'Completed' ? '#34d399' : '#fbbf24';
+            const lateColor = late !== '0' && late !== 0 ? '#ef4444' : 'var(--text-muted)';
             return `<tr style="border-bottom: 1px solid var(--glass-border);">
-                <td style="padding: 8px 10px;">${employee}</td>
-                <td style="padding: 8px 10px;">${branch}</td>
-                <td style="padding: 8px 10px;">${timeIn}</td>
-                <td style="padding: 8px 10px;">${timeOut}</td>
-                <td style="padding: 8px 10px;">${hours}</td>
-                <td style="padding: 8px 10px; color: ${statusColor}; font-weight: 600;">${status}</td>
+                <td style="padding: 8px 7px;">${employee}</td>
+                <td style="padding: 8px 7px;">${branch}</td>
+                <td style="padding: 8px 7px;">${timeIn}</td>
+                <td style="padding: 8px 7px;">${timeOut}</td>
+                <td style="padding: 8px 7px;">${hours}</td>
+                <td style="padding: 8px 7px; color: ${lateColor};">${late}</td>
+                <td style="padding: 8px 7px; color: ${statusColor}; font-weight: 600;">${status}</td>
             </tr>`;
         }).join('');
     }
@@ -2081,7 +2099,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!tbody) return;
         
         if (!rows || rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">No attendance records found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 20px;">No attendance records found.</td></tr>';
             return;
         }
         
@@ -2096,9 +2114,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const hours = row[6] || '--';
             const status = row[7] || '';
             const otHours = row[8] || '0';
-            const rowIndex = row[9];
+            const late = row[9] === undefined || row[9] === null || row[9] === '' ? '0' : row[9];
+            const rowIndex = row[10];
             
             const statusColor = status === 'Completed' ? '#34d399' : '#fbbf24';
+            const lateColor = late !== '0' && late !== 0 ? '#ef4444' : 'var(--text-muted)';
             
             return `
                 <tr>
@@ -2108,6 +2128,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td>${timeIn}</td>
                     <td>${timeOut}</td>
                     <td style="font-weight: 600;">${hours}</td>
+                    <td style="color: ${lateColor};">${late}</td>
                     <td style="font-weight: 600;">${otHours}</td>
                     <td><span style="background: rgba(255,255,255,0.1); color: ${statusColor}; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500;">${status}</span></td>
                     <td>
@@ -2125,14 +2146,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const toVal = document.getElementById('attendanceFilterTo').value;
         
         let filtered = allAttendanceData;
-        if (fromVal && toVal) {
+        if (fromVal || toVal) {
+            const fromDate = fromVal ? new Date(fromVal).setHours(0,0,0,0) : null;
+            const toDate = toVal ? new Date(toVal).setHours(23,59,59,999) : null;
+            
             filtered = allAttendanceData.filter(row => {
-                const rowDate = row[1] || '';
-                return rowDate >= fromVal && rowDate <= toVal;
-            });
-        } else if (fromVal) {
-            filtered = allAttendanceData.filter(row => {
-                return (row[1] || '') >= fromVal;
+                if (!row[1]) return false;
+                const rowDate = new Date(row[1]).getTime();
+                if (fromDate && rowDate < fromDate) return false;
+                if (toDate && rowDate > toDate) return false;
+                return true;
             });
         }
         
@@ -4461,6 +4484,243 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- Admin Attendance Report Logic ---
+    const generateAttendanceReportForm = document.getElementById('generate-attendance-report-form');
+    if (generateAttendanceReportForm) {
+        generateAttendanceReportForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const startDate = document.getElementById('report-attendance-start-date').value;
+            const endDate = document.getElementById('report-attendance-end-date').value;
+            const branch = document.getElementById('report-attendance-branch').value;
+            
+            const submitBtn = generateAttendanceReportForm.querySelector('.submit-btn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            const tbody = document.getElementById('attendance-report-tbody');
+            
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            submitBtn.disabled = true;
+            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Generating report...</td></tr>';
+            
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ action: 'getAllAttendance' })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    const data = result.data || [];
+                    const filtered = data.filter(row => {
+                        if (!row[1]) return false; // Date is col 1
+                        const rowDateStr = new Date(row[1]).toISOString().split('T')[0];
+                        const rowBranch = row[3] || ''; // Branch is col 3
+                        
+                        const isDateMatch = rowDateStr >= startDate && rowDateStr <= endDate;
+                        const isBranchMatch = (branch === 'All') || (rowBranch === branch);
+                        return isDateMatch && isBranchMatch;
+                    });
+                    
+                    filtered.sort((a, b) => new Date(b[1]) - new Date(a[1]));
+                    
+                    if (filtered.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No attendance records found for this period.</td></tr>';
+                    } else {
+                        tbody.innerHTML = '';
+                        filtered.forEach(row => {
+                            const dateStr = row[1] ? new Date(row[1]).toISOString().split('T')[0] : '';
+                            const emp = row[2] || '';
+                            const b = row[3] || '';
+                            const tIn = row[4] || '';
+                            const tOut = row[5] || '';
+                            const hrs = row[6] || '';
+                            const status = row[7] || '';
+                            const ot = row[8] || '0';
+                            const late = row[9] || '0'; // col 9 is Late
+                            
+                            const tr = document.createElement('tr');
+                            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                            tr.innerHTML = `
+                                <td style="padding: 12px;">${dateStr}</td>
+                                <td style="padding: 12px;">${emp}</td>
+                                <td style="padding: 12px; color: var(--text-muted); font-size: 0.9em;">${b}</td>
+                                <td style="padding: 12px;">${tIn}</td>
+                                <td style="padding: 12px;">${tOut}</td>
+                                <td style="padding: 12px; font-weight: 600;">${hrs}</td>
+                                <td style="padding: 12px; color: ${late !== '0' && late !== '' ? 'var(--error)' : 'var(--text-muted)'};">${late}</td>
+                                <td style="padding: 12px; color: ${ot !== '0' && ot !== '' ? 'var(--primary)' : 'var(--text-muted)'};">${ot}</td>
+                                <td style="padding: 12px;"><span style="background: rgba(34, 197, 94, 0.1); color: #4ade80; padding: 4px 8px; border-radius: 4px; font-size: 0.8em;">${status}</span></td>
+                            `;
+                            tbody.appendChild(tr);
+                        });
+                    }
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--error);">Failed to load records.</td></tr>';
+                }
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--error);">Network error. Try again.</td></tr>';
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    const btnPrintAttendance = document.getElementById('btn-print-attendance-report');
+    if (btnPrintAttendance) {
+        btnPrintAttendance.addEventListener('click', () => {
+            const startDate = document.getElementById('report-attendance-start-date').value;
+            const endDate = document.getElementById('report-attendance-end-date').value;
+            const branch = document.getElementById('report-attendance-branch').value;
+            const tbodyHTML = document.getElementById('attendance-report-tbody').innerHTML;
+
+            if (tbodyHTML.includes('Select a date') || tbodyHTML.includes('No attendance records found')) {
+                alert('Please generate a report first.');
+                return;
+            }
+
+            const btnText = btnPrintAttendance.querySelector('.btn-text');
+            const originalText = btnText.innerHTML;
+            btnText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            btnPrintAttendance.disabled = true;
+
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating PDF Report, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            try {
+                let htmlString = `
+                    <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 1000px; margin: 0 auto;">
+                        <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                            <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">Attendance Report</h2>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Branch:</strong> ${branch}</p>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
+                        </div>
+                        
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; margin-top: 20px;">
+                            <thead>
+                                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                    <th style="padding: 8px; color: #334155;">Date</th>
+                                    <th style="padding: 8px; color: #334155;">Employee</th>
+                                    <th style="padding: 8px; color: #334155;">Branch</th>
+                                    <th style="padding: 8px; color: #334155;">Time In</th>
+                                    <th style="padding: 8px; color: #334155;">Time Out</th>
+                                    <th style="padding: 8px; color: #334155;">Hours</th>
+                                    <th style="padding: 8px; color: #334155;">Late</th>
+                                    <th style="padding: 8px; color: #334155;">OT Hours</th>
+                                    <th style="padding: 8px; color: #334155;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${tbodyHTML.replace(/rgba\(255,255,255,0\.05\)/g, '#e2e8f0').replace(/color:\s*var\(--text-muted\)/g, 'color: #64748b')}
+                            </tbody>
+                        </table>
+                        <div style="margin-top: 30px; text-align: right; font-size: 11px; color: #94a3b8;">
+                            <p>Generated on ${new Date().toLocaleString()}</p>
+                        </div>
+                    </div>
+                `;
+
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = '1000px';
+                document.body.appendChild(hiddenDiv);
+
+                const opt = {
+                    margin:       0.5,
+                    filename:     `Attendance_Report_${startDate}_to_${endDate}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' }
+                };
+
+                const elementToPrint = hiddenDiv.firstElementChild;
+
+                setTimeout(() => {
+                    html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function(pdfUrl) {
+                        if (newTab) {
+                            newTab.location.href = pdfUrl;
+                        }
+                        document.body.removeChild(hiddenDiv);
+                        btnText.innerHTML = originalText;
+                        btnPrintAttendance.disabled = false;
+                    }).catch(err => {
+                        console.error(err);
+                        if (newTab) newTab.close();
+                        document.body.removeChild(hiddenDiv);
+                        btnText.innerHTML = originalText;
+                        btnPrintAttendance.disabled = false;
+                        alert('Failed to generate PDF.');
+                    });
+                }, 500);
+            } catch (error) {
+                console.error(error);
+                if (newTab) newTab.close();
+                btnText.innerHTML = originalText;
+                btnPrintAttendance.disabled = false;
+                alert('Failed to generate PDF.');
+            }
+        });
+    }
+
+    const btnExportAttendanceExcel = document.getElementById('btn-export-attendance-excel');
+    if (btnExportAttendanceExcel) {
+        btnExportAttendanceExcel.addEventListener('click', () => {
+            const table = document.getElementById('attendance-report-table');
+            if (!table) return;
+            const tbodyHTML = document.getElementById('attendance-report-tbody').innerHTML;
+            if (tbodyHTML.includes('Select a date') || tbodyHTML.includes('No attendance records found')) {
+                alert('Please generate a report first.');
+                return;
+            }
+            
+            const startDate = document.getElementById('report-attendance-start-date').value;
+            const endDate = document.getElementById('report-attendance-end-date').value;
+            
+            try {
+                const wb = XLSX.utils.table_to_book(table, {sheet: "Attendance"});
+                XLSX.writeFile(wb, `Attendance_Report_${startDate}_to_${endDate}.xlsx`);
+            } catch (error) {
+                console.error(error);
+                alert('Failed to export to Excel.');
+            }
+        });
+    }
+
+    let attendanceReportSortAsc = false;
+    const sortReportAttendanceDate = document.getElementById('sort-report-attendance-date');
+    if (sortReportAttendanceDate) {
+        sortReportAttendanceDate.addEventListener('click', () => {
+            const tbody = document.getElementById('attendance-report-tbody');
+            if (!tbody || tbody.innerHTML.includes('Select a date') || tbody.innerHTML.includes('No attendance records found') || tbody.innerHTML.includes('fa-spinner')) return;
+            
+            attendanceReportSortAsc = !attendanceReportSortAsc;
+            const icon = document.getElementById('sort-report-attendance-date-icon');
+            if (icon) {
+                icon.className = attendanceReportSortAsc ? 'fas fa-sort-up' : 'fas fa-sort-down';
+            }
+            
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            rows.sort((a, b) => {
+                const dateA = new Date(a.cells[0].textContent.trim());
+                const dateB = new Date(b.cells[0].textContent.trim());
+                return attendanceReportSortAsc ? dateA - dateB : dateB - dateA;
+            });
+            
+            tbody.innerHTML = '';
+            rows.forEach(row => tbody.appendChild(row));
+        });
+    }
+
     // Validation Form Submit Handler
     const valForm = document.getElementById('warranty-validation-form');
     if (valForm) {
@@ -4668,6 +4928,50 @@ document.addEventListener("DOMContentLoaded", function() {
                 isDragging = false;
                 surveyContent.style.cursor = '';
                 surveyHeader.style.cursor = 'move';
+            }
+        });
+    }
+});
+
+
+// Make Admin Attendance Report Draggable
+document.addEventListener("DOMContentLoaded", function() {
+    const attContent = document.getElementById("admin-attendance-report-content");
+    const attHeader = document.getElementById("admin-attendance-report-header");
+
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    if (attHeader && attContent) {
+        attHeader.addEventListener("mousedown", (e) => {
+            isDragging = true;
+            offsetX = e.clientX - attContent.getBoundingClientRect().left;
+            offsetY = e.clientY - attContent.getBoundingClientRect().top;
+            
+            attContent.style.transform = 'none';
+            attContent.style.left = e.clientX - offsetX + 'px';
+            attContent.style.top = e.clientY - offsetY + 'px';
+            
+            attContent.style.cursor = 'grabbing';
+            attHeader.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+            
+            attContent.style.left = newX + "px";
+            attContent.style.top = newY + "px";
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                attContent.style.cursor = '';
+                attHeader.style.cursor = 'move';
             }
         });
     }

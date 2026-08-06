@@ -152,15 +152,16 @@
                     </div>
                 </div>
                 <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 0.82em;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.78em;">
                         <thead>
                             <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
-                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Employee</th>
-                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Branch</th>
-                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Time In</th>
-                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Time Out</th>
-                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Hours</th>
-                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.78em; letter-spacing: 0.4px;">Status</th>
+                                <th style="text-align: left; padding: 9px 7px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Employee</th>
+                                <th style="text-align: left; padding: 9px 7px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Branch</th>
+                                <th style="text-align: left; padding: 9px 7px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Time In</th>
+                                <th style="text-align: left; padding: 9px 7px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Time Out</th>
+                                <th style="text-align: left; padding: 9px 7px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Hours</th>
+                                <th style="text-align: left; padding: 9px 7px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Late</th>
+                                <th style="text-align: left; padding: 9px 7px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Status</th>
                             </tr>
                         </thead>
                         <tbody id="attendance-table-body">
@@ -907,6 +908,14 @@
                         <p>View daily survey reports</p>
                     </div>
                 </button>
+
+                <button class="menu-action-btn" id="btn-admin-attendance-report">
+                    <div class="btn-icon">📅</div>
+                    <div class="btn-text">
+                        <h3>Attendance Report</h3>
+                        <p>View daily employee logs</p>
+                    </div>
+                </button>
             </div>
 
             <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 25px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Main Reports</button>
@@ -1616,22 +1625,21 @@
     </div>
 
     <!-- MGH Survey Report Container -->
-    <div class="container hidden" id="admin-survey-report-content" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
-        <header id="admin-survey-report-header" style="cursor: move; user-select: none; display: flex; justify-content: space-between; align-items: center;">
+    <main class="glass-panel hidden" id="admin-survey-report-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 850px; max-width: 95vw; max-height: 90vh; overflow-y: auto; resize: both; z-index: 1000; padding: 25px; margin: 0; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+        <div id="admin-survey-report-header" style="cursor: move; user-select: none; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px;">
             <div>
-                <h1>MGH Survey Report</h1>
-                <p>View daily survey reports</p>
+                <h2 style="margin: 0; font-size: 1.5em; font-weight: 600; display: flex; align-items: center;"><i class="fas fa-clipboard-list" style="margin-right: 10px; color: var(--text-muted); font-size: 0.7em;"></i> MGH Survey Report</h2>
+                <p style="margin: 5px 0 0 28px; font-size: 0.85em; color: var(--text-muted);">View daily survey reports (Drag here to move)</p>
             </div>
             <div onmousedown="event.stopPropagation()" style="display: flex; gap: 10px;">
-                <button id="btn-print-survey-report" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px;">
+                <button id="btn-print-survey-report" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer; color: white;">
                     <span class="btn-text"><i class="fas fa-file-pdf" style="margin-right: 5px;"></i> Print Report</span>
                 </button>
-                <button class="report-back-btn" data-target="admin-reports-dashboard" style="color: var(--primary); background: none; border: none; cursor: pointer; padding: 5px 10px; font-weight: bold;">← Back to Dashboard</button>
+                <button class="report-back-btn" data-target="admin-reports-dashboard" style="background: rgba(255,255,255,0.1); border: none; padding: 6px 12px; border-radius: 6px; color: var(--text-muted); cursor: pointer;"><i class="fas fa-times"></i> Close</button>
             </div>
-        </header>
+        </div>
 
-        <main class="glass-panel" style="margin-top: 20px;">
-            <div class="report-section" id="survey-print-area">
+        <div class="report-section" id="survey-print-area">
                 <form id="generate-survey-report-form" style="display: flex; gap: 15px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 130px;">
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Start Date</label>
@@ -1679,9 +1687,74 @@
                     </table>
                 </div>
             </div>
-        </main>
+    </main>
     </div>
-    </div>
+
+    <!-- Admin Attendance Report Container -->
+    <main class="glass-panel hidden" id="admin-attendance-report-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 850px; max-width: 95vw; max-height: 90vh; overflow-y: auto; resize: both; z-index: 1000; padding: 25px; margin: 0; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+        <div id="admin-attendance-report-header" style="cursor: move; user-select: none; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px;">
+            <div>
+                <h2 style="margin: 0; font-size: 1.5em; font-weight: 600; display: flex; align-items: center;"><i class="fas fa-calendar-check" style="margin-right: 10px; color: var(--text-muted); font-size: 0.7em;"></i> Attendance Report</h2>
+                <p style="margin: 5px 0 0 28px; font-size: 0.85em; color: var(--text-muted);">Generate, view, and export attendance records</p>
+            </div>
+            <div onmousedown="event.stopPropagation()" style="display: flex; gap: 10px;">
+                <button id="btn-export-attendance-excel" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5); border-radius: 6px; cursor: pointer; color: #4ade80;">
+                    <span class="btn-text"><i class="fas fa-file-excel" style="margin-right: 5px;"></i> Export Excel</span>
+                </button>
+                <button id="btn-print-attendance-report" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer; color: white;">
+                    <span class="btn-text"><i class="fas fa-file-pdf" style="margin-right: 5px;"></i> Print PDF</span>
+                </button>
+                <button class="report-back-btn" data-target="admin-reports-dashboard" style="background: rgba(255,255,255,0.1); border: none; padding: 6px 12px; border-radius: 6px; color: var(--text-muted); cursor: pointer;"><i class="fas fa-times"></i> Close</button>
+            </div>
+        </div>
+
+        <div class="report-section" id="attendance-print-area">
+            <form id="generate-attendance-report-form" style="display: flex; gap: 15px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Start Date</label>
+                    <input type="date" id="report-attendance-start-date" required style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                </div>
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">End Date</label>
+                    <input type="date" id="report-attendance-end-date" required style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                </div>
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Branch</label>
+                    <select id="report-attendance-branch" style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                        <option value="All">All Branches</option>
+                        <option value="MarvsPCStufz">MarvsPCStufz</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                    </select>
+                </div>
+                <button type="submit" class="submit-btn" style="margin: 0; padding: 10px 20px; flex: 0 0 auto; width: auto; height: 42px;">
+                    <span class="btn-text">Generate</span>
+                    <div class="spinner hidden" style="width: 16px; height: 16px; border-width: 2px;"></div>
+                </button>
+            </form>
+
+            <div style="overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
+                <table id="attendance-report-table" style="width: 100%; min-width: 900px; white-space: nowrap; border-collapse: collapse; font-size: 0.9em; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted);">
+                            <th id="sort-report-attendance-date" style="padding: 12px; font-weight: 500; cursor: pointer; user-select: none;">Date <i class="fas fa-sort" id="sort-report-attendance-date-icon"></i></th>
+                            <th style="padding: 12px; font-weight: 500;">Employee</th>
+                            <th style="padding: 12px; font-weight: 500;">Branch</th>
+                            <th style="padding: 12px; font-weight: 500;">Time In</th>
+                            <th style="padding: 12px; font-weight: 500;">Time Out</th>
+                            <th style="padding: 12px; font-weight: 500;">Hours</th>
+                            <th style="padding: 12px; font-weight: 500;">Late</th>
+                            <th style="padding: 12px; font-weight: 500;">OT Hours</th>
+                            <th style="padding: 12px; font-weight: 500;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendance-report-tbody">
+                        <tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">Select a date to generate report.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
 
     <!-- Handover Container -->
     <div class="container hidden" id="handover-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
