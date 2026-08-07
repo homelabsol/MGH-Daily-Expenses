@@ -4534,10 +4534,51 @@ document.addEventListener('DOMContentLoaded', () => {
                             const b = row[3] || '';
                             const tIn = row[4] || '';
                             const tOut = row[5] || '';
-                            const hrs = row[6] || '';
+                            
+                            let calcHrs = row[6] || '';
                             const status = row[7] || '';
                             const ot = row[8] || '0';
-                            const late = row[9] || '0'; // col 9 is Late
+                            let calcLate = row[9] || '0'; // col 9 is Late
+                            
+                            // Dynamically recalculate Hours and Late based on 9AM rule for Report View
+                            if (tIn && tOut) {
+                                const parseTime = (timeStr) => {
+                                    const parts = timeStr.split(':');
+                                    if (parts.length >= 2) {
+                                        const d = new Date();
+                                        d.setHours(parseInt(parts[0]), parseInt(parts[1]), parseInt(parts[2] || 0), 0);
+                                        return d;
+                                    }
+                                    return null;
+                                };
+
+                                const inDate = parseTime(tIn);
+                                const outDate = parseTime(tOut);
+                                
+                                if (inDate && outDate) {
+                                    const nineAM = new Date(inDate);
+                                    nineAM.setHours(9, 0, 0, 0);
+                                    
+                                    // Late starts at 9AM
+                                    if (inDate > nineAM) {
+                                        const lateMs = inDate.getTime() - nineAM.getTime();
+                                        const lateMins = Math.floor(lateMs / 60000);
+                                        calcLate = lateMins > 0 ? lateMins + 'mins' : '0';
+                                    } else {
+                                        calcLate = '0';
+                                    }
+                                    
+                                    // Total hours calculation capped at 9AM start
+                                    const effectiveIn = inDate < nineAM ? nineAM : inDate;
+                                    if (outDate > effectiveIn) {
+                                        const diffMs = outDate.getTime() - effectiveIn.getTime();
+                                        const diffHrs = (diffMs / (1000 * 60 * 60)).toFixed(2);
+                                        calcHrs = parseFloat(diffHrs).toString();
+                                    } else {
+                                        calcHrs = '0';
+                                    }
+                                }
+                            }
                             
                             const tr = document.createElement('tr');
                             tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
@@ -4547,8 +4588,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <td style="padding: 12px; color: var(--text-muted); font-size: 0.9em;">${b}</td>
                                 <td style="padding: 12px;">${tIn}</td>
                                 <td style="padding: 12px;">${tOut}</td>
-                                <td style="padding: 12px; font-weight: 600;">${hrs}</td>
-                                <td style="padding: 12px; color: ${late !== '0' && late !== '' ? 'var(--error)' : 'var(--text-muted)'};">${late}</td>
+                                <td style="padding: 12px; font-weight: 600;">${calcHrs}</td>
+                                <td style="padding: 12px; color: ${calcLate !== '0' && calcLate !== '' ? 'var(--error)' : 'var(--text-muted)'};">${calcLate}</td>
                                 <td style="padding: 12px; color: ${ot !== '0' && ot !== '' ? 'var(--primary)' : 'var(--text-muted)'};">${ot}</td>
                                 <td style="padding: 12px;"><span style="background: rgba(34, 197, 94, 0.1); color: #4ade80; padding: 4px 8px; border-radius: 4px; font-size: 0.8em;">${status}</span></td>
                             `;
