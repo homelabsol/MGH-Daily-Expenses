@@ -213,6 +213,194 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ======= MarvsPCStufz Drag & Drop Categorizer =======
+    const btnMarvspcCategorize = document.getElementById('btn-marvspc-categorize');
+    if (btnMarvspcCategorize) {
+        btnMarvspcCategorize.addEventListener('click', () => {
+            hideAllContainers();
+            const categorizeContainer = document.getElementById('marvspc-categorize-container');
+            if (categorizeContainer) categorizeContainer.classList.remove('hidden');
+            const now = new Date();
+            const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+            document.getElementById('categorize-start-date').valueAsDate = firstDay;
+            document.getElementById('categorize-end-date').valueAsDate = now;
+        });
+    }
+
+    let categorizeRecords = [];
+
+    function createCategorizeCard(row) {
+        const rowIndex = row[row.length - 1];
+        let dateStr = row[0] || '';
+        if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+        const category = row[1] || '';
+        const description = row[2] || '';
+        const amount = parseFloat(row[3]) || 0;
+
+        const card = document.createElement('div');
+        card.className = 'categorize-card';
+        card.draggable = true;
+        card.dataset.rowIndex = rowIndex;
+        card.style.cssText = 'background: rgba(30,41,59,0.9); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px 10px; cursor: grab; font-size: 0.8em; max-width: 220px;';
+        card.innerHTML = `
+            <div style="color: var(--text-muted); font-size: 0.85em;">${dateStr}</div>
+            <div style="color: #e2e8f0; font-weight: 500; margin: 2px 0; word-break: break-word;">${description || '(no description)'}</div>
+            <div style="color: #10b981; font-weight: 600;">₱${formatCurrency(amount)}</div>
+            ${category ? `<div style="color: #a78bfa; font-size: 0.8em; margin-top: 2px;"><i class="fas fa-tag"></i> ${category}</div>` : ''}
+        `;
+
+        card.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', rowIndex);
+            card.style.opacity = '0.4';
+        });
+        card.addEventListener('dragend', () => {
+            card.style.opacity = '1';
+        });
+
+        return card;
+    }
+
+    const btnCategorizeLoad = document.getElementById('btn-categorize-load');
+    if (btnCategorizeLoad) {
+        btnCategorizeLoad.addEventListener('click', async () => {
+            const startDate = document.getElementById('categorize-start-date').value;
+            const endDate = document.getElementById('categorize-end-date').value;
+            const pool = document.getElementById('categorize-pool');
+
+            if (!startDate || !endDate) {
+                alert('Please select both Start and End Dates.');
+                return;
+            }
+
+            const btnText = btnCategorizeLoad.querySelector('.btn-text');
+            const spinner = btnCategorizeLoad.querySelector('.spinner');
+            btnCategorizeLoad.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+
+            document.querySelectorAll('.categorize-dropzone-items').forEach(z => z.innerHTML = '');
+            pool.innerHTML = '<span style="color: var(--text-muted); font-size: 0.85em;">Loading...</span>';
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'getExpenseRecords',
+                        sheetName: 'MarvsPCStufz Expenses',
+                        startDate: startDate,
+                        endDate: endDate,
+                        branch: 'All'
+                    })
+                });
+                const result = await response.json();
+
+                pool.innerHTML = '';
+
+                if (result.status === 'success' && result.data && result.data.length > 0) {
+                    categorizeRecords = result.data;
+                    categorizeRecords.forEach(row => {
+                        pool.appendChild(createCategorizeCard(row));
+                    });
+                } else {
+                    pool.innerHTML = '<span style="color: var(--text-muted); font-size: 0.85em;">No expenses found for this date range.</span>';
+                }
+            } catch (error) {
+                console.error('Error loading categorize records:', error);
+                pool.innerHTML = '<span style="color: #ef4444; font-size: 0.85em;">Error loading expenses. Please try again.</span>';
+            } finally {
+                btnCategorizeLoad.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    // Allow dropping back into the pool (uncategorize)
+    const categorizePool = document.getElementById('categorize-pool');
+    if (categorizePool) {
+        categorizePool.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+        categorizePool.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            const rowIndex = e.dataTransfer.getData('text/plain');
+            const card = document.querySelector(`.categorize-card[data-row-index="${rowIndex}"]`);
+            if (card) categorizePool.appendChild(card);
+        });
+    }
+
+    document.querySelectorAll('.categorize-dropzone').forEach(zone => {
+        zone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            zone.style.background = 'rgba(139, 92, 246, 0.1)';
+        });
+        zone.addEventListener('dragleave', () => {
+            zone.style.background = 'rgba(255,255,255,0.02)';
+        });
+        zone.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            zone.style.background = 'rgba(255,255,255,0.02)';
+
+            const rowIndex = e.dataTransfer.getData('text/plain');
+            const card = document.querySelector(`.categorize-card[data-row-index="${rowIndex}"]`);
+            if (!card) return;
+
+            const newCategory = zone.getAttribute('data-category');
+            const record = categorizeRecords.find(r => String(r[r.length - 1]) === String(rowIndex));
+            if (!record) return;
+
+            const itemsContainer = zone.querySelector('.categorize-dropzone-items');
+            itemsContainer.appendChild(card);
+            card.style.opacity = '0.5';
+            card.style.pointerEvents = 'none';
+
+            try {
+                let dateStr = record[0] || '';
+                if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+                const updatedData = [dateStr, newCategory, record[2] || '', record[3] || '', record[4] || ''];
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'updateExpenseRecord',
+                        sheetName: 'MarvsPCStufz Expenses',
+                        rowIndex: rowIndex,
+                        updatedData: updatedData,
+                        encodedBy: sessionStorage.getItem('loggedInUser')
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    record[1] = newCategory;
+                    card.style.opacity = '1';
+                    card.style.pointerEvents = 'auto';
+                    const catBadge = card.querySelector('div:last-child');
+                    const badgeHtml = `<div style="color: #a78bfa; font-size: 0.8em; margin-top: 2px;"><i class="fas fa-tag"></i> ${newCategory}</div>`;
+                    if (catBadge && catBadge.innerHTML.includes('fa-tag')) {
+                        catBadge.outerHTML = badgeHtml;
+                    } else {
+                        card.insertAdjacentHTML('beforeend', badgeHtml);
+                    }
+                    showToast(`Moved to ${newCategory}`, 'success', 1800);
+                } else {
+                    showToast('Error saving category: ' + (result.message || 'Unknown error'), 'error');
+                    categorizePool.appendChild(card);
+                    card.style.opacity = '1';
+                    card.style.pointerEvents = 'auto';
+                }
+            } catch (error) {
+                console.error('Error updating category:', error);
+                showToast('Network error while saving category.', 'error');
+                categorizePool.appendChild(card);
+                card.style.opacity = '1';
+                card.style.pointerEvents = 'auto';
+            }
+        });
+    });
+
     menuAdminBtn.addEventListener('click', () => {
         hideAllContainers();
         adminContainer.classList.remove('hidden');
@@ -5787,6 +5975,16 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
         
+        if (sheet === 'MarvsPCStufz Expenses') {
+            const selectedCategory = document.getElementById('edit-category-filter') ? document.getElementById('edit-category-filter').value : 'All';
+            if (selectedCategory && selectedCategory !== 'All') {
+                const categoryColIndex = (sheetColumns[sheet] || []).indexOf('Category');
+                if (categoryColIndex !== -1) {
+                    filteredData = filteredData.filter(row => row[categoryColIndex] === selectedCategory);
+                }
+            }
+        }
+
         if (sheet === 'Warranty Items') {
             const warrantyNoFilter = document.getElementById('edit-warranty-no-filter') ? document.getElementById('edit-warranty-no-filter').value.trim().toLowerCase() : '';
             if (warrantyNoFilter) {

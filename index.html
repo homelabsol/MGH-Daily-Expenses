@@ -328,9 +328,12 @@
         </header>
 
         <main class="glass-panel" style="margin-top: 20px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 8px; flex-wrap: wrap;">
                 <h2 style="margin: 0;">Add Expense</h2>
-                <button type="button" class="view-records-btn" data-sheet="MarvsPCStufz Expenses" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View & Edit Records"><i class="fas fa-list-alt"></i> View</button>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" id="btn-marvspc-categorize" style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.4); color: #a78bfa; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="Drag & Drop Categorizer"><i class="fas fa-layer-group"></i> Categorize</button>
+                    <button type="button" class="view-records-btn" data-sheet="MarvsPCStufz Expenses" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View & Edit Records"><i class="fas fa-list-alt"></i> View</button>
+                </div>
             </div>
             <form id="marvspc-expense-form">
                 <input type="hidden" id="marvspc-row-index" name="rowIndex" value="">
@@ -371,6 +374,77 @@
                 </button>
                 <div id="marvspc-status-message" class="hidden"></div>
             </form>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Categorizer Container (Drag & Drop) -->
+    <div class="container hidden" id="marvspc-categorize-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; max-height: 90vh; overflow-y: auto; width: 95%; max-width: 1000px;">
+        <header style="user-select: none;">
+            <h1>Categorize Expenses</h1>
+            <p>Drag each expense card into its category box</p>
+            <button type="button" class="back-btn" data-target="marvspc-expenses-container"><i class="fas fa-arrow-left"></i> Back to Expenses</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="categorize-start-date">Start Date</label>
+                    <input type="date" id="categorize-start-date">
+                </div>
+                <div class="form-group">
+                    <label for="categorize-end-date">End Date</label>
+                    <input type="date" id="categorize-end-date">
+                </div>
+            </div>
+            <button type="button" id="btn-categorize-load" class="submit-btn">
+                <span class="btn-text">Load Expenses</span>
+                <div class="spinner hidden"></div>
+            </button>
+
+            <h3 style="margin-top: 20px; margin-bottom: 8px; font-size: 0.95em; color: var(--text-muted);">Unsorted / Drag from here</h3>
+            <div id="categorize-pool" style="display: flex; flex-wrap: wrap; gap: 8px; min-height: 60px; padding: 10px; border: 1px dashed var(--glass-border); border-radius: 10px; background: rgba(255,255,255,0.02);">
+                <span style="color: var(--text-muted); font-size: 0.85em;">Select a date range and click "Load Expenses" to begin.</span>
+            </div>
+
+            <h3 style="margin-top: 20px; margin-bottom: 8px; font-size: 0.95em; color: var(--text-muted);">Drop into a category</h3>
+            <div id="categorize-dropzones" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                <div class="categorize-dropzone" data-category="Logistics/Shipping" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Logistics/Shipping</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <div class="categorize-dropzone" data-category="Rider Zaldy" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Rider Zaldy</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <div class="categorize-dropzone" data-category="Rider Mark" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Rider Mark</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <div class="categorize-dropzone" data-category="Marketing/Ads" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Marketing/Ads</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <div class="categorize-dropzone" data-category="Supplies" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Supplies</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <div class="categorize-dropzone" data-category="Tools/Equipment" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Tools/Equipment</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <div class="categorize-dropzone" data-category="Labor" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Labor</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <div class="categorize-dropzone" data-category="Food" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Food</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+                <div class="categorize-dropzone" data-category="Boss Expenses" style="min-height: 90px; border: 1px dashed var(--glass-border); border-radius: 10px; padding: 8px; background: rgba(255,255,255,0.02);">
+                    <div style="font-size: 0.8em; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Boss Expenses</div>
+                    <div class="categorize-dropzone-items" style="display: flex; flex-direction: column; gap: 4px;"></div>
+                </div>
+            </div>
         </main>
     </div>
 
