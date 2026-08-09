@@ -1065,8 +1065,106 @@
         </main>
 
         <main class="glass-panel hidden" id="admin-statistics-report-content">
-            <h2>Statistics Report</h2>
-            <p style="color: var(--text-muted); text-align: center; padding: 40px 0;">Coming Soon</p>
+            <h2>Detailed Analytics</h2>
+
+            <form id="analytics-filter-form" class="staff-form-wrapper">
+                <div class="form-group">
+                    <label for="analytics-start-date">Start Date</label>
+                    <input type="date" id="analytics-start-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="analytics-end-date">End Date</label>
+                    <input type="date" id="analytics-end-date" required>
+                </div>
+                <div class="form-group">
+                    <label for="analytics-branch">Branch</label>
+                    <select id="analytics-branch">
+                        <option value="All">All</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                    </select>
+                </div>
+                <button type="button" id="btn-generate-analytics" class="submit-btn">
+                    <span class="btn-text">Generate Analytics</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+
+            <div id="analytics-results-container" class="hidden">
+                <div class="charts-grid" style="grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px;">
+                    <div class="chart-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em;">Total Expenses</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7;">Cash + Gcash Expenses</span>
+                        <span id="analytics-kpi-total-expenses" style="font-size: 1.4em; font-weight: 700; color: #ef4444; margin-top: 4px;">₱0.00</span>
+                    </div>
+                    <div class="chart-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em;">Total Income</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7;">Gcash Receivable + Cash on Hand</span>
+                        <span id="analytics-kpi-total-income" style="font-size: 1.4em; font-weight: 700; color: #10b981; margin-top: 4px;">₱0.00</span>
+                    </div>
+                    <div class="chart-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em;">Net Cash Flow</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7;">Total Income - Total Expenses</span>
+                        <span id="analytics-kpi-net-cashflow" style="font-size: 1.4em; font-weight: 700; color: var(--primary); margin-top: 4px;">₱0.00</span>
+                    </div>
+                    <div class="chart-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em;">Total Transactions</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7;">Row Entries for Gcash and Cash Expenses</span>
+                        <span id="analytics-kpi-total-transactions" style="font-size: 1.4em; font-weight: 700; color: var(--primary); margin-top: 4px;">0</span>
+                    </div>
+                    <div class="chart-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em;">Average per Transaction</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7;">Total Expenses / Total Transactions</span>
+                        <span id="analytics-kpi-avg-transaction" style="font-size: 1.4em; font-weight: 700; color: var(--primary); margin-top: 4px;">₱0.00</span>
+                    </div>
+                    <div class="chart-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em;">Total Customer Traffic</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7;">Daily Survey</span>
+                        <span id="analytics-kpi-total-traffic" style="font-size: 1.4em; font-weight: 700; color: #10b981; margin-top: 4px;">0</span>
+                    </div>
+                    <div class="chart-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em;">Average Daily Customers</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7;">Daily Survey</span>
+                        <span id="analytics-kpi-avg-daily-traffic" style="font-size: 1.4em; font-weight: 700; color: #10b981; margin-top: 4px;">0</span>
+                    </div>
+                    <div class="chart-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em;">Peak Traffic Day</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7;">Daily Survey</span>
+                        <span id="analytics-kpi-peak-traffic" style="font-size: 1.1em; font-weight: 700; color: #10b981; margin-top: 4px;">-</span>
+                    </div>
+                    <div class="chart-card" style="display: flex; flex-direction: column; height: auto; padding: 12px;">
+                        <span style="color: var(--text-muted); font-size: 0.85em; text-align: center;">Top 3 Peak Traffic Days</span>
+                        <span style="color: var(--text-muted); font-size: 0.7em; font-style: italic; opacity: 0.7; text-align: center;">Daily Survey</span>
+                        <div id="analytics-top5-traffic-list" style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-card" style="margin-top: 20px; height: 320px;">
+                    <canvas id="analytics-trend-chart"></canvas>
+                </div>
+
+                <div class="charts-grid" style="margin-top: 20px;">
+                    <div class="chart-card"><canvas id="analytics-category-chart"></canvas></div>
+                    <div class="chart-card"><canvas id="analytics-payment-chart"></canvas></div>
+                </div>
+
+                <div class="table-responsive" style="margin-top: 20px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--glass-border);">
+                                <th style="padding: 12px; text-align: left;">Branch</th>
+                                <th style="padding: 12px; text-align: right;">Total Expenses</th>
+                                <th style="padding: 12px; text-align: right;">Total Income</th>
+                                <th style="padding: 12px; text-align: right;">Customer Traffic</th>
+                            </tr>
+                        </thead>
+                        <tbody id="analytics-branch-table-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             <button class="report-back-btn" data-target="admin-reports-dashboard" style="margin-top: 15px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Dashboard</button>
         </main>
 
@@ -1923,7 +2021,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=5"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

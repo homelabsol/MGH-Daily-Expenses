@@ -2621,6 +2621,280 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- DETAILED ANALYTICS MODULE ---
+    const btnGenerateAnalytics = document.getElementById('btn-generate-analytics');
+    if (btnGenerateAnalytics) {
+        btnGenerateAnalytics.addEventListener('click', async () => {
+            const startDate = document.getElementById('analytics-start-date').value;
+            const endDate = document.getElementById('analytics-end-date').value;
+            const branch = document.getElementById('analytics-branch').value;
+
+            if (!startDate || !endDate) {
+                alert("Please select both Start and End Dates.");
+                return;
+            }
+
+            const btnText = btnGenerateAnalytics.querySelector('.btn-text');
+            const spinner = btnGenerateAnalytics.querySelector('.spinner');
+
+            btnGenerateAnalytics.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+
+            try {
+                const [cashRes, gcashRes, recvRes, cohRes, surveyRes] = await Promise.all([
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Cash Expense', startDate, endDate, branch }) }).then(r => r.json()),
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Gcash Expense', startDate, endDate, branch }) }).then(r => r.json()),
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Gcash Receivable', startDate, endDate, branch }) }).then(r => r.json()),
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Cash on Hand', startDate, endDate, branch }) }).then(r => r.json()),
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Daily Survey', startDate, endDate, branch }) }).then(r => r.json())
+                ]);
+
+                if (cashRes.status === 'success' && gcashRes.status === 'success' && recvRes.status === 'success' && cohRes.status === 'success' && surveyRes.status === 'success') {
+                    function normalizeExpenseRows(rows, dateIdx, branchIdx, amountIdx, categoryIdx, paymentIdx) {
+                        return rows.map(row => {
+                            let dateVal = row[dateIdx] || '';
+                            let dateStr = '';
+                            if (dateVal) {
+                                const d = new Date(dateVal);
+                                dateStr = !isNaN(d) ? d.toISOString().split('T')[0] : String(dateVal).split('T')[0];
+                            }
+                            return {
+                                date: dateStr,
+                                branch: row[branchIdx] || 'Unknown',
+                                amount: parseFloat((row[amountIdx] || 0).toString().replace(/[^0-9.-]+/g, '')) || 0,
+                                category: categoryIdx > -1 ? (row[categoryIdx] || 'Uncategorized') : 'Uncategorized',
+                                payment: paymentIdx > -1 ? (row[paymentIdx] || 'Unknown') : 'Cash'
+                            };
+                        });
+                    }
+
+                    // Expenses = money going out (Cash Expenses + Gcash Expenses)
+                    const combinedExpenses = [
+                        ...normalizeExpenseRows(cashRes.data || [], 1, 0, 3, 2, -1),
+                        ...normalizeExpenseRows(gcashRes.data || [], 1, 0, 4, 2, 3)
+                    ];
+
+                    // Income = money coming in from customers (Gcash Receivable + Cash on Hand)
+                    const combinedIncome = [
+                        ...normalizeExpenseRows(recvRes.data || [], 1, 0, 6, 2, 4),
+                        ...normalizeExpenseRows(cohRes.data || [], 1, 0, 2, -1, -1)
+                    ];
+
+                    let surveyData = surveyRes.data || [];
+                    if (branch && branch !== 'All') {
+                        surveyData = surveyData.filter(row => row[1] === branch);
+                    }
+
+                    renderAnalyticsDashboard(combinedExpenses, combinedIncome, surveyData);
+                } else {
+                    alert('Error fetching analytics data.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Network error while generating analytics.');
+            } finally {
+                btnGenerateAnalytics.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    function renderAnalyticsDashboard(expenses, income, survey) {
+        document.getElementById('analytics-results-container').classList.remove('hidden');
+
+        let totalExpenses = 0;
+        let totalTransactions = 0;
+        let totalIncome = 0;
+        const trendData = {};
+        const branchData = {};
+        const aggExpenses = { category: {}, payment: {} };
+
+        expenses.forEach(row => {
+            const date = row.date;
+            const b = row.branch;
+            const cost = row.amount;
+            const cat = row.category;
+            const pay = row.payment;
+
+            if (date) {
+                totalExpenses += cost;
+                totalTransactions++;
+
+                if (!trendData[date]) trendData[date] = { expenses: 0, traffic: 0 };
+                trendData[date].expenses += cost;
+
+                if (!branchData[b]) branchData[b] = { expenses: 0, income: 0, traffic: 0, trans: 0 };
+                branchData[b].expenses += cost;
+                branchData[b].trans++;
+
+                aggExpenses.category[cat] = (aggExpenses.category[cat] || 0) + cost;
+                aggExpenses.payment[pay] = (aggExpenses.payment[pay] || 0) + cost;
+            }
+        });
+
+        income.forEach(row => {
+            const date = row.date;
+            const b = row.branch;
+            const amt = row.amount;
+
+            if (date) {
+                totalIncome += amt;
+                if (!branchData[b]) branchData[b] = { expenses: 0, income: 0, traffic: 0, trans: 0 };
+                branchData[b].income += amt;
+            }
+        });
+
+        let totalTraffic = 0;
+        let peakTrafficCount = -1;
+        let peakTrafficDay = '-';
+
+        survey.forEach(row => {
+            let date = '';
+            if (row[0]) {
+                const dObj = new Date(row[0]);
+                date = !isNaN(dObj) ? dObj.toISOString().split('T')[0] : String(row[0]).split('T')[0];
+            }
+            const b = row[1] || 'Unknown';
+            const count = parseInt(row[3]) || 0;
+
+            if (date) {
+                totalTraffic += count;
+                if (!trendData[date]) trendData[date] = { expenses: 0, traffic: 0 };
+                trendData[date].traffic += count;
+
+                if (!branchData[b]) branchData[b] = { expenses: 0, income: 0, traffic: 0, trans: 0 };
+                branchData[b].traffic += count;
+            }
+        });
+
+        const uniqueDays = Object.keys(trendData).length;
+        const avgDailyTraffic = uniqueDays > 0 ? Math.round(totalTraffic / uniqueDays) : 0;
+        const avgTransaction = totalTransactions > 0 ? totalExpenses / totalTransactions : 0;
+
+        for (const [date, data] of Object.entries(trendData)) {
+            if (data.traffic > peakTrafficCount) {
+                peakTrafficCount = data.traffic;
+                peakTrafficDay = date;
+            }
+        }
+
+        document.getElementById('analytics-kpi-total-expenses').textContent = `₱${formatCurrency(totalExpenses)}`;
+        document.getElementById('analytics-kpi-total-income').textContent = `₱${formatCurrency(totalIncome)}`;
+        document.getElementById('analytics-kpi-net-cashflow').textContent = `₱${formatCurrency(totalIncome - totalExpenses)}`;
+        document.getElementById('analytics-kpi-total-transactions').textContent = totalTransactions.toLocaleString();
+        document.getElementById('analytics-kpi-avg-transaction').textContent = `₱${formatCurrency(avgTransaction)}`;
+        document.getElementById('analytics-kpi-total-traffic').textContent = totalTraffic.toLocaleString();
+        document.getElementById('analytics-kpi-avg-daily-traffic').textContent = avgDailyTraffic.toLocaleString();
+        document.getElementById('analytics-kpi-peak-traffic').textContent = peakTrafficCount >= 0 ? `${peakTrafficDay} (${peakTrafficCount})` : '-';
+
+        const top5List = document.getElementById('analytics-top5-traffic-list');
+        if (top5List) {
+            const sortedByTraffic = Object.entries(trendData)
+                .map(([date, data]) => ({ date, traffic: data.traffic }))
+                .sort((a, b) => b.traffic - a.traffic)
+                .slice(0, 3);
+
+            if (sortedByTraffic.length === 0) {
+                top5List.innerHTML = `<span style="color: var(--text-muted); font-size: 0.85em; text-align: center;">No data</span>`;
+            } else {
+                top5List.innerHTML = sortedByTraffic.map((item, i) => `
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px; padding: 4px 8px; background: rgba(255,255,255,0.03); border-radius: 6px;">
+                        <span style="display: flex; align-items: center; gap: 6px; font-size: 0.85em; flex-wrap: wrap; min-width: 0;">
+                            <span style="flex-shrink: 0; background: #10b981; color: #0f172a; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75em; font-weight: 700;">${i + 1}</span>
+                            <span style="word-break: break-word;">${item.date}</span>
+                        </span>
+                        <span style="color: #10b981; font-weight: 600; font-size: 0.85em; flex-shrink: 0;">${item.traffic.toLocaleString()}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        if (chartInstances['analytics-trend-chart']) chartInstances['analytics-trend-chart'].destroy();
+        const sortedDates = Object.keys(trendData).sort();
+        const expensesLine = sortedDates.map(d => trendData[d].expenses);
+        const trafficLine = sortedDates.map(d => trendData[d].traffic);
+
+        const ctxTrend = document.getElementById('analytics-trend-chart');
+        if (ctxTrend) {
+            chartInstances['analytics-trend-chart'] = new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: sortedDates,
+                    datasets: [
+                        { label: 'Total Expenses (₱)', data: expensesLine, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', yAxisID: 'y', tension: 0.3, fill: true },
+                        { label: 'Customer Traffic', data: trafficLine, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', yAxisID: 'y1', tension: 0.3, fill: true }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#e2e8f0' } },
+                        title: { display: true, color: '#e2e8f0', text: 'Expenses vs Customer Traffic Trend' }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                        y: { type: 'linear', display: true, position: 'left', ticks: { color: '#ef4444', callback: val => '₱' + val }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                        y1: { type: 'linear', display: true, position: 'right', ticks: { color: '#10b981' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        const sortedCategory = Object.entries(aggExpenses.category).sort((a,b)=>b[1]-a[1]);
+        const finalCategory = {};
+        sortedCategory.forEach(([k,v]) => finalCategory[k] = v);
+
+        const analyticsBaseOpts = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#e2e8f0', padding: 12, boxWidth: 12, font: { size: 11 } } },
+                title: { display: true, color: '#e2e8f0', font: { size: 13, weight: '600' } }
+            }
+        };
+
+        const ctxAC = document.getElementById('analytics-category-chart');
+        if (ctxAC) {
+            if (chartInstances['analytics-category-chart']) chartInstances['analytics-category-chart'].destroy();
+            chartInstances['analytics-category-chart'] = new Chart(ctxAC, {
+                type: 'doughnut',
+                data: { labels: Object.keys(finalCategory).slice(0,8), datasets: [{ data: Object.values(finalCategory).slice(0,8), backgroundColor: ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#6366f1'], borderWidth: 0 }] },
+                options: {...analyticsBaseOpts, cutout: '65%', plugins: {...analyticsBaseOpts.plugins, title: {...analyticsBaseOpts.plugins.title, text: 'By Category (Top 8)' } } }
+            });
+        }
+
+        const ctxAP = document.getElementById('analytics-payment-chart');
+        if (ctxAP) {
+            if (chartInstances['analytics-payment-chart']) chartInstances['analytics-payment-chart'].destroy();
+            chartInstances['analytics-payment-chart'] = new Chart(ctxAP, {
+                type: 'pie',
+                data: { labels: Object.keys(aggExpenses.payment), datasets: [{ data: Object.values(aggExpenses.payment), backgroundColor: ['#10b981','#3b82f6','#f59e0b'], borderWidth: 0 }] },
+                options: {...analyticsBaseOpts, plugins: {...analyticsBaseOpts.plugins, title: {...analyticsBaseOpts.plugins.title, text: 'By Payment Method' } } }
+            });
+        }
+
+        const tbody = document.getElementById('analytics-branch-table-body');
+        tbody.innerHTML = '';
+        if (Object.keys(branchData).length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:15px; color:var(--text-muted);">No data for selected period</td></tr>`;
+        } else {
+            for (const [branchName, data] of Object.entries(branchData)) {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                tr.innerHTML = `
+                    <td style="padding: 12px; font-weight: 500;">${branchName}</td>
+                    <td style="padding: 12px; text-align: right; color: #ef4444;">₱${formatCurrency(data.expenses)}</td>
+                    <td style="padding: 12px; text-align: right; color: #10b981;">₱${formatCurrency(data.income)}</td>
+                    <td style="padding: 12px; text-align: right; color: #3b82f6;">${data.traffic.toLocaleString()}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+        }
+    }
+
     async function generateReport(role, prefix) {
         const startDate = document.getElementById(`${prefix}-start-date`).value;
         const endDate = document.getElementById(`${prefix}-end-date`).value;
