@@ -159,6 +159,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (menuHandoverBtn) {
             menuHandoverBtn.style.display = (store === 'MarvsPCStufz') ? 'none' : '';
         }
+
+        // Hide/Show Item Replacement based on Role (Owner, Manager, Supervisor only)
+        const btnItemReplacementMenu = document.getElementById('btn-item-replacement');
+        if (btnItemReplacementMenu) {
+            const isAllowedItemReplacementRole = (role === 'Owner' || role === 'Manager' || role === 'Supervisor');
+            btnItemReplacementMenu.style.display = isAllowedItemReplacementRole ? '' : 'none';
+        }
+
+        // Hide/Show Warranty Validation based on Role (Owner, Manager, RMA Admin only)
+        const btnWarrantyValidationMenu = document.getElementById('btn-warranty-validation');
+        if (btnWarrantyValidationMenu) {
+            const isAllowedValidationRole = (role === 'Owner' || role === 'Manager' || role === 'RMA Admin');
+            btnWarrantyValidationMenu.style.display = isAllowedValidationRole ? '' : 'none';
+        }
         
         // Hide/Show MarvsPCStufz Button based on Store and Role
         const menuMarvsPcBtnApp = document.getElementById('menu-marvspc-btn');
@@ -1245,6 +1259,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             hideAllContainers();
             document.getElementById('item-replacement-container').classList.remove('hidden');
+            const replStartDateEl = document.getElementById('repl-start-date');
+            const replEndDateEl = document.getElementById('repl-end-date');
+            if (replStartDateEl && !replStartDateEl.value) replStartDateEl.value = '2020-01-01';
+            if (replEndDateEl && !replEndDateEl.value) replEndDateEl.value = '2099-12-31';
+            const loadReplBtn = document.getElementById('btn-load-replacements');
+            if (loadReplBtn) loadReplBtn.click();
         });
     }
 
@@ -6939,7 +6959,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     sheetName: 'Warranty Items',
                     startDate: start,
                     endDate: end,
-                    branch: document.getElementById('repl-branch').value
+                    branch: document.getElementById('repl-branch').value,
+                    noCache: true
                 };
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
@@ -7049,18 +7070,92 @@ document.addEventListener('DOMContentLoaded', () => {
                   <td>${warrantyHtml}</td>`;
 
               const actionTd = document.createElement('td');
+              actionTd.style.cssText = 'display: flex; gap: 6px; align-items: center; white-space: nowrap; padding: 10px 12px;';
               
               const currentStatus = (row[13] || '').toString().toLowerCase();
+
+              const viewBtn = document.createElement('button');
+              viewBtn.innerHTML = '<i class="fas fa-eye"></i> View';
+              viewBtn.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 0.8em; width: 80px; text-align: center; flex-shrink: 0;';
+              viewBtn.addEventListener('click', () => openItemReplacementView(row));
+              actionTd.appendChild(viewBtn);
               
               const btn = document.createElement('button');
               btn.innerHTML = '<i class="fas fa-edit"></i> Update';
-              btn.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
+              btn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 5px 10px; cursor: pointer; font-size: 0.8em; width: 80px; text-align: center; flex-shrink: 0;';
               btn.addEventListener('click', () => openItemReplacementForm(row));
               actionTd.appendChild(btn);
               tr.appendChild(actionTd);
               replTableBody.appendChild(tr);
         });
     }
+
+    function openItemReplacementView(row) {
+        const modal = document.getElementById('item-replacement-view-modal');
+        const list = document.getElementById('item-replacement-view-list');
+        if (!modal || !list) return;
+
+        let dateStr = row[0] || '';
+        if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+        let dateReceivedStr = row[11] || '';
+        if (dateReceivedStr && dateReceivedStr.includes('T')) dateReceivedStr = dateReceivedStr.split('T')[0];
+        let replDateStr = row[16] || '';
+        if (replDateStr && replDateStr.includes('T')) replDateStr = replDateStr.split('T')[0];
+        let newDateReceivedStr = row[17] || '';
+        if (newDateReceivedStr && newDateReceivedStr.includes('T')) newDateReceivedStr = newDateReceivedStr.split('T')[0];
+
+        const fields = [
+            { label: 'Warranty#', value: row[10] || '-' },
+            { label: 'Recorded Date', value: dateStr || '-' },
+            { label: 'Branch', value: row[1] || '-' },
+            { label: 'Technician', value: row[2] || '-' },
+            { label: 'Item Description', value: row[3] || '-' },
+            { label: 'Serial#', value: row[4] || '-' },
+            { label: 'PC#', value: row[5] || '-' },
+            { label: 'Qty', value: row[6] || '-' },
+            { label: 'Issue and Concern', value: row[7] || '-' },
+            { label: 'Sup Approver', value: row[8] || '-' },
+            { label: 'Status', value: row[9] || '-' },
+            { label: 'Validation Status', value: row[13] || '-' },
+            { label: 'Assigned Tech', value: row[14] || '-' },
+            { label: 'Date Received', value: dateReceivedStr || '-' },
+            { label: 'Remarks', value: row[15] || '-' },
+            { label: 'Replacement Date', value: replDateStr || '-' },
+            { label: '— New Replaced Item —', value: '', divider: true },
+            { label: 'Date Received', value: newDateReceivedStr || '-' },
+            { label: 'Item Description', value: row[18] || '-' },
+            { label: 'Serial#', value: row[19] || '-' },
+            { label: 'Sup Approver', value: row[20] || '-' },
+            { label: 'Overall Status', value: row[21] || '-' }
+        ];
+
+        list.innerHTML = fields.map(f => f.divider ? `
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(255,255,255,0.15); color: #a78bfa; font-size: 0.78em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">${f.label}</div>
+        ` : `
+            <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <span style="color: var(--text-muted); font-size: 0.82em; flex-shrink: 0;">${f.label}</span>
+                <span style="color: #e2e8f0; font-size: 0.85em; text-align: right; word-break: break-word;">${f.value}</span>
+            </div>
+        `).join('');
+
+        const modifyBtn = document.getElementById('item-replacement-view-modify-btn');
+        if (modifyBtn) {
+            modifyBtn.onclick = () => {
+                modal.style.display = 'none';
+                openItemReplacementForm(row);
+            };
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    const closeItemReplViewModalBtn = document.getElementById('close-item-replacement-view-modal');
+    const closeItemReplViewBtn = document.getElementById('close-item-replacement-view-btn');
+    [closeItemReplViewModalBtn, closeItemReplViewBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('item-replacement-view-modal').style.display = 'none';
+        });
+    });
 
     function openItemReplacementForm(row) {
         document.getElementById('item-replacement-container').classList.add('hidden');
@@ -7087,15 +7182,22 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('repl-form-assigned-tech').textContent = row[14] || '-';
         document.getElementById('repl-form-issue').textContent = row[7] || '-';
 
-        // Clear input fields (R to V)
-        const today = new Date();
-        document.getElementById('repl-form-date-received').valueAsDate = today;
-        document.getElementById('repl-form-repl-item-desc').value = '';
-        document.getElementById('repl-form-repl-serial').value = '';
-        document.getElementById('repl-form-overall-status').value = '';
+        // Pre-fill Replacement Item fields (R to V) with existing values if present
+        let newDateReceivedStr = row[17] || '';
+        if (newDateReceivedStr && newDateReceivedStr.includes('T')) newDateReceivedStr = newDateReceivedStr.split('T')[0];
+
+        const dateReceivedInput = document.getElementById('repl-form-date-received');
+        if (newDateReceivedStr) {
+            dateReceivedInput.value = newDateReceivedStr;
+        } else {
+            dateReceivedInput.valueAsDate = new Date();
+        }
+        document.getElementById('repl-form-repl-item-desc').value = row[18] || '';
+        document.getElementById('repl-form-repl-serial').value = row[19] || '';
+        document.getElementById('repl-form-overall-status').value = row[21] || '';
         
         const loggedInUser = sessionStorage.getItem('loggedInUser') || '';
-        document.getElementById('repl-form-sup-approver').value = loggedInUser;
+        document.getElementById('repl-form-sup-approver').value = row[20] || loggedInUser;
         
         document.getElementById('item-replacement-status-message').classList.add('hidden');
     }
