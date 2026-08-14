@@ -239,7 +239,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Simple placeholder navigation for new MarvsPCStufz menu items
     [
-        ['menu-marvspc-build-tracker-btn', 'marvspc-build-tracker-container'],
         ['menu-marvspc-build-status-btn', 'marvspc-build-status-container'],
         ['menu-marvspc-deliveries-btn', 'marvspc-deliveries-container']
     ].forEach(([btnId, containerId]) => {
@@ -271,8 +270,11 @@ document.addEventListener('DOMContentLoaded', () => {
             let rowColor = '#ef4444'; // Pending = red
             if (partsReleasing === 'Partially Released') rowColor = '#10b981'; // green
             else if (partsReleasing === 'Item Released') rowColor = '#f1f5f9'; // white
+            const isPartsPending = (partsReleasing === 'Pending');
             const actionsCell = canAccessBuildProgress
-                ? `<button type="button" class="btn-build-progress" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`
+                ? (isPartsPending
+                    ? `<button type="button" class="btn-build-progress" disabled title="Kailangan munang i-release ang parts bago ma-progress ang build" style="background: rgba(148,163,184,0.15); color: #64748b; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; padding: 4px 8px; cursor: not-allowed; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`
+                    : `<button type="button" class="btn-build-progress" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`)
                 : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
             return `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
@@ -392,6 +394,121 @@ document.addEventListener('DOMContentLoaded', () => {
     const releasingStatusPartsFilter = document.getElementById('releasing-status-parts-filter');
     if (releasingStatusPartsFilter) {
         releasingStatusPartsFilter.addEventListener('change', applyReleasingStatusNameFilter);
+    }
+
+    // ======= Build Tracker =======
+    function renderBuildTrackerTable(rows) {
+        const tbody = document.getElementById('build-tracker-table-body');
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(row => {
+            let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+            let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+            const techBuilder = row[14] || '';
+            const buildStatus = row[18] || '-';
+            const isOngoing = techBuilder && buildStatus.toString().toLowerCase().includes('ongoing');
+            const rowStyle = isOngoing ? 'border-bottom: 1px solid rgba(255,255,255,0.05); color: #10b981;' : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
+            return `
+                <tr style="${rowStyle}">
+                    <td style="padding: 8px 10px;">${dateStr}</td>
+                    <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[5] || ''}</td>
+                    <td style="padding: 8px 10px;">${deliveryDateStr}</td>
+                    <td style="padding: 8px 10px;">${techBuilder}</td>
+                    <td style="padding: 8px 10px;">${row[15] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[17] || ''}</td>
+                    <td style="padding: 8px 10px;">${buildStatus}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    let currentBuildTrackerRecords = [];
+
+    function applyBuildTrackerNameFilter() {
+        const nameFilter = document.getElementById('build-tracker-search-name').value.trim().toLowerCase();
+        // Only show records that already have a Tech Builder assigned (column O, index 14)
+        let filtered = currentBuildTrackerRecords.filter(row => (row[14] || '').toString().trim() !== '');
+        if (nameFilter) {
+            filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(nameFilter));
+        }
+        renderBuildTrackerTable(filtered);
+    }
+
+    async function loadBuildTrackerRecords() {
+        const tbody = document.getElementById('build-tracker-table-body');
+        const btnLoad = document.getElementById('btn-load-build-tracker');
+        const btnText = btnLoad.querySelector('.btn-text');
+        const spinner = btnLoad.querySelector('.spinner');
+
+        const startDate = document.getElementById('build-tracker-start-date').value;
+        const endDate = document.getElementById('build-tracker-end-date').value;
+
+        btnLoad.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'Customer Information Sheet',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: 'All',
+                    noCache: true
+                })
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                currentBuildTrackerRecords = result.data || [];
+                applyBuildTrackerNameFilter();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="11" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error loading build tracker records:', error);
+            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        } finally {
+            btnLoad.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    const menuMarvsPcBuildTrackerBtn = document.getElementById('menu-marvspc-build-tracker-btn');
+    if (menuMarvsPcBuildTrackerBtn) {
+        menuMarvsPcBuildTrackerBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-build-tracker-container');
+            if (container) container.classList.remove('hidden');
+
+            const startDateEl = document.getElementById('build-tracker-start-date');
+            const endDateEl = document.getElementById('build-tracker-end-date');
+            if (startDateEl && !startDateEl.value) startDateEl.value = '2020-01-01';
+            if (endDateEl && !endDateEl.value) endDateEl.value = '2099-12-31';
+
+            loadBuildTrackerRecords();
+        });
+    }
+
+    const btnLoadBuildTracker = document.getElementById('btn-load-build-tracker');
+    if (btnLoadBuildTracker) {
+        btnLoadBuildTracker.addEventListener('click', loadBuildTrackerRecords);
+    }
+
+    const buildTrackerSearchName = document.getElementById('build-tracker-search-name');
+    if (buildTrackerSearchName) {
+        buildTrackerSearchName.addEventListener('input', applyBuildTrackerNameFilter);
     }
 
     // ======= Build Progress Modal =======
@@ -541,7 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (el) attachNumericFormatting(el);
         });
 
-        // Enable/show free-shipping justification box only when Delivery Method = Pickup AND Shipping Fee = 0
+        // Enable/show free-shipping justification box whenever Shipping Fee = 0 (or empty), regardless of Delivery Method
         const shippingFeeInput = document.getElementById('ci-shipping-fee');
         const deliveryMethodSelect = document.getElementById('ci-delivery-method');
         const justificationBox = document.getElementById('ci-shipping-justification-box');
@@ -549,11 +666,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const screenshotInput = document.getElementById('ci-shipping-screenshot');
 
         function updateJustificationVisibility() {
-            const raw = shippingFeeInput.value.replace(/,/g, '');
+            const raw = shippingFeeInput.value.replace(/,/g, '').trim();
             const val = parseFloat(raw);
-            const isZeroFee = shippingFeeInput.value.trim() === '' || isNaN(val) || val === 0;
-            const isPickup = deliveryMethodSelect.value === 'Pickup';
-            const shouldEnable = isZeroFee && isPickup;
+            const isZeroFee = raw !== '' && !isNaN(val) && val === 0;
+            const method = deliveryMethodSelect.value;
+            const isPickupOrBooking = (method === 'Pickup' || method === 'Customer Booking');
+            const shouldEnable = isZeroFee || isPickupOrBooking;
 
             justificationBox.classList.toggle('hidden', !shouldEnable);
             justificationTextarea.disabled = !shouldEnable;
@@ -614,9 +732,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const btnText = submitBtn.querySelector('.btn-text');
             const spinner = submitBtn.querySelector('.spinner');
 
-            const shippingFeeRaw = document.getElementById('ci-shipping-fee').value.replace(/,/g, '');
+            const shippingFeeRaw = document.getElementById('ci-shipping-fee').value.replace(/,/g, '').trim();
             const shippingFeeVal = parseFloat(shippingFeeRaw) || 0;
-            const isFreeShipping = shippingFeeVal === 0 && document.getElementById('ci-delivery-method').value === 'Pickup';
+            const isExplicitZeroFee = shippingFeeRaw !== '' && !isNaN(parseFloat(shippingFeeRaw)) && parseFloat(shippingFeeRaw) === 0;
+            const deliveryMethodVal = document.getElementById('ci-delivery-method').value;
+            const isFreeShipping = isExplicitZeroFee || deliveryMethodVal === 'Pickup' || deliveryMethodVal === 'Customer Booking';
 
             if (isFreeShipping) {
                 const justificationText = document.getElementById('ci-shipping-justification').value.trim();
@@ -6619,14 +6739,19 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }
             
-            // Set default dates to today
-            const today = new Date();
-            const y = today.getFullYear();
-            const m = String(today.getMonth() + 1).padStart(2, '0');
-            const d = String(today.getDate()).padStart(2, '0');
-            const todayStr = `${y}-${m}-${d}`;
-            startDateInput.value = todayStr;
-            endDateInput.value = todayStr;
+            // Set default dates: wide range for Customer Information Sheet (load everything), today for other sheets
+            if (sheet === 'Customer Information Sheet') {
+                startDateInput.value = '2020-01-01';
+                endDateInput.value = '2099-12-31';
+            } else {
+                const today = new Date();
+                const y = today.getFullYear();
+                const m = String(today.getMonth() + 1).padStart(2, '0');
+                const d = String(today.getDate()).padStart(2, '0');
+                const todayStr = `${y}-${m}-${d}`;
+                startDateInput.value = todayStr;
+                endDateInput.value = todayStr;
+            }
             
             // Render headers
             theadTr.innerHTML = '';
@@ -6687,7 +6812,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 branch: document.getElementById('edit-branch').value,
                 supplier: document.getElementById('edit-supplier-filter') ? document.getElementById('edit-supplier-filter').value : 'All',
                 category: document.getElementById('edit-category-filter') ? document.getElementById('edit-category-filter').value : 'All',
-                status: document.getElementById('edit-status-filter') ? document.getElementById('edit-status-filter').value : 'All'
+                status: document.getElementById('edit-status-filter') ? document.getElementById('edit-status-filter').value : 'All',
+                noCache: true
             };
             
             const response = await fetch(SCRIPT_URL, {

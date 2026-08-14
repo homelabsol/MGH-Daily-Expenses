@@ -477,12 +477,69 @@
     </div>
 
     <!-- MarvsPCStufz Build Tracker Container -->
-    <div class="container hidden" id="marvspc-build-tracker-container">
+    <div class="container hidden" id="marvspc-build-tracker-container" style="max-width: 1250px;">
         <header>
             <h1>Build Tracker</h1>
-            <p>Coming Soon</p>
+            <p>Track builds per customer</p>
             <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
         </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="build-tracker-start-date">Date From</label>
+                    <input type="date" id="build-tracker-start-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="build-tracker-end-date">Date To</label>
+                    <input type="date" id="build-tracker-end-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 160px;">
+                    <label for="build-tracker-search-name">Customer Name</label>
+                    <input type="text" id="build-tracker-search-name" placeholder="Search name...">
+                </div>
+                <button type="button" id="btn-load-build-tracker" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 10px 18px;">
+                    <span class="btn-text"><i class="fas fa-search"></i> Load</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div style="overflow-x: auto; margin-top: 20px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1150px; table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 95px;">
+                        <col style="width: 130px;">
+                        <col style="width: 200px;">
+                        <col style="width: 110px;">
+                        <col style="width: 75px;">
+                        <col style="width: 110px;">
+                        <col style="width: 100px;">
+                        <col style="width: 120px;">
+                        <col style="width: 120px;">
+                        <col style="width: 200px;">
+                        <col style="width: 130px;">
+                    </colgroup>
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--glass-border);">
+                            <th style="padding: 10px; text-align: left;">Date</th>
+                            <th style="padding: 10px; text-align: left;">Customer Name</th>
+                            <th style="padding: 10px; text-align: left;">Address</th>
+                            <th style="padding: 10px; text-align: left;">Mobile#</th>
+                            <th style="padding: 10px; text-align: left;">No. of Builds</th>
+                            <th style="padding: 10px; text-align: left;">Type of Build</th>
+                            <th style="padding: 10px; text-align: left;">Delivery Date</th>
+                            <th style="padding: 10px; text-align: left;">Tech Builder</th>
+                            <th style="padding: 10px; text-align: left;">Sales Admin</th>
+                            <th style="padding: 10px; text-align: left;">Client Request</th>
+                            <th style="padding: 10px; text-align: left;">Build Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="build-tracker-table-body">
+                        <tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
     </div>
 
     <!-- MarvsPCStufz Build Status Container -->
