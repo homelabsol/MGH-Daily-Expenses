@@ -7973,6 +7973,7 @@ document.addEventListener("DOMContentLoaded", function() {
                             if (shouldAutoLineUp) rec[18] = 'Already for line up';
                         }
                     }
+                    if (typeof applyEditModalFilters === 'function') applyEditModalFilters();
                     statusMsg.textContent = 'Saved successfully!';
                     statusMsg.className = 'status-message success';
                     statusMsg.classList.remove('hidden');
