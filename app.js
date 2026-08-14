@@ -174,15 +174,12 @@ document.addEventListener('DOMContentLoaded', () => {
             btnWarrantyValidationMenu.style.display = isAllowedValidationRole ? '' : 'none';
         }
         
-        // Hide/Show MarvsPCStufz Button based on Store and Role
+        // Hide/Show MarvsPCStufz Button based on Store
         const menuMarvsPcBtnApp = document.getElementById('menu-marvspc-btn');
         if (menuMarvsPcBtnApp) {
-            const isMarvsPcStore = (store === 'MarvsPCStufz');
-            const isOwner = (role === 'Owner');
-            const isAllowedRole = (role === 'Manager' || role === 'RMA Admin');
+            const isAllowedStore = (store === 'All' || store === 'MarvsPCStufz');
 
-            // Owner always sees it; Manager/RMA Admin also see it regardless of store
-            if (isOwner || isAllowedRole) {
+            if (isAllowedStore) {
                 menuMarvsPcBtnApp.style.display = '';
             } else {
                 menuMarvsPcBtnApp.style.display = 'none';
@@ -226,6 +223,492 @@ document.addEventListener('DOMContentLoaded', () => {
             if (marvspcDate) marvspcDate.valueAsDate = new Date();
         });
     }
+
+    const menuMarvsPcCustomerInfoBtn = document.getElementById('menu-marvspc-customer-info-btn');
+    if (menuMarvsPcCustomerInfoBtn) {
+        menuMarvsPcCustomerInfoBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const customerInfoContainer = document.getElementById('marvspc-customer-info-container');
+            if (customerInfoContainer) customerInfoContainer.classList.remove('hidden');
+            const ciDate = document.getElementById('ci-date');
+            if (ciDate && !ciDate.value) ciDate.valueAsDate = new Date();
+            const ciSalesAdmin = document.getElementById('ci-sales-admin');
+            if (ciSalesAdmin) ciSalesAdmin.value = sessionStorage.getItem('loggedInUser') || '';
+        });
+    }
+
+    // Simple placeholder navigation for new MarvsPCStufz menu items
+    [
+        ['menu-marvspc-build-tracker-btn', 'marvspc-build-tracker-container'],
+        ['menu-marvspc-build-status-btn', 'marvspc-build-status-container'],
+        ['menu-marvspc-deliveries-btn', 'marvspc-deliveries-container']
+    ].forEach(([btnId, containerId]) => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.addEventListener('click', () => {
+                hideAllContainers();
+                const container = document.getElementById(containerId);
+                if (container) container.classList.remove('hidden');
+            });
+        }
+    });
+
+    // ======= Releasing of Build Status =======
+    function renderReleasingStatusTable(rows) {
+        const tbody = document.getElementById('releasing-status-table-body');
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            return;
+        }
+        const currentRole = sessionStorage.getItem('userRole');
+        const canAccessBuildProgress = ['Technician', 'Manager', 'Owner', 'RMA Admin', 'Supervisor'].includes(currentRole);
+
+        tbody.innerHTML = rows.map(row => {
+            let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+            let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+            const buildStatus = row[18] || '-';
+            const partsReleasing = row[23] || 'Pending';
+            let rowColor = '#ef4444'; // Pending = red
+            if (partsReleasing === 'Partially Released') rowColor = '#10b981'; // green
+            else if (partsReleasing === 'Item Released') rowColor = '#f1f5f9'; // white
+            const actionsCell = canAccessBuildProgress
+                ? `<button type="button" class="btn-build-progress" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`
+                : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
+            return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
+                    <td style="padding: 8px 10px;">${dateStr}</td>
+                    <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[5] || ''}</td>
+                    <td style="padding: 8px 10px;">${deliveryDateStr}</td>
+                    <td style="padding: 8px 10px;">${row[15] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[17] || ''}</td>
+                    <td style="padding: 8px 10px;">${buildStatus}</td>
+                    <td style="padding: 8px 10px; font-weight: 600;">${partsReleasing}</td>
+                    <td style="padding: 8px 10px;">${actionsCell}</td>
+                </tr>
+            `;
+        }).join('');
+
+        if (canAccessBuildProgress) {
+            tbody.querySelectorAll('.btn-build-progress').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const idx = btn.getAttribute('data-row-index');
+                    const matchedRow = rows.find(r => String(r[r.length - 1]) === String(idx));
+                    if (matchedRow) openBuildProgressModal(matchedRow);
+                });
+            });
+        }
+    }
+
+    let currentReleasingStatusRecords = [];
+
+    function applyReleasingStatusNameFilter() {
+        const nameFilter = document.getElementById('releasing-status-search-name').value.trim().toLowerCase();
+        const partsFilter = document.getElementById('releasing-status-parts-filter').value;
+        let filtered = currentReleasingStatusRecords;
+        if (nameFilter) {
+            filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(nameFilter));
+        }
+        if (partsFilter && partsFilter !== 'All') {
+            filtered = filtered.filter(row => (row[23] || 'Pending') === partsFilter);
+        }
+        renderReleasingStatusTable(filtered);
+    }
+
+    async function loadReleasingStatusRecords() {
+        const tbody = document.getElementById('releasing-status-table-body');
+        const btnLoad = document.getElementById('btn-load-releasing-status');
+        const btnText = btnLoad.querySelector('.btn-text');
+        const spinner = btnLoad.querySelector('.spinner');
+
+        const startDate = document.getElementById('releasing-status-start-date').value;
+        const endDate = document.getElementById('releasing-status-end-date').value;
+
+        btnLoad.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'Customer Information Sheet',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: 'All',
+                    noCache: true
+                })
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                currentReleasingStatusRecords = result.data || [];
+                applyReleasingStatusNameFilter();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="12" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error loading releasing status records:', error);
+            tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        } finally {
+            btnLoad.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    const menuMarvsPcReleasingBtn = document.getElementById('menu-marvspc-releasing-btn');
+    if (menuMarvsPcReleasingBtn) {
+        menuMarvsPcReleasingBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-releasing-container');
+            if (container) container.classList.remove('hidden');
+
+            const startDateEl = document.getElementById('releasing-status-start-date');
+            const endDateEl = document.getElementById('releasing-status-end-date');
+            if (startDateEl && !startDateEl.value) startDateEl.value = '2020-01-01';
+            if (endDateEl && !endDateEl.value) endDateEl.value = '2099-12-31';
+
+            loadReleasingStatusRecords();
+        });
+    }
+
+    const btnLoadReleasingStatus = document.getElementById('btn-load-releasing-status');
+    if (btnLoadReleasingStatus) {
+        btnLoadReleasingStatus.addEventListener('click', loadReleasingStatusRecords);
+    }
+
+    const releasingStatusSearchName = document.getElementById('releasing-status-search-name');
+    if (releasingStatusSearchName) {
+        releasingStatusSearchName.addEventListener('input', applyReleasingStatusNameFilter);
+    }
+
+    const releasingStatusPartsFilter = document.getElementById('releasing-status-parts-filter');
+    if (releasingStatusPartsFilter) {
+        releasingStatusPartsFilter.addEventListener('change', applyReleasingStatusNameFilter);
+    }
+
+    // ======= Build Progress Modal =======
+    const closeBuildProgressModalBtn = document.getElementById('close-build-progress-modal');
+    const closeBuildProgressBtn = document.getElementById('close-build-progress-btn');
+    [closeBuildProgressModalBtn, closeBuildProgressBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('build-progress-modal').style.display = 'none';
+        });
+    });
+
+    let currentBuildProgressRow = null;
+
+    function openBuildProgressModal(row) {
+        currentBuildProgressRow = row;
+
+        let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+        let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+
+        const fields = [
+            { label: 'Date', value: dateStr || '-' },
+            { label: 'Customer Name', value: row[1] || '-' },
+            { label: 'Address', value: row[2] || '-' },
+            { label: 'Mobile#', value: row[3] || '-' },
+            { label: 'Number of Builds', value: row[4] || '-' },
+            { label: 'Type of Build', value: row[5] || '-' },
+            { label: 'Delivery Date', value: deliveryDateStr || '-' },
+            { label: 'Sales Admin', value: row[15] || '-' },
+            { label: 'Client Request', value: row[17] || '-' },
+            { label: 'Build Status', value: row[18] || '-' },
+            { label: 'Parts Releasing', value: row[23] || 'Pending' }
+        ];
+
+        const body = document.getElementById('build-progress-body');
+        body.innerHTML = fields.map(f => `
+            <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <span style="color: var(--text-muted); font-size: 0.82em; flex-shrink: 0;">${f.label}</span>
+                <span style="color: #e2e8f0; font-size: 0.85em; text-align: right; word-break: break-word;">${f.value}</span>
+            </div>
+        `).join('');
+
+        const loggedInUser = sessionStorage.getItem('loggedInUser') || 'Unknown';
+        const techBuilderSelect = document.getElementById('build-progress-tech-builder');
+        techBuilderSelect.innerHTML = `<option value="${loggedInUser}" selected>${loggedInUser}</option>`;
+
+        const statusMsg = document.getElementById('build-progress-status-message');
+        statusMsg.classList.add('hidden');
+
+        document.getElementById('build-progress-modal').style.display = 'flex';
+    }
+
+    const btnSaveBuildProgress = document.getElementById('btn-save-build-progress');
+    if (btnSaveBuildProgress) {
+        btnSaveBuildProgress.addEventListener('click', async () => {
+            if (!currentBuildProgressRow) return;
+
+            const statusMsg = document.getElementById('build-progress-status-message');
+            const techBuilderName = sessionStorage.getItem('loggedInUser') || 'Unknown';
+            const rowIndex = currentBuildProgressRow[currentBuildProgressRow.length - 1];
+
+            btnSaveBuildProgress.disabled = true;
+            const originalHtml = btnSaveBuildProgress.innerHTML;
+            btnSaveBuildProgress.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+            try {
+                const cols = ['Date', 'Customer Name', 'Address', 'Mobile#', 'Number of Builds', 'Type of Build', 'Delivery Date', 'Delivery Method', 'Shipping Fee', 'Free Shipping Justification', 'Free Shipping Screenshot URL', 'Downpayment Amount', 'Reference Number', 'DP MOP', 'Tech Builder', 'Sales Admin', 'MarvsPC Page', 'Client Request', 'Build Status', 'Payment Completion', 'Delivery Status', 'Overall Status', 'Encoded By', 'Parts Releasing'];
+                const updatedData = [];
+                for (let i = 0; i < cols.length; i++) {
+                    if (i === 14) {
+                        updatedData.push(techBuilderName); // Tech Builder
+                    } else if (i === 18) {
+                        updatedData.push('Ongoing Build'); // Build Status
+                    } else {
+                        updatedData.push(currentBuildProgressRow[i] !== undefined ? currentBuildProgressRow[i] : '');
+                    }
+                }
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'updateExpenseRecord',
+                        sheetName: 'Customer Information Sheet',
+                        rowIndex: rowIndex,
+                        updatedData: updatedData,
+                        encodedBy: techBuilderName
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    currentBuildProgressRow[14] = techBuilderName;
+                    currentBuildProgressRow[18] = 'Ongoing Build';
+                    const rec = currentReleasingStatusRecords.find(r => String(r[r.length - 1]) === String(rowIndex));
+                    if (rec) {
+                        rec[14] = techBuilderName;
+                        rec[18] = 'Ongoing Build';
+                    }
+                    applyReleasingStatusNameFilter();
+                    statusMsg.textContent = 'Saved successfully!';
+                    statusMsg.className = 'status-message success';
+                    statusMsg.classList.remove('hidden');
+                    showToast('Build progress updated!', 'success');
+                } else {
+                    statusMsg.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    statusMsg.className = 'status-message error';
+                    statusMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error saving build progress:', error);
+                statusMsg.textContent = 'Network error. Please try again.';
+                statusMsg.className = 'status-message error';
+                statusMsg.classList.remove('hidden');
+            } finally {
+                btnSaveBuildProgress.disabled = false;
+                btnSaveBuildProgress.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    // ======= Customer Information Sheet Logic =======
+    (function() {
+        const form = document.getElementById('customer-info-form');
+        if (!form) return;
+
+        // Restrict to digits (and one decimal point) only, live comma-formatting on blur
+        function attachNumericFormatting(inputEl) {
+            inputEl.addEventListener('keydown', (e) => {
+                const allowedKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'];
+                if (allowedKeys.includes(e.key)) return;
+                if (e.key === '.' && !inputEl.value.includes('.')) return;
+                if (!/^[0-9]$/.test(e.key)) e.preventDefault();
+            });
+            inputEl.addEventListener('blur', () => {
+                const raw = inputEl.value.replace(/,/g, '');
+                if (raw === '' || isNaN(raw)) return;
+                const num = parseFloat(raw);
+                inputEl.value = num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            });
+            inputEl.addEventListener('focus', () => {
+                // Strip commas while editing so cursor math / typing stays simple
+                inputEl.value = inputEl.value.replace(/,/g, '');
+            });
+        }
+        ['ci-num-builds', 'ci-shipping-fee', 'ci-downpayment'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) attachNumericFormatting(el);
+        });
+
+        // Enable/show free-shipping justification box only when Delivery Method = Pickup AND Shipping Fee = 0
+        const shippingFeeInput = document.getElementById('ci-shipping-fee');
+        const deliveryMethodSelect = document.getElementById('ci-delivery-method');
+        const justificationBox = document.getElementById('ci-shipping-justification-box');
+        const justificationTextarea = document.getElementById('ci-shipping-justification');
+        const screenshotInput = document.getElementById('ci-shipping-screenshot');
+
+        function updateJustificationVisibility() {
+            const raw = shippingFeeInput.value.replace(/,/g, '');
+            const val = parseFloat(raw);
+            const isZeroFee = shippingFeeInput.value.trim() === '' || isNaN(val) || val === 0;
+            const isPickup = deliveryMethodSelect.value === 'Pickup';
+            const shouldEnable = isZeroFee && isPickup;
+
+            justificationBox.classList.toggle('hidden', !shouldEnable);
+            justificationTextarea.disabled = !shouldEnable;
+            screenshotInput.disabled = !shouldEnable;
+            if (!shouldEnable) {
+                justificationTextarea.value = '';
+                screenshotInput.value = '';
+            }
+        }
+        if (shippingFeeInput) {
+            shippingFeeInput.addEventListener('input', updateJustificationVisibility);
+            shippingFeeInput.addEventListener('blur', updateJustificationVisibility);
+        }
+        if (deliveryMethodSelect) {
+            deliveryMethodSelect.addEventListener('change', updateJustificationVisibility);
+        }
+        updateJustificationVisibility();
+
+        // Auto-update Delivery Status -> "For Delivery" when Build Status becomes "Completed"
+        const buildStatusSelect = document.getElementById('ci-build-status');
+        const deliveryStatusSelect = document.getElementById('ci-delivery-status');
+        const paymentCompletionSelect = document.getElementById('ci-payment-completion');
+        const overallStatusInput = document.getElementById('ci-overall-status');
+
+        function updateOverallStatus() {
+            const isBuildCompleted = buildStatusSelect.value === 'Completed';
+            const isFullyPaid = paymentCompletionSelect.value === 'Fully Paid';
+            const isDelivered = deliveryStatusSelect.value === 'Delivered';
+            overallStatusInput.value = (isBuildCompleted && isFullyPaid && isDelivered) ? 'Completed' : 'Pending';
+        }
+
+        if (buildStatusSelect) {
+            buildStatusSelect.addEventListener('change', () => {
+                if (buildStatusSelect.value === 'Completed') {
+                    deliveryStatusSelect.value = 'For Delivery';
+                }
+                updateOverallStatus();
+            });
+        }
+        if (deliveryStatusSelect) deliveryStatusSelect.addEventListener('change', updateOverallStatus);
+        if (paymentCompletionSelect) paymentCompletionSelect.addEventListener('change', updateOverallStatus);
+
+        // Helper to convert an uploaded file to Base64 (reuses same pattern as Remitted Amount)
+        function fileToBase64Local(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(',')[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const statusMessage = document.getElementById('ci-status-message');
+            const submitBtn = document.getElementById('btn-save-customer-info');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+
+            const shippingFeeRaw = document.getElementById('ci-shipping-fee').value.replace(/,/g, '');
+            const shippingFeeVal = parseFloat(shippingFeeRaw) || 0;
+            const isFreeShipping = shippingFeeVal === 0 && document.getElementById('ci-delivery-method').value === 'Pickup';
+
+            if (isFreeShipping) {
+                const justificationText = document.getElementById('ci-shipping-justification').value.trim();
+                if (!justificationText) {
+                    alert('Please provide a justification for free/₱0 shipping.');
+                    document.getElementById('ci-shipping-justification').focus();
+                    return;
+                }
+            }
+
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                let screenshotBase64 = '';
+                let screenshotFileName = '';
+                let screenshotMimeType = '';
+                if (isFreeShipping) {
+                    const fileInput = document.getElementById('ci-shipping-screenshot');
+                    if (fileInput.files && fileInput.files.length > 0) {
+                        const file = fileInput.files[0];
+                        screenshotBase64 = await fileToBase64Local(file);
+                        screenshotFileName = file.name;
+                        screenshotMimeType = file.type;
+                    }
+                }
+
+                const formData = {
+                    action: 'saveCustomerInfo',
+                    date: document.getElementById('ci-date').value,
+                    customerName: document.getElementById('ci-customer-name').value,
+                    address: document.getElementById('ci-address').value,
+                    mobile: document.getElementById('ci-mobile').value,
+                    numberOfBuilds: document.getElementById('ci-num-builds').value.replace(/,/g, ''),
+                    typeOfBuild: document.getElementById('ci-type-build').value,
+                    deliveryDate: document.getElementById('ci-delivery-date').value,
+                    deliveryMethod: document.getElementById('ci-delivery-method').value,
+                    shippingFee: shippingFeeRaw,
+                    shippingJustification: isFreeShipping ? document.getElementById('ci-shipping-justification').value : '',
+                    screenshotFileName: screenshotFileName,
+                    screenshotMimeType: screenshotMimeType,
+                    screenshotData: screenshotBase64,
+                    downpayment: document.getElementById('ci-downpayment').value.replace(/,/g, ''),
+                    referenceNumber: document.getElementById('ci-reference').value,
+                    dpMop: document.getElementById('ci-dp-mop').value,
+                    techBuilder: document.getElementById('ci-tech-builder').value,
+                    clientRequest: document.getElementById('ci-client-request').value,
+                    buildStatus: buildStatusSelect.value,
+                    paymentCompletion: paymentCompletionSelect.value,
+                    deliveryStatus: deliveryStatusSelect.value,
+                    overallStatus: overallStatusInput.value,
+                    salesAdmin: document.getElementById('ci-sales-admin').value,
+                    marvspcPage: document.getElementById('ci-marvspc-page').value,
+                    encodedBy: sessionStorage.getItem('loggedInUser')
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    statusMessage.textContent = 'Customer information saved successfully!';
+                    statusMessage.className = 'status-message success';
+                    statusMessage.classList.remove('hidden');
+                    form.reset();
+                    document.getElementById('ci-date').valueAsDate = new Date();
+                    document.getElementById('ci-sales-admin').value = sessionStorage.getItem('loggedInUser') || '';
+                    overallStatusInput.value = 'Pending';
+                    updateJustificationVisibility();
+                    showToast('Customer info saved!', 'success');
+                } else {
+                    statusMessage.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    statusMessage.className = 'status-message error';
+                    statusMessage.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error saving customer info:', error);
+                statusMessage.textContent = 'Network error. Please try again.';
+                statusMessage.className = 'status-message error';
+                statusMessage.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    })();
 
     // ======= MarvsPCStufz Drag & Drop Categorizer =======
     const btnMarvspcCategorize = document.getElementById('btn-marvspc-categorize');
@@ -643,61 +1126,54 @@ document.addEventListener('DOMContentLoaded', () => {
             const originalText = btnText.innerHTML;
             btnUploadMultiplePurchased.disabled = true;
             btnText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
-            
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-                try {
-                    const text = event.target.result;
-                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
-                    const items = [];
-                    
-                    // Start from index 1 to skip header if it exists
-                    let startIndex = 0;
-                    if (lines[0].toLowerCase().includes('date') || lines[0].toLowerCase().includes('supplier')) {
+
+            const fileName = file.name.toLowerCase();
+            const isExcel = fileName.endsWith('.xlsx') || fileName.endsWith('.xls');
+
+            // Build items[] from a 2D array of rows (works for both CSV-parsed and Excel-parsed data)
+            function buildItemsFromRows(rows) {
+                const items = [];
+                let startIndex = 0;
+                if (rows.length > 0) {
+                    const firstRowText = rows[0].join(' ').toLowerCase();
+                    if (firstRowText.includes('date') || firstRowText.includes('supplier')) {
                         startIndex = 1;
                     }
+                }
 
-                    for (let i = startIndex; i < lines.length; i++) {
-                        // Regex to handle commas inside quotes
-                        const row = lines[i].match(/(\s*"[^"]+"\s*|\s*[^,]+|,)(?=,|$)/g);
-                        if (!row) continue;
-                        
-                        const cleanRow = row.map(val => {
-                            let v = val.trim();
-                            if (v.startsWith('"') && v.endsWith('"')) {
-                                v = v.substring(1, v.length - 1).trim();
-                            }
-                            if (v === ',') return '';
-                            if (v.endsWith(',')) v = v.slice(0, -1);
-                            return v;
-                        });
+                for (let i = startIndex; i < rows.length; i++) {
+                    const cleanRow = rows[i];
+                    if (!cleanRow || cleanRow.every(v => v === '' || v === undefined || v === null)) continue;
 
-                        // Expected format: Date, Supplier, Category, Description, Serial, Status, Accountable
-                        let rawDate = cleanRow[0] || '';
-                        let formattedDate = rawDate;
-                        if (rawDate) {
-                            const d = new Date(rawDate);
-                            if (!isNaN(d)) {
-                                const y = d.getFullYear();
-                                const m = String(d.getMonth() + 1).padStart(2, '0');
-                                const day = String(d.getDate()).padStart(2, '0');
-                                formattedDate = `${y}-${m}-${day}`;
-                            }
+                    let rawDate = cleanRow[0] || '';
+                    let formattedDate = rawDate;
+                    if (rawDate) {
+                        const d = new Date(rawDate);
+                        if (!isNaN(d)) {
+                            const y = d.getFullYear();
+                            const m = String(d.getMonth() + 1).padStart(2, '0');
+                            const day = String(d.getDate()).padStart(2, '0');
+                            formattedDate = `${y}-${m}-${day}`;
                         }
-
-                        items.push({
-                            date: formattedDate,
-                            supplierName: cleanRow[1] || '',
-                            itemCategory: cleanRow[2] || '',
-                            itemDescription: cleanRow[3] || '',
-                            serialNumber: cleanRow[4] || '',
-                            status: cleanRow[5] || '',
-                            accountablePerson: cleanRow[6] || ''
-                        });
                     }
 
+                    items.push({
+                        date: formattedDate,
+                        supplierName: cleanRow[1] || '',
+                        itemCategory: cleanRow[2] || '',
+                        itemDescription: cleanRow[3] || '',
+                        serialNumber: cleanRow[4] || '',
+                        status: cleanRow[5] || '',
+                        accountablePerson: cleanRow[6] || ''
+                    });
+                }
+                return items;
+            }
+
+            async function finishUpload(items, formatLabel) {
+                try {
                     if (items.length === 0) {
-                        alert("No valid data found in CSV.");
+                        alert(`No valid data found in ${formatLabel}.`);
                         return;
                     }
 
@@ -712,25 +1188,81 @@ document.addEventListener('DOMContentLoaded', () => {
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify(formData)
                     });
-                    
+
                     const result = await response.json();
-                    
+
                     if (result.status === 'success') {
                         alert(`Successfully uploaded ${items.length} items!`);
                     } else {
                         alert('Error: ' + (result.message || 'Failed to save items.'));
                     }
-
                 } catch (err) {
-                    console.error("CSV parse/upload error:", err);
-                    alert("Error parsing or uploading CSV: " + err.message);
+                    console.error(`${formatLabel} parse/upload error:`, err);
+                    alert(`Error parsing or uploading ${formatLabel}: ` + err.message);
                 } finally {
                     btnUploadMultiplePurchased.disabled = false;
                     btnText.innerHTML = originalText;
                     purchasedCsvUpload.value = ''; // Reset input
                 }
-            };
-            reader.readAsText(file);
+            }
+
+            const reader = new FileReader();
+
+            if (isExcel) {
+                reader.onload = async (event) => {
+                    try {
+                        const data = new Uint8Array(event.target.result);
+                        const workbook = window.XLSX.read(data, { type: 'array' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const rows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: '' });
+                        const items = buildItemsFromRows(rows);
+                        await finishUpload(items, 'Excel file');
+                    } catch (err) {
+                        console.error("Excel parse error:", err);
+                        alert("Error parsing Excel file: " + err.message);
+                        btnUploadMultiplePurchased.disabled = false;
+                        btnText.innerHTML = originalText;
+                        purchasedCsvUpload.value = '';
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                reader.onload = async (event) => {
+                    try {
+                        const text = event.target.result;
+                        const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+                        const rows = [];
+
+                        for (let i = 0; i < lines.length; i++) {
+                            // Regex to handle commas inside quotes
+                            const row = lines[i].match(/(\s*"[^"]+"\s*|\s*[^,]+|,)(?=,|$)/g);
+                            if (!row) continue;
+
+                            const cleanRow = row.map(val => {
+                                let v = val.trim();
+                                if (v.startsWith('"') && v.endsWith('"')) {
+                                    v = v.substring(1, v.length - 1).trim();
+                                }
+                                if (v === ',') return '';
+                                if (v.endsWith(',')) v = v.slice(0, -1);
+                                return v;
+                            });
+                            rows.push(cleanRow);
+                        }
+
+                        const items = buildItemsFromRows(rows);
+                        await finishUpload(items, 'CSV');
+                    } catch (err) {
+                        console.error("CSV parse/upload error:", err);
+                        alert("Error parsing or uploading CSV: " + err.message);
+                        btnUploadMultiplePurchased.disabled = false;
+                        btnText.innerHTML = originalText;
+                        purchasedCsvUpload.value = '';
+                    }
+                };
+                reader.readAsText(file);
+            }
         });
     }
 
@@ -2456,6 +2988,376 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (applyAttendanceFilterBtn) {
         applyAttendanceFilterBtn.addEventListener('click', filterAttendanceByDate);
+    }
+
+    // ======= Staff Schedule Generator =======
+    const btnAttendanceSchedule = document.getElementById('btn-attendance-schedule');
+    const attendanceScheduleModal = document.getElementById('attendanceScheduleModal');
+    const closeAttendanceScheduleModalBtn = document.getElementById('close-attendance-schedule-modal-btn');
+    const schedStaffCount = document.getElementById('sched-staff-count');
+    const schedStaffRows = document.getElementById('sched-staff-rows');
+    const btnGenerateSchedule = document.getElementById('btn-generate-schedule');
+    const btnSaveSchedule = document.getElementById('btn-save-schedule');
+    let lastGeneratedSchedule = null;
+
+    if (btnAttendanceSchedule) {
+        btnAttendanceSchedule.addEventListener('click', () => {
+            if (attendanceScheduleModal) attendanceScheduleModal.classList.remove('hidden');
+        });
+    }
+    if (closeAttendanceScheduleModalBtn) {
+        closeAttendanceScheduleModalBtn.addEventListener('click', () => {
+            if (attendanceScheduleModal) attendanceScheduleModal.classList.add('hidden');
+        });
+    }
+
+    const SHIFT_TIME_OPTIONS = {
+        'MGH Parang': [
+            { value: '6AM-3PM', label: '6:00 AM - 3:00 PM', shortLabel: '6-3', hours: 9, minCoverage: 2 },
+            { value: '2PM-11PM', label: '2:00 PM - 11:00 PM', shortLabel: '2-11', hours: 9, minCoverage: 2 },
+            { value: '10PM-7AM', label: '10:00 PM - 7:00 AM', shortLabel: '10-7', hours: 9, minCoverage: 2, isNight: true }
+        ],
+        'MGH Concepcion': [
+            { value: '6AM-6PM', label: '6:00 AM - 6:00 PM (Day)', shortLabel: '6AM-6PM', hours: 12, minCoverage: 2 },
+            { value: '6PM-6AM', label: '6:00 PM - 6:00 AM (Night)', shortLabel: '6PM-6AM', hours: 12, minCoverage: 2, isNight: true }
+        ],
+        'MarvsPCStufz': [
+            { value: '9AM-6PM', label: '9:00 AM - 6:00 PM', shortLabel: '9-6', hours: 9, minCoverage: 1 }
+        ]
+    };
+
+    function renderScheduleStaffRows(count) {
+        schedStaffRows.innerHTML = '';
+        for (let i = 1; i <= count; i++) {
+            const row = document.createElement('div');
+            row.className = 'sched-staff-row';
+            row.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; padding: 10px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);';
+            row.innerHTML = `
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 0.75em;">Staff ${i} Name</label>
+                    <input type="text" class="sched-staff-name" placeholder="e.g. Juan Dela Cruz" style="width: 100%;">
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <label style="font-size: 0.75em;">Branch</label>
+                    <select class="sched-staff-branch" style="width: 100%;">
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                        <option value="MarvsPCStufz">MarvsPCStufz</option>
+                    </select>
+                </div>
+            `;
+            schedStaffRows.appendChild(row);
+        }
+    }
+
+    if (schedStaffCount) {
+        schedStaffCount.addEventListener('change', () => {
+            const count = parseInt(schedStaffCount.value) || 0;
+            renderScheduleStaffRows(count);
+            btnSaveSchedule.classList.add('hidden');
+            document.getElementById('sched-preview-container').innerHTML = '';
+            document.getElementById('sched-warnings').innerHTML = '';
+        });
+    }
+
+    function generateStaffSchedule(staffList, startDate, endDate, rotationPeriodWeeks) {
+        // Group staff by branch
+        const branchGroups = {};
+        staffList.forEach(s => {
+            if (!branchGroups[s.branch]) branchGroups[s.branch] = [];
+            branchGroups[s.branch].push(s);
+        });
+
+        // Build list of dates
+        const dates = [];
+        let cur = new Date(startDate + 'T00:00:00');
+        const end = new Date(endDate + 'T00:00:00');
+        while (cur <= end) {
+            dates.push(new Date(cur));
+            cur.setDate(cur.getDate() + 1);
+        }
+        const totalWeeks = Math.ceil(dates.length / 7);
+        const totalCycles = Math.max(1, Math.ceil(totalWeeks / rotationPeriodWeeks));
+
+        const warnings = [];
+        const cellsByStaff = new Map();
+        staffList.forEach(s => cellsByStaff.set(s, dates.map(() => ({ status: 'Day Off', shift: null }))));
+
+        // For each branch, for each rotation cycle (period of 1-2 weeks), assign staff into
+        // shift-groups sized as (minCoverage + 1 buffer) so that even when one member of a
+        // group takes their weekly day-off, the minimum required headcount still remains on duty.
+        Object.keys(branchGroups).forEach(branchName => {
+            const branchStaff = branchGroups[branchName];
+            const shifts = SHIFT_TIME_OPTIONS[branchName] || [];
+
+            if (branchName === 'MarvsPCStufz') {
+                // Fixed pattern: Monday-Saturday, everyone off Sunday, single shift
+                branchStaff.forEach(s => {
+                    const cells = cellsByStaff.get(s);
+                    dates.forEach((d, di) => {
+                        if (d.getDay() === 0) return; // stays Day Off (Sunday)
+                        cells[di] = { status: 'Duty', shift: shifts[0] || null };
+                    });
+                });
+                return;
+            }
+
+            for (let cycle = 0; cycle < totalCycles; cycle++) {
+                // Rotate the staff order each cycle so everyone eventually cycles through every shift
+                const order = branchStaff.slice();
+                const rot = cycle % order.length;
+                const rotatedOrder = order.slice(rot).concat(order.slice(0, rot));
+
+                const cycleStartDay = cycle * rotationPeriodWeeks * 7;
+                const cycleEndDay = Math.min(cycleStartDay + rotationPeriodWeeks * 7, dates.length);
+                const totalBranchStaff = rotatedOrder.length;
+                let globalIdx = 0;
+
+                // Step 1: assign PRIMARY staff to each shift, sized exactly at minCoverage.
+                // Leftover staff beyond what all shifts need become FLOATERS shared across shifts.
+                let pointer = 0;
+                const primaryGroups = []; // { shiftDef, members: [{staff, offRelDays}] }
+                shifts.forEach(shiftDef => {
+                    const need = shiftDef.minCoverage || 1;
+                    const groupSize = Math.min(need, rotatedOrder.length - pointer);
+                    const group = rotatedOrder.slice(pointer, pointer + groupSize);
+                    pointer += groupSize;
+
+                    if (groupSize < need) {
+                        warnings.push(`${branchName} (${shiftDef.label}): kulang ang staff, ${groupSize}/${need} lang ang naka-assign sa cycle simula ${dates[cycleStartDay] ? dates[cycleStartDay].toISOString().split('T')[0] : ''}`);
+                    }
+
+                    const members = group.map(s => {
+                        const offCount = 7 - s.workDays;
+                        const offsetRelDay = totalBranchStaff > 0 ? Math.round((globalIdx * 7) / totalBranchStaff) : 0;
+                        globalIdx++;
+                        const offRelDays = [];
+                        for (let j = 0; j < offCount; j++) offRelDays.push((offsetRelDay + j) % 7);
+                        return { staff: s, offRelDays };
+                    });
+                    primaryGroups.push({ shiftDef, members });
+                });
+
+                const floaters = rotatedOrder.slice(pointer).map((s, idx) => {
+                    const offCount = 7 - s.workDays;
+                    const offsetRelDay = totalBranchStaff > 0 ? Math.round((globalIdx * 7) / totalBranchStaff) : 0;
+                    globalIdx++;
+                    const offRelDays = [];
+                    for (let j = 0; j < offCount; j++) offRelDays.push((offsetRelDay + j) % 7);
+                    return { staff: s, offRelDays, defaultShiftIndex: idx % shifts.length };
+                });
+
+                // Step 2: day-by-day, mark primary members Duty/Off, then use available floaters
+                // to patch any shift that falls below its target that day.
+                for (let di = cycleStartDay; di < cycleEndDay; di++) {
+                    const relDay = (di - cycleStartDay) % 7;
+                    const shiftOnDutyCount = new Map();
+
+                    primaryGroups.forEach(pg => {
+                        let onDuty = 0;
+                        pg.members.forEach(m => {
+                            const cells = cellsByStaff.get(m.staff);
+                            if (m.offRelDays.includes(relDay)) {
+                                cells[di] = { status: 'Day Off', shift: null };
+                            } else {
+                                cells[di] = { status: 'Duty', shift: pg.shiftDef };
+                                onDuty++;
+                            }
+                        });
+                        shiftOnDutyCount.set(pg.shiftDef, onDuty);
+                    });
+
+                    // Available floaters today = not on their own day off
+                    const availableFloaters = floaters.filter(f => !f.offRelDays.includes(relDay));
+                    const usedFloaters = new Set();
+
+                    // Fill shortfalls first (highest-priority: shifts furthest below target)
+                    const deficits = primaryGroups
+                        .map(pg => ({ pg, deficit: (pg.shiftDef.minCoverage || 1) - (shiftOnDutyCount.get(pg.shiftDef) || 0) }))
+                        .filter(d => d.deficit > 0)
+                        .sort((a, b) => b.deficit - a.deficit);
+
+                    deficits.forEach(({ pg, deficit }) => {
+                        for (let n = 0; n < deficit; n++) {
+                            const floater = availableFloaters.find(f => !usedFloaters.has(f.staff));
+                            if (!floater) return;
+                            usedFloaters.add(floater.staff);
+                            cellsByStaff.get(floater.staff)[di] = { status: 'Duty', shift: pg.shiftDef };
+                        }
+                    });
+
+                    // Remaining floaters (not needed to patch a gap): assign their default shift,
+                    // or mark as day off if it's their own off-day.
+                    floaters.forEach(f => {
+                        if (usedFloaters.has(f.staff)) return;
+                        const cells = cellsByStaff.get(f.staff);
+                        if (f.offRelDays.includes(relDay)) {
+                            cells[di] = { status: 'Day Off', shift: null };
+                        } else {
+                            cells[di] = { status: 'Duty', shift: shifts[f.defaultShiftIndex] || null };
+                        }
+                    });
+                }
+            }
+        });
+
+        const schedule = staffList.map(s => ({ staff: s, cells: cellsByStaff.get(s) }));
+
+        // Final verification pass: check actual per-day coverage against target (in case of edge cases)
+        dates.forEach((d, di) => {
+            const dStr = d.toISOString().split('T')[0];
+            Object.keys(branchGroups).forEach(branchName => {
+                const shifts = SHIFT_TIME_OPTIONS[branchName] || [];
+                const staffInBranch = schedule.filter(row => row.staff.branch === branchName);
+                if (staffInBranch.length === 0) return;
+                shifts.forEach(shiftDef => {
+                    const onDutyCount = staffInBranch.filter(row => row.cells[di].status === 'Duty' && row.cells[di].shift && row.cells[di].shift.value === shiftDef.value).length;
+                    const required = shiftDef.minCoverage || 1;
+                    if (onDutyCount === 0) {
+                        warnings.push(`${branchName} (${shiftDef.label}): walang staff na naka-duty sa ${dStr}`);
+                    } else if (onDutyCount < required) {
+                        warnings.push(`${branchName} (${shiftDef.label}): ${onDutyCount} lang staff naka-duty sa ${dStr}, target ay ${required}`);
+                    }
+                });
+            });
+        });
+
+        return { dates, schedule, warnings };
+    }
+
+    if (btnGenerateSchedule) {
+        btnGenerateSchedule.addEventListener('click', () => {
+            const startDate = document.getElementById('sched-start-date').value;
+            const endDate = document.getElementById('sched-end-date').value;
+
+            if (!startDate || !endDate) {
+                alert('Please select both Date From and Date To.');
+                return;
+            }
+            if (new Date(startDate) > new Date(endDate)) {
+                alert('Date From cannot be later than Date To.');
+                return;
+            }
+
+            const nameInputs = document.querySelectorAll('.sched-staff-name');
+            if (nameInputs.length === 0) {
+                alert('Please select Number of Staff first.');
+                return;
+            }
+
+            const staffList = [];
+            let hasEmptyName = false;
+            document.querySelectorAll('.sched-staff-row').forEach(row => {
+                const name = row.querySelector('.sched-staff-name').value.trim();
+                const branch = row.querySelector('.sched-staff-branch').value;
+                const workDays = 6; // fixed: 6 working days, 1 day off per week for all staff
+                if (!name) hasEmptyName = true;
+                staffList.push({ name: name || '(Unnamed)', branch, workDays });
+            });
+
+            if (hasEmptyName) {
+                if (!confirm('May mga staff na walang pangalan. Ituloy pa rin ba?')) return;
+            }
+
+            const rotationPeriodWeeks = parseInt(document.getElementById('sched-rotation-period').value) || 2;
+            const result = generateStaffSchedule(staffList, startDate, endDate, rotationPeriodWeeks);
+            lastGeneratedSchedule = { ...result, startDate, endDate };
+
+            // Render warnings
+            const warningsEl = document.getElementById('sched-warnings');
+            if (result.warnings.length > 0) {
+                warningsEl.innerHTML = `
+                    <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 14px; color: #fca5a5; font-size: 0.85em;">
+                        <strong><i class="fas fa-triangle-exclamation"></i> Walang Coverage Warning:</strong>
+                        <ul style="margin: 6px 0 0 18px; padding: 0;">
+                            ${result.warnings.map(w => `<li>${w}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            } else {
+                warningsEl.innerHTML = `<div style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 8px; padding: 8px 14px; color: #6ee7b7; font-size: 0.85em;"><i class="fas fa-check-circle"></i> May staff na naka-duty araw-araw sa bawat branch.</div>`;
+            }
+
+            // Render preview table
+            const previewContainer = document.getElementById('sched-preview-container');
+            let tableHtml = '<table style="border-collapse: collapse; font-size: 0.78em; min-width: 100%;"><thead><tr>';
+            tableHtml += '<th style="padding: 8px; text-align: left; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid var(--glass-border);">Staff</th>';
+            tableHtml += '<th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Branch</th>';
+            result.dates.forEach(d => {
+                const label = `${d.getMonth() + 1}/${d.getDate()}`;
+                tableHtml += `<th style="padding: 6px; text-align: center; border-bottom: 1px solid var(--glass-border); min-width: 55px;">${label}</th>`;
+            });
+            tableHtml += '</tr></thead><tbody>';
+            result.schedule.forEach(row => {
+                tableHtml += '<tr>';
+                tableHtml += `<td style="padding: 8px; font-weight: 500; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staff.name}</td>`;
+                tableHtml += `<td style="padding: 8px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staff.branch}</td>`;
+                row.cells.forEach(cell => {
+                    const isDuty = cell.status === 'Duty';
+                    const cellText = isDuty ? (cell.shift ? cell.shift.shortLabel : 'Duty') : 'Off';
+                    const cellTitle = isDuty && cell.shift ? cell.shift.label : 'Day Off';
+                    tableHtml += `<td title="${cellTitle}" style="padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: ${isDuty ? '600' : '400'};">${cellText}</td>`;
+                });
+                tableHtml += '</tr>';
+            });
+            tableHtml += '</tbody></table>';
+            previewContainer.innerHTML = tableHtml;
+
+            btnSaveSchedule.classList.remove('hidden');
+        });
+    }
+
+    if (btnSaveSchedule) {
+        btnSaveSchedule.addEventListener('click', async () => {
+            if (!lastGeneratedSchedule) return;
+
+            const btnText = btnSaveSchedule.querySelector('.btn-text');
+            const spinner = btnSaveSchedule.querySelector('.spinner');
+            btnSaveSchedule.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+
+            try {
+                const rows = [];
+                lastGeneratedSchedule.schedule.forEach(row => {
+                    lastGeneratedSchedule.dates.forEach((d, di) => {
+                        const cell = row.cells[di];
+                        rows.push({
+                            date: d.toISOString().split('T')[0],
+                            branch: row.staff.branch,
+                            staffName: row.staff.name,
+                            shiftTime: cell.shift ? cell.shift.label : '',
+                            shiftHours: cell.shift ? cell.shift.hours : '',
+                            status: cell.status
+                        });
+                    });
+                });
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'saveStaffSchedule',
+                        rows: rows,
+                        encodedBy: sessionStorage.getItem('loggedInUser')
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showToast('Schedule saved successfully!', 'success');
+                } else {
+                    showToast('Error saving schedule: ' + (result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error saving schedule:', error);
+                showToast('Network error while saving schedule.', 'error');
+            } finally {
+                btnSaveSchedule.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
     }
     
     if (clearAttendanceFilterBtn) {
@@ -5609,7 +6511,8 @@ document.addEventListener("DOMContentLoaded", function() {
         'Handover': ['Date', 'Branch', 'Outgoing Staff', 'Handover Description', 'Discussion', 'Status', 'Incoming Staff', 'Remarks', 'Approver'],
         'MarvsPCStufz Expenses': ['Date', 'Category', 'Expenses Description', 'Amount', 'Account Name'],
         'Item Purchased': ['Date', 'Supplier Name', 'Item Category', 'Item Description', 'Serial Number', 'Status', 'Accountable Person'],
-        'Daily Check and Balance': ['Date', 'Branch', 'Cash Expense', 'Gcash Expenses', 'Gcash Receivable', 'Cash on hand', 'Daily Sales', 'Pondo Amount', 'Discrepancy', 'Remarks', 'Login Account']
+        'Daily Check and Balance': ['Date', 'Branch', 'Cash Expense', 'Gcash Expenses', 'Gcash Receivable', 'Cash on hand', 'Daily Sales', 'Pondo Amount', 'Discrepancy', 'Remarks', 'Login Account'],
+        'Customer Information Sheet': ['Date', 'Customer Name', 'Address', 'Mobile#', 'Number of Builds', 'Type of Build', 'Delivery Date', 'Delivery Method', 'Shipping Fee', 'Free Shipping Justification', 'Free Shipping Screenshot URL', 'Downpayment Amount', 'Reference Number', 'DP MOP', 'Tech Builder', 'Sales Admin', 'MarvsPC Page', 'Client Request', 'Build Status', 'Payment Completion', 'Delivery Status', 'Overall Status', 'Encoded By', 'Parts Releasing']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -5644,6 +6547,10 @@ document.addEventListener("DOMContentLoaded", function() {
             const editSerialContainer = document.getElementById('edit-serial-container');
             const editWarrantyNoContainer = document.getElementById('edit-warranty-no-container');
             const editCategoryFilter = document.getElementById('edit-category-filter');
+            const editCustomerNameContainer = document.getElementById('edit-customer-name-container');
+            if (editCustomerNameContainer) editCustomerNameContainer.classList.add('hidden');
+            const btnPrintEditReportToggle = document.getElementById('btn-print-edit-report');
+            if (btnPrintEditReportToggle) btnPrintEditReportToggle.classList.remove('hidden');
 
             if (editBranchContainer) {
                 if (sheet === 'MarvsPCStufz Expenses') {
@@ -5688,6 +6595,15 @@ document.addEventListener("DOMContentLoaded", function() {
                             });
                         }
                     }
+                } else if (sheet === 'Customer Information Sheet') {
+                    editBranchContainer.classList.add('hidden');
+                    if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
+                    if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
+                    if (editSerialContainer) editSerialContainer.classList.add('hidden');
+                    if (editWarrantyNoContainer) editWarrantyNoContainer.classList.add('hidden');
+                    if (editCustomerNameContainer) editCustomerNameContainer.classList.remove('hidden');
+                    const btnPrintEditReportEl = document.getElementById('btn-print-edit-report');
+                    if (btnPrintEditReportEl) btnPrintEditReportEl.classList.add('hidden');
                 } else if (sheet === 'Warranty Items') {
                     editBranchContainer.classList.remove('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
@@ -5995,6 +6911,19 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
         
+        if (sheet === 'Customer Information Sheet') {
+            const customerNameFilter = document.getElementById('edit-customer-name-filter') ? document.getElementById('edit-customer-name-filter').value.trim().toLowerCase() : '';
+            if (customerNameFilter) {
+                const nameColIndex = (sheetColumns[sheet] || []).indexOf('Customer Name');
+                if (nameColIndex !== -1) {
+                    filteredData = filteredData.filter(row => {
+                        const val = (row[nameColIndex] || '').toString().toLowerCase();
+                        return val.includes(customerNameFilter);
+                    });
+                }
+            }
+        }
+        
         if (sheet === 'MarvsPCStufz Expenses') {
             const selectedCategory = document.getElementById('edit-category-filter') ? document.getElementById('edit-category-filter').value : 'All';
             if (selectedCategory && selectedCategory !== 'All') {
@@ -6058,6 +6987,11 @@ document.addEventListener("DOMContentLoaded", function() {
     const editWarrantyNoInput = document.getElementById('edit-warranty-no-filter');
     if (editWarrantyNoInput) {
         editWarrantyNoInput.addEventListener('input', applyEditModalFilters);
+    }
+
+    const editCustomerNameInput = document.getElementById('edit-customer-name-filter');
+    if (editCustomerNameInput) {
+        editCustomerNameInput.addEventListener('input', applyEditModalFilters);
     }
 
 
@@ -6260,11 +7194,13 @@ document.addEventListener("DOMContentLoaded", function() {
                     isDateCol = (i === 0);
                 } else if (sheet === 'Other Expenses') {
                     isDateCol = (i === 0 || i === 1);
+                } else if (sheet === 'Customer Information Sheet') {
+                    isDateCol = (i === 0 || i === 6);
                 } else {
                     isDateCol = (i === 1);
                 }
-                if (isDateCol && val && String(val).includes('T')) {
-                    val = String(val).split('T')[0];
+                if (isDateCol && val) {
+                    val = String(val).split(/[T ]/)[0];
                 }
                 
                 // format time string if it's a time cell
@@ -6618,6 +7554,14 @@ document.addEventListener("DOMContentLoaded", function() {
                 actionTd.appendChild(printRowBtn);
                 // -----------------------------
 
+                if (sheet === 'Customer Information Sheet') {
+                    const releasingBtn = document.createElement('button');
+                    releasingBtn.innerHTML = '<i class="fas fa-dolly"></i> Releasing';
+                    releasingBtn.style.cssText = 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 5px;';
+                    releasingBtn.addEventListener('click', () => openItemReleasingModal(row, rowIndex));
+                    actionTd.appendChild(releasingBtn);
+                }
+
                 tr.appendChild(actionTd);
             }
             tbody.appendChild(tr);
@@ -6922,6 +7866,134 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
+    const closeItemReleasingModalBtnFix = document.getElementById('close-item-releasing-modal');
+    const closeItemReleasingBtnFix = document.getElementById('close-item-releasing-btn');
+    [closeItemReleasingModalBtnFix, closeItemReleasingBtnFix].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('item-releasing-modal').style.display = 'none';
+        });
+    });
+
+    const closeBuildProgressModalBtn = document.getElementById('close-build-progress-modal');
+    const closeBuildProgressBtn = document.getElementById('close-build-progress-btn');
+    [closeBuildProgressModalBtn, closeBuildProgressBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('build-progress-modal').style.display = 'none';
+        });
+    });
+
+    let currentReleasingRow = null;
+    let currentReleasingRowIndex = null;
+
+    function openItemReleasingModal(row, rowIndex) {
+        currentReleasingRow = row;
+        currentReleasingRowIndex = rowIndex;
+
+        let dateStr = row[0] || '';
+        if (dateStr && dateStr.includes('T')) dateStr = dateStr.split('T')[0];
+        let deliveryDateStr = row[6] || '';
+        if (deliveryDateStr && deliveryDateStr.includes('T')) deliveryDateStr = deliveryDateStr.split('T')[0];
+
+        const fields = [
+            { label: 'Date', value: dateStr || '-' },
+            { label: 'Customer Name', value: row[1] || '-' },
+            { label: 'Address', value: row[2] || '-' },
+            { label: 'Mobile#', value: row[3] || '-' },
+            { label: 'Number of Builds', value: row[4] || '-' },
+            { label: 'Type of Build', value: row[5] || '-' },
+            { label: 'Delivery Date', value: deliveryDateStr || '-' },
+            { label: 'Sales Admin', value: row[15] || '-' },
+            { label: 'Client Request', value: row[17] || '-' }
+        ];
+
+        const body = document.getElementById('item-releasing-body');
+        body.innerHTML = fields.map(f => `
+            <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <span style="color: var(--text-muted); font-size: 0.82em; flex-shrink: 0;">${f.label}</span>
+                <span style="color: #e2e8f0; font-size: 0.85em; text-align: right; word-break: break-word;">${f.value}</span>
+            </div>
+        `).join('');
+
+        const partsStatusSelect = document.getElementById('item-releasing-parts-status');
+        partsStatusSelect.value = row[23] || 'Pending';
+
+        const statusMsg = document.getElementById('item-releasing-status-message');
+        statusMsg.classList.add('hidden');
+
+        document.getElementById('item-releasing-modal').style.display = 'flex';
+    }
+
+    const btnSaveItemReleasing = document.getElementById('btn-save-item-releasing');
+    if (btnSaveItemReleasing) {
+        btnSaveItemReleasing.addEventListener('click', async () => {
+            if (!currentReleasingRow || !currentReleasingRowIndex) return;
+
+            const statusMsg = document.getElementById('item-releasing-status-message');
+            const newPartsStatus = document.getElementById('item-releasing-parts-status').value;
+
+            btnSaveItemReleasing.disabled = true;
+            const originalHtml = btnSaveItemReleasing.innerHTML;
+            btnSaveItemReleasing.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+            try {
+                // Rebuild the full row (columns A-X) with only Parts Releasing (column X) changed
+                const cols = sheetColumns['Customer Information Sheet'];
+                const shouldAutoLineUp = (newPartsStatus === 'Item Released' || newPartsStatus === 'Partially Released');
+                const updatedData = [];
+                for (let i = 0; i < cols.length; i++) {
+                    if (i === 23) {
+                        updatedData.push(newPartsStatus);
+                    } else if (i === 18 && shouldAutoLineUp) {
+                        updatedData.push('Already for line up');
+                    } else {
+                        updatedData.push(currentReleasingRow[i] !== undefined ? currentReleasingRow[i] : '');
+                    }
+                }
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'updateExpenseRecord',
+                        sheetName: 'Customer Information Sheet',
+                        rowIndex: currentReleasingRowIndex,
+                        updatedData: updatedData,
+                        encodedBy: sessionStorage.getItem('loggedInUser')
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    currentReleasingRow[23] = newPartsStatus;
+                    if (shouldAutoLineUp) currentReleasingRow[18] = 'Already for line up';
+                    if (window.currentEditRecords) {
+                        const rec = window.currentEditRecords.find(r => String(r[r.length - 1]) === String(currentReleasingRowIndex));
+                        if (rec) {
+                            rec[23] = newPartsStatus;
+                            if (shouldAutoLineUp) rec[18] = 'Already for line up';
+                        }
+                    }
+                    statusMsg.textContent = 'Saved successfully!';
+                    statusMsg.className = 'status-message success';
+                    statusMsg.classList.remove('hidden');
+                    showToast('Parts Releasing status updated!', 'success');
+                } else {
+                    statusMsg.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    statusMsg.className = 'status-message error';
+                    statusMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error saving item releasing status:', error);
+                statusMsg.textContent = 'Network error. Please try again.';
+                statusMsg.className = 'status-message error';
+                statusMsg.classList.remove('hidden');
+            } finally {
+                btnSaveItemReleasing.disabled = false;
+                btnSaveItemReleasing.innerHTML = originalHtml;
+            }
+        });
+    }
+
 }); // end of DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -7154,6 +8226,14 @@ document.addEventListener('DOMContentLoaded', () => {
     [closeItemReplViewModalBtn, closeItemReplViewBtn].forEach(btn => {
         if (btn) btn.addEventListener('click', () => {
             document.getElementById('item-replacement-view-modal').style.display = 'none';
+        });
+    });
+
+    const closeItemReleasingModalBtn = document.getElementById('close-item-releasing-modal');
+    const closeItemReleasingBtn = document.getElementById('close-item-releasing-btn');
+    [closeItemReleasingModalBtn, closeItemReleasingBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('item-releasing-modal').style.display = 'none';
         });
     });
 

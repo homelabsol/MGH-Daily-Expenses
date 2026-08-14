@@ -148,6 +148,7 @@
                     <h2 style="margin: 0;">Today's Attendance</h2>
                     <div style="display: flex; gap: 8px;">
                         <button type="button" id="btn-view-all-attendance" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-list-alt"></i> View All</button>
+                        <button type="button" id="btn-attendance-schedule" style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.4); color: #a78bfa; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-calendar-alt"></i> Schedule</button>
                         <button type="button" id="btn-attendance-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-rotate"></i> Refresh</button>
                     </div>
                 </div>
@@ -249,13 +250,59 @@
                     <span class="btn-text"><i class="fas fa-upload"></i> Upload Multiple Items</span>
                 </button>
                 <div id="purchased-status-message" class="status-message hidden"></div>
-                <input type="file" id="purchased-csv-upload" accept=".csv" class="hidden">
+                <input type="file" id="purchased-csv-upload" accept=".csv, .xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel" class="hidden">
             </form>
         </main>
     </div>
 
 
     <!-- Category Modal -->
+    <div id="build-progress-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:20000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-tasks" style="margin-right:8px; color:#3b82f6;"></i>Build Progress</h3>
+                <button id="close-build-progress-modal" style="background:none; border:none; color:#94a3b8; font-size:1.2em; cursor:pointer; padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="build-progress-body" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <div class="form-group" style="margin-top: 16px; margin-bottom: 0;">
+                <label for="build-progress-tech-builder">Tech Builder</label>
+                <select id="build-progress-tech-builder" disabled style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;"></select>
+            </div>
+            <div id="build-progress-status-message" class="hidden" style="margin-top: 10px; font-size: 0.85em;"></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:22px;">
+                <button type="button" id="close-build-progress-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#94a3b8; border-radius:6px; padding:8px 18px; font-size:0.85em; cursor:pointer;">Close</button>
+                <button type="button" id="btn-save-build-progress" style="background:#10b981; border:none; color:#fff; border-radius:6px; padding:8px 18px; font-size:0.85em; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-save"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="item-releasing-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:20000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-dolly" style="margin-right:8px; color:#f59e0b;"></i>Item Releasing</h3>
+                <button id="close-item-releasing-modal" style="background:none; border:none; color:#94a3b8; font-size:1.2em; cursor:pointer; padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="item-releasing-body" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <div class="form-group" style="margin-top: 16px; margin-bottom: 0;">
+                <label for="item-releasing-parts-status">Parts Releasing</label>
+                <select id="item-releasing-parts-status">
+                    <option value="Pending">Pending</option>
+                    <option value="Partially Released">Partially Released</option>
+                    <option value="Item Released">Item Released</option>
+                </select>
+            </div>
+            <div id="item-releasing-status-message" class="hidden" style="margin-top: 10px; font-size: 0.85em;"></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:22px;">
+                <button type="button" id="close-item-releasing-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#94a3b8; border-radius:6px; padding:8px 18px; font-size:0.85em; cursor:pointer;">Close</button>
+                <button type="button" id="btn-save-item-releasing" style="background:#10b981; border:none; color:#fff; border-radius:6px; padding:8px 18px; font-size:0.85em; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-save"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="item-replacement-view-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:20000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
         <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:480px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -329,6 +376,326 @@
                 <span class="icon">💰</span>
                 MarvsPCStufz Expenses
             </button>
+            <button class="menu-action-btn" id="menu-marvspc-customer-info-btn">
+                <span class="icon">📋</span>
+                Customer Information Sheet
+            </button>
+            <button class="menu-action-btn" id="menu-marvspc-releasing-btn">
+                <span class="icon">📦</span>
+                Releasing of Build Status
+            </button>
+            <button class="menu-action-btn" id="menu-marvspc-build-tracker-btn">
+                <span class="icon">🛠️</span>
+                Build Tracker
+            </button>
+            <button class="menu-action-btn" id="menu-marvspc-build-status-btn">
+                <span class="icon">📊</span>
+                Build Status
+            </button>
+            <button class="menu-action-btn" id="menu-marvspc-deliveries-btn">
+                <span class="icon">🚚</span>
+                Deliveries
+            </button>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Releasing of Build Status Container -->
+    <div class="container hidden" id="marvspc-releasing-container" style="max-width: 1300px;">
+        <header>
+            <h1>Releasing of Build Status</h1>
+            <p>View and track build release status per customer</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="releasing-status-start-date">Date From</label>
+                    <input type="date" id="releasing-status-start-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="releasing-status-end-date">Date To</label>
+                    <input type="date" id="releasing-status-end-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 160px;">
+                    <label for="releasing-status-search-name">Customer Name</label>
+                    <input type="text" id="releasing-status-search-name" placeholder="Search name...">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 150px;">
+                    <label for="releasing-status-parts-filter">Parts Releasing</label>
+                    <select id="releasing-status-parts-filter">
+                        <option value="All">All</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Partially Released">Partially Released</option>
+                        <option value="Item Released">Item Released</option>
+                    </select>
+                </div>
+                <button type="button" id="btn-load-releasing-status" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 10px 18px;">
+                    <span class="btn-text"><i class="fas fa-search"></i> Load</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div style="overflow-x: auto; margin-top: 20px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1250px; table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 95px;">
+                        <col style="width: 130px;">
+                        <col style="width: 220px;">
+                        <col style="width: 110px;">
+                        <col style="width: 75px;">
+                        <col style="width: 110px;">
+                        <col style="width: 100px;">
+                        <col style="width: 120px;">
+                        <col style="width: 220px;">
+                        <col style="width: 140px;">
+                        <col style="width: 130px;">
+                        <col style="width: 150px;">
+                    </colgroup>
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--glass-border);">
+                            <th style="padding: 10px; text-align: left;">Date</th>
+                            <th style="padding: 10px; text-align: left;">Customer Name</th>
+                            <th style="padding: 10px; text-align: left;">Address</th>
+                            <th style="padding: 10px; text-align: left;">Mobile#</th>
+                            <th style="padding: 10px; text-align: left;">No. of Builds</th>
+                            <th style="padding: 10px; text-align: left;">Type of Build</th>
+                            <th style="padding: 10px; text-align: left;">Delivery Date</th>
+                            <th style="padding: 10px; text-align: left;">Sales Admin</th>
+                            <th style="padding: 10px; text-align: left;">Client Request</th>
+                            <th style="padding: 10px; text-align: left;">Build Status</th>
+                            <th style="padding: 10px; text-align: left;">Parts Releasing</th>
+                            <th style="padding: 10px; text-align: left;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="releasing-status-table-body">
+                        <tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Build Tracker Container -->
+    <div class="container hidden" id="marvspc-build-tracker-container">
+        <header>
+            <h1>Build Tracker</h1>
+            <p>Coming Soon</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+    </div>
+
+    <!-- MarvsPCStufz Build Status Container -->
+    <div class="container hidden" id="marvspc-build-status-container">
+        <header>
+            <h1>Build Status</h1>
+            <p>Coming Soon</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+    </div>
+
+    <!-- MarvsPCStufz Deliveries Container -->
+    <div class="container hidden" id="marvspc-deliveries-container">
+        <header>
+            <h1>Deliveries</h1>
+            <p>Coming Soon</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+    </div>
+
+    <!-- MarvsPCStufz Customer Information Sheet Container -->
+    <div class="container hidden" id="marvspc-customer-info-container" style="max-width: 650px;">
+        <header>
+            <h1>Customer Information Sheet</h1>
+            <p>Record customer build & delivery details</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <div style="display: flex; gap: 8px; justify-content: center; margin-top: 10px;">
+                <button class="back-btn" data-target="marvspc-menu-container" style="margin: 0;"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+                <button type="button" class="view-records-btn" data-sheet="Customer Information Sheet" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View & Edit Records"><i class="fas fa-list-alt"></i> View Records</button>
+            </div>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <form id="customer-info-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ci-date">Date</label>
+                        <input type="date" id="ci-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ci-delivery-date">Delivery Date</label>
+                        <input type="date" id="ci-delivery-date" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="ci-customer-name">Customer Name</label>
+                    <input type="text" id="ci-customer-name" placeholder="Full name" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="ci-address">Address</label>
+                    <input type="text" id="ci-address" placeholder="Complete address" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ci-mobile">Mobile #</label>
+                        <input type="text" id="ci-mobile" placeholder="e.g. 09171234567" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ci-num-builds">Number of Builds</label>
+                        <input type="text" id="ci-num-builds" inputmode="numeric" placeholder="e.g. 1" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ci-type-build">Type of Build</label>
+                        <select id="ci-type-build" required>
+                            <option value="" disabled selected>Select Type</option>
+                            <option value="Pisonet">Pisonet</option>
+                            <option value="Diskless">Diskless</option>
+                            <option value="Standard">Standard</option>
+                            <option value="High Build">High Build</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ci-delivery-method">Delivery Method</label>
+                        <select id="ci-delivery-method" required>
+                            <option value="" disabled selected>Select Method</option>
+                            <option value="Marvs Delivery">Marvs Delivery</option>
+                            <option value="Pickup">Pickup</option>
+                            <option value="Customer Booking">Customer Booking</option>
+                            <option value="Daily Overland">Daily Overland</option>
+                            <option value="LBC">LBC</option>
+                            <option value="Victory Liner">Victory Liner</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="ci-shipping-fee">Shipping Fee Amount</label>
+                    <input type="text" id="ci-shipping-fee" inputmode="numeric" placeholder="0.00">
+                </div>
+
+                <div id="ci-shipping-justification-box" class="hidden" style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label for="ci-shipping-justification">Justification for Free/₱0 Shipping</label>
+                        <textarea id="ci-shipping-justification" rows="2" placeholder="Explain why shipping is free" disabled></textarea>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="ci-shipping-screenshot">Upload Screenshot</label>
+                        <input type="file" id="ci-shipping-screenshot" accept="image/*" disabled>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ci-downpayment">Downpayment Amount</label>
+                        <input type="text" id="ci-downpayment" inputmode="numeric" placeholder="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="ci-reference">Reference Number</label>
+                        <input type="text" id="ci-reference" placeholder="Transaction reference #" required>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ci-dp-mop">DP Mode of Payment</label>
+                        <select id="ci-dp-mop">
+                            <option value="" disabled selected>Select MOP</option>
+                            <option value="Gcash 2011">Gcash 2011</option>
+                            <option value="Gcash 1631">Gcash 1631</option>
+                            <option value="BPI Transfer">BPI Transfer</option>
+                            <option value="BDO Transfer">BDO Transfer</option>
+                            <option value="Metrobank Transfer">Metrobank Transfer</option>
+                            <option value="Maya">Maya</option>
+                            <option value="Credit Card">Credit Card</option>
+                            <option value="Salmon">Salmon</option>
+                            <option value="Homecredit">Homecredit</option>
+                            <option value="Billease">Billease</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ci-tech-builder">Tech Builder</label>
+                        <select id="ci-tech-builder" required disabled>
+                            <option value="" disabled selected>Select Tech Builder</option>
+                            <option value="Ariel">Ariel</option>
+                            <option value="Gilbert">Gilbert</option>
+                            <option value="Brian">Brian</option>
+                            <option value="Miko">Miko</option>
+                            <option value="Zaldy">Zaldy</option>
+                            <option value="Egay">Egay</option>
+                            <option value="Mark">Mark</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ci-sales-admin">Sales Admin</label>
+                        <input type="text" id="ci-sales-admin" disabled style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed; font-weight: 600;">
+                    </div>
+                    <div class="form-group">
+                        <label for="ci-marvspc-page">MarvsPC Page</label>
+                        <select id="ci-marvspc-page" required>
+                            <option value="" disabled selected>Select Page</option>
+                            <option value="PC Marvs">PC Marvs</option>
+                            <option value="MarvsPCStufz">MarvsPCStufz</option>
+                            <option value="Marvs Computer Store">Marvs Computer Store</option>
+                            <option value="Marvs Gaming Hub">Marvs Gaming Hub</option>
+                            <option value="Others">Others</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="ci-client-request">Client Request</label>
+                    <textarea id="ci-client-request" rows="2" placeholder="Special instructions or requests"></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ci-build-status">Build Status</label>
+                        <select id="ci-build-status" disabled>
+                            <option value="Pending" selected>Pending</option>
+                            <option value="Ongoing">Ongoing</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ci-payment-completion">Payment Completion</label>
+                        <select id="ci-payment-completion" disabled>
+                            <option value="Pending" selected>Pending</option>
+                            <option value="Partial payment">Partial payment</option>
+                            <option value="Fully Paid">Fully Paid</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ci-delivery-status">Delivery Status</label>
+                        <select id="ci-delivery-status" disabled>
+                            <option value="Pending" selected>Pending</option>
+                            <option value="For Delivery">For Delivery</option>
+                            <option value="Delivered">Delivered</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="ci-overall-status">Overall Status</label>
+                        <input type="text" id="ci-overall-status" value="Pending" disabled style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed; font-weight: 600;">
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="btn-save-customer-info">
+                    <span class="btn-text"><i class="fas fa-save"></i> Save Customer Information</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <div id="ci-status-message" class="status-message hidden"></div>
+            </form>
         </main>
     </div>
 
@@ -2076,6 +2443,10 @@
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Warranty#</label>
                         <input type="text" id="edit-warranty-no-filter" placeholder="e.g. WAR-2026..." style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; box-sizing: border-box; color: inherit; font-size: 1em;">
                     </div>
+                    <div id="edit-customer-name-container" class="hidden" style="flex: 1; min-width: 130px;">
+                        <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Customer Name</label>
+                        <input type="text" id="edit-customer-name-filter" placeholder="Search name..." style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; box-sizing: border-box; color: inherit; font-size: 1em;">
+                    </div>
                     <div style="flex: 1; min-width: 130px;" id="edit-status-container" class="hidden">
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Status</label>
                         <select id="edit-status-filter" style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
@@ -2111,7 +2482,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=6"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -2404,6 +2775,69 @@
                         <tbody id="attendanceTableBodyList"></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance Schedule Generator Modal -->
+    <div id="attendanceScheduleModal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1000px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <div style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3);">
+                <h2 style="margin: 0; font-size: 1.4em; color: #a78bfa;"><i class="fas fa-calendar-alt"></i> Staff Schedule Generator</h2>
+                <button type="button" id="close-attendance-schedule-modal-btn" style="background: none; border: none; color: var(--text-muted); font-size: 1.5em; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+
+            <div style="padding: 20px; overflow-y: auto; flex: 1;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="sched-start-date">Date From</label>
+                        <input type="date" id="sched-start-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="sched-end-date">Date To</label>
+                        <input type="date" id="sched-end-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="sched-staff-count">Number of Staff</label>
+                        <select id="sched-staff-count">
+                            <option value="" disabled selected>Select</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sched-rotation-period">Shift Rotation Every</label>
+                        <select id="sched-rotation-period">
+                            <option value="1">1 Week</option>
+                            <option value="2" selected>2 Weeks</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="sched-staff-rows" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;"></div>
+
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button type="button" id="btn-generate-schedule" class="submit-btn" style="margin: 0;">
+                        <span class="btn-text"><i class="fas fa-magic"></i> Generate Schedule</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                    <button type="button" id="btn-save-schedule" class="submit-btn hidden" style="margin: 0; background: linear-gradient(135deg, #10b981, #059669);">
+                        <span class="btn-text"><i class="fas fa-save"></i> Save Schedule</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </div>
+
+                <div id="sched-warnings" style="margin-top: 15px;"></div>
+
+                <div id="sched-preview-container" style="margin-top: 20px; overflow-x: auto;"></div>
             </div>
         </div>
     </div>
