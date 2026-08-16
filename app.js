@@ -119,6 +119,9 @@ document.addEventListener('DOMContentLoaded', () => {
         hideAllContainers();
         mainMenuContainer.classList.remove('hidden');
         welcomeMessage.textContent = `Welcome, ${name}`;
+
+        const aiChatFabEl = document.getElementById('ai-chat-fab');
+        if (aiChatFabEl) aiChatFabEl.classList.remove('hidden');
         
         // Update user display in all screens
         document.querySelectorAll('.logged-in-user-display').forEach(el => {
@@ -192,6 +195,11 @@ document.addEventListener('DOMContentLoaded', () => {
         loginContainer.classList.remove('hidden');
         loginForm.reset();
         welcomeMessage.textContent = 'MGH Daily Expenses';
+
+        const aiChatFabEl = document.getElementById('ai-chat-fab');
+        const aiChatPanelEl = document.getElementById('ai-chat-panel');
+        if (aiChatFabEl) aiChatFabEl.classList.add('hidden');
+        if (aiChatPanelEl) aiChatPanelEl.classList.add('hidden');
     }
 
     // Navigation Listeners
@@ -237,10 +245,32 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Simple placeholder navigation for new MarvsPCStufz menu items
+    const menuMarvsPcPurchasedOrderBtn = document.getElementById('menu-marvspc-purchased-order-btn');
+    if (menuMarvsPcPurchasedOrderBtn) {
+        menuMarvsPcPurchasedOrderBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const purchasedOrderContainer = document.getElementById('marvspc-purchased-order-container');
+            if (purchasedOrderContainer) purchasedOrderContainer.classList.remove('hidden');
+            const poDate = document.getElementById('po-date-requested');
+            if (poDate && !poDate.value) poDate.valueAsDate = new Date();
+            const poAdmin = document.getElementById('po-admin-requested');
+            if (poAdmin) poAdmin.value = sessionStorage.getItem('loggedInUser') || '';
+        });
+    }
+
+    const menuMarvsPcDeliveriesBtn = document.getElementById('menu-marvspc-deliveries-btn');
+    if (menuMarvsPcDeliveriesBtn) {
+        menuMarvsPcDeliveriesBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const deliveriesContainer = document.getElementById('marvspc-deliveries-container');
+            if (deliveriesContainer) deliveriesContainer.classList.remove('hidden');
+        });
+    }
+
+    // Simple placeholder navigation for remaining new MarvsPCStufz menu items
     [
         ['menu-marvspc-build-status-btn', 'marvspc-build-status-container'],
-        ['menu-marvspc-deliveries-btn', 'marvspc-deliveries-container']
+        ['menu-marvspc-customer-support-btn', 'marvspc-customer-support-container']
     ].forEach(([btnId, containerId]) => {
         const btn = document.getElementById(btnId);
         if (btn) {
@@ -253,56 +283,107 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ======= Releasing of Build Status =======
+    const RELEASING_STATUS_PAGE_SIZE = 100;
+    let releasingStatusPageState = { rows: [], rendered: 0 };
+
+    function buildReleasingStatusRowHtml(row, canAccessBuildProgress) {
+        let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+        let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+        const buildStatus = row[18] || '-';
+        const partsReleasing = row[23] || 'Pending';
+        let rowColor = '#ef4444'; // Pending = red
+        if (partsReleasing === 'Partially Released') rowColor = '#10b981'; // green
+        else if (partsReleasing === 'Item Released') rowColor = '#f1f5f9'; // white
+        const isPartsPending = (partsReleasing === 'Pending');
+        const actionsCell = canAccessBuildProgress
+            ? (isPartsPending
+                ? `<button type="button" class="btn-build-progress" disabled title="Kailangan munang i-release ang parts bago ma-progress ang build" style="background: rgba(148,163,184,0.15); color: #64748b; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; padding: 4px 8px; cursor: not-allowed; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`
+                : `<button type="button" class="btn-build-progress" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`)
+            : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
+                <td style="padding: 8px 10px;">${dateStr}</td>
+                <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
+                <td style="padding: 8px 10px;">${row[2] || ''}</td>
+                <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                <td style="padding: 8px 10px;">${row[4] || ''}</td>
+                <td style="padding: 8px 10px;">${row[5] || ''}</td>
+                <td style="padding: 8px 10px;">${deliveryDateStr}</td>
+                <td style="padding: 8px 10px;">${row[15] || ''}</td>
+                <td style="padding: 8px 10px;">${row[17] || ''}</td>
+                <td style="padding: 8px 10px;">${buildStatus}</td>
+                <td style="padding: 8px 10px; font-weight: 600;">${partsReleasing}</td>
+                <td style="padding: 8px 10px;">${actionsCell}</td>
+            </tr>
+        `;
+    }
+
+    // Renders the next batch of rows into the Releasing of Build Status table and
+    // appends a "Load More" row if more remain. Avoids building/attaching listeners
+    // for hundreds of rows at once, which was causing scroll stutter on large result
+    // sets (same underlying issue as the "View & Edit" modal table).
+    function renderReleasingStatusNextBatch() {
+        const tbody = document.getElementById('releasing-status-table-body');
+        const existingLoadMoreRow = document.getElementById('releasing-status-load-more-row');
+        if (existingLoadMoreRow) existingLoadMoreRow.remove();
+
+        const rows = releasingStatusPageState.rows;
+        const currentRole = sessionStorage.getItem('userRole');
+        const canAccessBuildProgress = ['Technician', 'Manager', 'Owner', 'RMA Admin', 'Supervisor'].includes(currentRole);
+        const start = releasingStatusPageState.rendered;
+        const end = Math.min(start + RELEASING_STATUS_PAGE_SIZE, rows.length);
+        const batch = rows.slice(start, end);
+
+        // Use a <tbody> as the parsing context so <tr> markup parses correctly
+        // (a <div> would silently drop bare <tr> elements).
+        const parseWrapper = document.createElement('tbody');
+        parseWrapper.innerHTML = batch.map(row => buildReleasingStatusRowHtml(row, canAccessBuildProgress)).join('');
+        const newRowEls = Array.from(parseWrapper.children);
+        newRowEls.forEach(tr => tbody.appendChild(tr));
+
+        if (canAccessBuildProgress) {
+            newRowEls.forEach(tr => {
+                const btn = tr.querySelector('.btn-build-progress');
+                if (btn) {
+                    btn.addEventListener('click', () => {
+                        const idx = btn.getAttribute('data-row-index');
+                        const matchedRow = rows.find(r => String(r[r.length - 1]) === String(idx));
+                        if (matchedRow) openBuildProgressModal(matchedRow);
+                    });
+                }
+            });
+        }
+
+        releasingStatusPageState.rendered = end;
+
+        if (releasingStatusPageState.rendered < rows.length) {
+            const remaining = rows.length - releasingStatusPageState.rendered;
+            const loadMoreTr = document.createElement('tr');
+            loadMoreTr.id = 'releasing-status-load-more-row';
+            const loadMoreTd = document.createElement('td');
+            loadMoreTd.colSpan = 12;
+            loadMoreTd.style.padding = '14px';
+            loadMoreTd.style.textAlign = 'center';
+            const loadMoreBtn = document.createElement('button');
+            loadMoreBtn.type = 'button';
+            loadMoreBtn.innerHTML = `<i class="fas fa-chevron-down"></i> Load More (${remaining} remaining)`;
+            loadMoreBtn.style.cssText = 'background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 0.9em;';
+            loadMoreBtn.addEventListener('click', renderReleasingStatusNextBatch);
+            loadMoreTd.appendChild(loadMoreBtn);
+            loadMoreTr.appendChild(loadMoreTd);
+            tbody.appendChild(loadMoreTr);
+        }
+    }
+
     function renderReleasingStatusTable(rows) {
         const tbody = document.getElementById('releasing-status-table-body');
+        tbody.innerHTML = '';
+        releasingStatusPageState = { rows: rows || [], rendered: 0 };
         if (!rows || rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
             return;
         }
-        const currentRole = sessionStorage.getItem('userRole');
-        const canAccessBuildProgress = ['Technician', 'Manager', 'Owner', 'RMA Admin', 'Supervisor'].includes(currentRole);
-
-        tbody.innerHTML = rows.map(row => {
-            let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
-            let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
-            const buildStatus = row[18] || '-';
-            const partsReleasing = row[23] || 'Pending';
-            let rowColor = '#ef4444'; // Pending = red
-            if (partsReleasing === 'Partially Released') rowColor = '#10b981'; // green
-            else if (partsReleasing === 'Item Released') rowColor = '#f1f5f9'; // white
-            const isPartsPending = (partsReleasing === 'Pending');
-            const actionsCell = canAccessBuildProgress
-                ? (isPartsPending
-                    ? `<button type="button" class="btn-build-progress" disabled title="Kailangan munang i-release ang parts bago ma-progress ang build" style="background: rgba(148,163,184,0.15); color: #64748b; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; padding: 4px 8px; cursor: not-allowed; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`
-                    : `<button type="button" class="btn-build-progress" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`)
-                : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
-            return `
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
-                    <td style="padding: 8px 10px;">${dateStr}</td>
-                    <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[5] || ''}</td>
-                    <td style="padding: 8px 10px;">${deliveryDateStr}</td>
-                    <td style="padding: 8px 10px;">${row[15] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[17] || ''}</td>
-                    <td style="padding: 8px 10px;">${buildStatus}</td>
-                    <td style="padding: 8px 10px; font-weight: 600;">${partsReleasing}</td>
-                    <td style="padding: 8px 10px;">${actionsCell}</td>
-                </tr>
-            `;
-        }).join('');
-
-        if (canAccessBuildProgress) {
-            tbody.querySelectorAll('.btn-build-progress').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const idx = btn.getAttribute('data-row-index');
-                    const matchedRow = rows.find(r => String(r[r.length - 1]) === String(idx));
-                    if (matchedRow) openBuildProgressModal(matchedRow);
-                });
-            });
-        }
+        renderReleasingStatusNextBatch();
     }
 
     let currentReleasingStatusRecords = [];
@@ -372,10 +453,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('marvspc-releasing-container');
             if (container) container.classList.remove('hidden');
 
+            // Default to last 3 weeks instead of the entire sheet history (2020-2099) —
+            // loading everything at once was causing the same scroll stutter/hang seen
+            // in the "View & Edit" modal. Users can still widen these manually to see
+            // older pending items.
             const startDateEl = document.getElementById('releasing-status-start-date');
             const endDateEl = document.getElementById('releasing-status-end-date');
-            if (startDateEl && !startDateEl.value) startDateEl.value = '2020-01-01';
-            if (endDateEl && !endDateEl.value) endDateEl.value = '2099-12-31';
+            if (startDateEl && !startDateEl.value) {
+                const today = new Date();
+                const threeWeeksAgo = new Date();
+                threeWeeksAgo.setDate(today.getDate() - 21);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                startDateEl.value = fmt(threeWeeksAgo);
+                if (endDateEl && !endDateEl.value) endDateEl.value = fmt(today);
+            }
 
             loadReleasingStatusRecords();
         });
@@ -492,10 +588,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('marvspc-build-tracker-container');
             if (container) container.classList.remove('hidden');
 
+            // Default to last 3 weeks instead of the entire sheet history (2020-2099) —
+            // same fix as the Releasing of Build Status page, for the same reason.
             const startDateEl = document.getElementById('build-tracker-start-date');
             const endDateEl = document.getElementById('build-tracker-end-date');
-            if (startDateEl && !startDateEl.value) startDateEl.value = '2020-01-01';
-            if (endDateEl && !endDateEl.value) endDateEl.value = '2099-12-31';
+            if (startDateEl && !startDateEl.value) {
+                const today = new Date();
+                const threeWeeksAgo = new Date();
+                threeWeeksAgo.setDate(today.getDate() - 21);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                startDateEl.value = fmt(threeWeeksAgo);
+                if (endDateEl && !endDateEl.value) endDateEl.value = fmt(today);
+            }
 
             loadBuildTrackerRecords();
         });
@@ -1911,10 +2020,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             hideAllContainers();
             document.getElementById('item-replacement-container').classList.remove('hidden');
+            // Default to last 3 weeks instead of the entire sheet history (2020-2099),
+            // consistent with the same fix applied to the Customer Information Sheet
+            // pages. Users can still widen these manually to see older pending items.
             const replStartDateEl = document.getElementById('repl-start-date');
             const replEndDateEl = document.getElementById('repl-end-date');
-            if (replStartDateEl && !replStartDateEl.value) replStartDateEl.value = '2020-01-01';
-            if (replEndDateEl && !replEndDateEl.value) replEndDateEl.value = '2099-12-31';
+            if (replStartDateEl && !replStartDateEl.value) {
+                const today = new Date();
+                const threeWeeksAgo = new Date();
+                threeWeeksAgo.setDate(today.getDate() - 21);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                replStartDateEl.value = fmt(threeWeeksAgo);
+                if (replEndDateEl && !replEndDateEl.value) replEndDateEl.value = fmt(today);
+            }
             const loadReplBtn = document.getElementById('btn-load-replacements');
             if (loadReplBtn) loadReplBtn.click();
         });
@@ -2028,6 +2151,92 @@ document.addEventListener('DOMContentLoaded', () => {
             spinner.classList.add('hidden');
         }
     });
+
+    // AI Support Chatbot (global floating button — see showApp/showLogin for visibility toggling)
+    const aiChatFab = document.getElementById('ai-chat-fab');
+    const aiChatPanel = document.getElementById('ai-chat-panel');
+    const aiChatCloseBtn = document.getElementById('ai-chat-close-btn');
+    const aiChatForm = document.getElementById('ai-chat-form');
+    const aiChatInput = document.getElementById('ai-chat-input');
+    const aiChatMessages = document.getElementById('ai-chat-messages');
+    const aiChatSendBtn = document.getElementById('ai-chat-send-btn');
+    let aiChatHistory = []; // session-only, in-memory, not persisted anywhere
+
+    function appendAiChatMessage(text, role) {
+        if (!aiChatMessages) return;
+        const bubble = document.createElement('div');
+        bubble.style.cssText = role === 'user'
+            ? 'align-self: flex-end; background: var(--primary); color: #fff; border-radius: 10px; padding: 8px 12px; max-width: 85%; white-space: pre-wrap; word-break: break-word;'
+            : 'align-self: flex-start; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 8px 12px; max-width: 85%; white-space: pre-wrap; word-break: break-word;';
+        bubble.textContent = text;
+        aiChatMessages.appendChild(bubble);
+        aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
+    }
+
+    if (aiChatFab && aiChatPanel) {
+        aiChatFab.addEventListener('click', () => {
+            aiChatPanel.classList.toggle('hidden');
+            if (!aiChatPanel.classList.contains('hidden') && aiChatInput) aiChatInput.focus();
+        });
+    }
+
+    if (aiChatCloseBtn && aiChatPanel) {
+        aiChatCloseBtn.addEventListener('click', () => {
+            aiChatPanel.classList.add('hidden');
+        });
+    }
+
+    if (aiChatForm) {
+        aiChatForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const question = aiChatInput.value.trim();
+            if (!question) return;
+
+            appendAiChatMessage(question, 'user');
+            aiChatInput.value = '';
+            aiChatInput.disabled = true;
+            if (aiChatSendBtn) aiChatSendBtn.disabled = true;
+
+            const thinkingBubble = document.createElement('div');
+            thinkingBubble.id = 'ai-chat-thinking';
+            thinkingBubble.style.cssText = 'align-self: flex-start; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 8px 12px; max-width: 85%; color: var(--text-muted); font-style: italic;';
+            thinkingBubble.textContent = 'Naghahanap ng sagot...';
+            aiChatMessages.appendChild(thinkingBubble);
+            aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'askAiSupport',
+                        message: question,
+                        history: aiChatHistory.slice(-10),
+                        encodedBy: sessionStorage.getItem('loggedInUser')
+                    })
+                });
+                const result = await response.json();
+                const thinkingEl = document.getElementById('ai-chat-thinking');
+                if (thinkingEl) thinkingEl.remove();
+
+                if (result.status === 'success') {
+                    appendAiChatMessage(result.reply, 'assistant');
+                    aiChatHistory.push({ role: 'user', content: question });
+                    aiChatHistory.push({ role: 'assistant', content: result.reply });
+                } else {
+                    appendAiChatMessage('Error: ' + result.message, 'assistant');
+                }
+            } catch (err) {
+                const thinkingEl = document.getElementById('ai-chat-thinking');
+                if (thinkingEl) thinkingEl.remove();
+                appendAiChatMessage('Network error. Please try again.', 'assistant');
+            } finally {
+                aiChatInput.disabled = false;
+                if (aiChatSendBtn) aiChatSendBtn.disabled = false;
+                aiChatInput.focus();
+            }
+        });
+    }
 
     // Handle Admin Verification
     adminLoginForm.addEventListener('submit', async (e) => {
@@ -2424,6 +2633,126 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('marvspc-date').valueAsDate = new Date();
                 } else {
                     showMessage(statusMessage, 'Error saving expense: ' + result.message, 'error');
+                }
+            } catch (err) {
+                showMessage(statusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    const purchasedOrderForm = document.getElementById('purchased-order-form');
+    if (purchasedOrderForm) {
+        purchasedOrderForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('po-submit-btn');
+            const statusMessage = document.getElementById('po-status-message');
+
+            if (SCRIPT_URL === 'PASTE_YOUR_URL_HERE' || SCRIPT_URL === '') {
+                showMessage(statusMessage, 'Please set your Google Apps Script URL in app.js', 'error');
+                return;
+            }
+
+            const qtyVal = parseInt(document.getElementById('po-qty').value, 10);
+            if (!qtyVal || qtyVal <= 0) {
+                showMessage(statusMessage, 'Qty must be greater than 0', 'error');
+                return;
+            }
+
+            const formData = {
+                action: 'savePurchasedOrder',
+                dateRequested: document.getElementById('po-date-requested').value,
+                adminRequested: sessionStorage.getItem('loggedInUser') || '',
+                itemDescription: document.getElementById('po-item-description').value,
+                qty: qtyVal,
+                status: document.getElementById('po-status').value,
+                encodedBy: sessionStorage.getItem('loggedInUser')
+            };
+
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showMessage(statusMessage, 'Purchase request saved successfully!', 'success');
+                    purchasedOrderForm.reset();
+                    document.getElementById('po-date-requested').valueAsDate = new Date();
+                    document.getElementById('po-admin-requested').value = sessionStorage.getItem('loggedInUser') || '';
+                    document.getElementById('po-status').value = 'Pending';
+                } else {
+                    showMessage(statusMessage, 'Error saving request: ' + result.message, 'error');
+                }
+            } catch (err) {
+                showMessage(statusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    const deliveryForm = document.getElementById('delivery-form');
+    if (deliveryForm) {
+        deliveryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('delivery-submit-btn');
+            const statusMessage = document.getElementById('delivery-status-message');
+
+            if (SCRIPT_URL === 'PASTE_YOUR_URL_HERE' || SCRIPT_URL === '') {
+                showMessage(statusMessage, 'Please set your Google Apps Script URL in app.js', 'error');
+                return;
+            }
+
+            const costVal = parseFloat(document.getElementById('delivery-cost').value);
+            if (isNaN(costVal) || costVal < 0) {
+                showMessage(statusMessage, 'Cost cannot be negative', 'error');
+                return;
+            }
+
+            const formData = {
+                action: 'saveDelivery',
+                location: document.getElementById('delivery-location').value,
+                deliveryMethod: document.getElementById('delivery-method').value,
+                cost: costVal,
+                encodedBy: sessionStorage.getItem('loggedInUser')
+            };
+
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showMessage(statusMessage, 'Delivery saved successfully!', 'success');
+                    deliveryForm.reset();
+                    document.getElementById('delivery-method').value = 'Motor';
+                } else {
+                    showMessage(statusMessage, 'Error saving delivery: ' + result.message, 'error');
                 }
             } catch (err) {
                 showMessage(statusMessage, 'Network error. Please try again.', 'error');
@@ -6390,6 +6719,18 @@ document.addEventListener("DOMContentLoaded", function() {
                 reportHeader.style.cursor = 'move';
             }
         });
+
+        // Safety net: if the mouse button is released outside the browser window
+        // (e.g. dragged off-screen, alt-tabbed mid-drag), no "mouseup" ever fires and
+        // isDragging stays stuck true forever, hijacking every future mousemove on the
+        // page (including scrollbar drags elsewhere). Reset on window blur too.
+        window.addEventListener("blur", () => {
+            if (isDragging) {
+                isDragging = false;
+                reportContent.style.cursor = '';
+                reportHeader.style.cursor = 'move';
+            }
+        });
     }
 });
 
@@ -6433,6 +6774,15 @@ document.addEventListener("DOMContentLoaded", function() {
                 monthlyHeader.style.cursor = 'move';
             }
         });
+
+        // Safety net: reset stuck drag state if mouse is released outside the window.
+        window.addEventListener("blur", () => {
+            if (isDragging) {
+                isDragging = false;
+                monthlyContent.style.cursor = '';
+                monthlyHeader.style.cursor = 'move';
+            }
+        });
     }
 });
 // Make MGH Survey Report Draggable
@@ -6469,6 +6819,15 @@ document.addEventListener("DOMContentLoaded", function() {
         });
 
         document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                surveyContent.style.cursor = '';
+                surveyHeader.style.cursor = 'move';
+            }
+        });
+
+        // Safety net: reset stuck drag state if mouse is released outside the window.
+        window.addEventListener("blur", () => {
             if (isDragging) {
                 isDragging = false;
                 surveyContent.style.cursor = '';
@@ -6519,6 +6878,15 @@ document.addEventListener("DOMContentLoaded", function() {
                 attHeader.style.cursor = 'move';
             }
         });
+
+        // Safety net: reset stuck drag state if mouse is released outside the window.
+        window.addEventListener("blur", () => {
+            if (isDragging) {
+                isDragging = false;
+                attContent.style.cursor = '';
+                attHeader.style.cursor = 'move';
+            }
+        });
     }
 });
 
@@ -6558,8 +6926,17 @@ document.addEventListener("DOMContentLoaded", function() {
                 valFormHeader.style.cursor = 'move';
             }
         });
+
+        // Safety net: reset stuck drag state if mouse is released outside the window.
+        window.addEventListener("blur", () => {
+            if (isDragging) {
+                isDragging = false;
+                valFormContainer.style.cursor = '';
+                valFormHeader.style.cursor = 'move';
+            }
+        });
     }
-    
+
     // Validation Form Submit Handler
     // (Moved to correct scope in main DOMContentLoaded block)
 });
@@ -6602,6 +6979,15 @@ document.addEventListener("DOMContentLoaded", function() {
                 expensesHeader.style.cursor = 'move';
             }
         });
+
+        // Safety net: reset stuck drag state if mouse is released outside the window.
+        window.addEventListener("blur", () => {
+            if (isDragging) {
+                isDragging = false;
+                expensesContainer.style.cursor = '';
+                expensesHeader.style.cursor = 'move';
+            }
+        });
     }
 });
 
@@ -6632,7 +7018,9 @@ document.addEventListener("DOMContentLoaded", function() {
         'MarvsPCStufz Expenses': ['Date', 'Category', 'Expenses Description', 'Amount', 'Account Name'],
         'Item Purchased': ['Date', 'Supplier Name', 'Item Category', 'Item Description', 'Serial Number', 'Status', 'Accountable Person'],
         'Daily Check and Balance': ['Date', 'Branch', 'Cash Expense', 'Gcash Expenses', 'Gcash Receivable', 'Cash on hand', 'Daily Sales', 'Pondo Amount', 'Discrepancy', 'Remarks', 'Login Account'],
-        'Customer Information Sheet': ['Date', 'Customer Name', 'Address', 'Mobile#', 'Number of Builds', 'Type of Build', 'Delivery Date', 'Delivery Method', 'Shipping Fee', 'Free Shipping Justification', 'Free Shipping Screenshot URL', 'Downpayment Amount', 'Reference Number', 'DP MOP', 'Tech Builder', 'Sales Admin', 'MarvsPC Page', 'Client Request', 'Build Status', 'Payment Completion', 'Delivery Status', 'Overall Status', 'Encoded By', 'Parts Releasing']
+        'Customer Information Sheet': ['Date', 'Customer Name', 'Address', 'Mobile#', 'Number of Builds', 'Type of Build', 'Delivery Date', 'Delivery Method', 'Shipping Fee', 'Free Shipping Justification', 'Free Shipping Screenshot URL', 'Downpayment Amount', 'Reference Number', 'DP MOP', 'Tech Builder', 'Sales Admin', 'MarvsPC Page', 'Client Request', 'Build Status', 'Payment Completion', 'Delivery Status', 'Overall Status', 'Encoded By', 'Parts Releasing'],
+        'Purchased Order': ['Date Requested', 'Admin Requested', 'Item Description', 'Qty', 'Status'],
+        'Deliveries': ['Location', 'Delivery Method', 'Cost']
     };
 
     viewRecordsBtns.forEach(btn => {
@@ -6656,6 +7044,10 @@ document.addEventListener("DOMContentLoaded", function() {
                     editStatusContainer.classList.remove('hidden');
                     editStatusFilter.innerHTML = '<option value="All">All Status</option><option value="Received">Received</option><option value="Returned">Returned</option><option value="Replaced">Replaced</option>';
                     editStatusFilter.value = 'All';
+                } else if (sheet === 'Purchased Order') {
+                    editStatusContainer.classList.remove('hidden');
+                    editStatusFilter.innerHTML = '<option value="All">All Status</option><option value="Pending">Pending</option><option value="Ordered">Ordered</option><option value="Completed">Completed</option>';
+                    editStatusFilter.value = 'All';
                 } else {
                     editStatusContainer.classList.add('hidden');
                 }
@@ -6669,6 +7061,12 @@ document.addEventListener("DOMContentLoaded", function() {
             const editCategoryFilter = document.getElementById('edit-category-filter');
             const editCustomerNameContainer = document.getElementById('edit-customer-name-container');
             if (editCustomerNameContainer) editCustomerNameContainer.classList.add('hidden');
+            const editLocationContainer = document.getElementById('edit-location-container');
+            if (editLocationContainer) editLocationContainer.classList.add('hidden');
+            const editStartDateContainer = document.getElementById('edit-start-date-container');
+            const editEndDateContainer = document.getElementById('edit-end-date-container');
+            if (editStartDateContainer) editStartDateContainer.classList.remove('hidden');
+            if (editEndDateContainer) editEndDateContainer.classList.remove('hidden');
             const btnPrintEditReportToggle = document.getElementById('btn-print-edit-report');
             if (btnPrintEditReportToggle) btnPrintEditReportToggle.classList.remove('hidden');
 
@@ -6724,6 +7122,24 @@ document.addEventListener("DOMContentLoaded", function() {
                     if (editCustomerNameContainer) editCustomerNameContainer.classList.remove('hidden');
                     const btnPrintEditReportEl = document.getElementById('btn-print-edit-report');
                     if (btnPrintEditReportEl) btnPrintEditReportEl.classList.add('hidden');
+                } else if (sheet === 'Purchased Order') {
+                    editBranchContainer.classList.add('hidden');
+                    if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
+                    if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
+                    if (editSerialContainer) editSerialContainer.classList.add('hidden');
+                    if (editWarrantyNoContainer) editWarrantyNoContainer.classList.add('hidden');
+                } else if (sheet === 'Deliveries') {
+                    editBranchContainer.classList.add('hidden');
+                    if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
+                    if (editCategoryContainer) editCategoryContainer.classList.add('hidden');
+                    if (editSerialContainer) editSerialContainer.classList.add('hidden');
+                    if (editWarrantyNoContainer) editWarrantyNoContainer.classList.add('hidden');
+                    if (editLocationContainer) editLocationContainer.classList.remove('hidden');
+                    // Deliveries has no Date column at all — hide the date-range filter
+                    // and the date-range-based Print Report button entirely for this sheet.
+                    if (editStartDateContainer) editStartDateContainer.classList.add('hidden');
+                    if (editEndDateContainer) editEndDateContainer.classList.add('hidden');
+                    if (btnPrintEditReportToggle) btnPrintEditReportToggle.classList.add('hidden');
                 } else if (sheet === 'Warranty Items') {
                     editBranchContainer.classList.remove('hidden');
                     if (editSupplierContainer) editSupplierContainer.classList.add('hidden');
@@ -6739,10 +7155,21 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
             }
             
-            // Set default dates: wide range for Customer Information Sheet (load everything), today for other sheets
+            // Set default dates: last 3 weeks for Customer Information Sheet (avoid loading the entire
+            // sheet at once, which was causing the modal/table to hang on large record counts), today for other sheets.
+            // Users can still widen the Start/End Date fields manually to reach older records.
             if (sheet === 'Customer Information Sheet') {
-                startDateInput.value = '2020-01-01';
-                endDateInput.value = '2099-12-31';
+                const today = new Date();
+                const threeWeeksAgo = new Date();
+                threeWeeksAgo.setDate(today.getDate() - 21);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                startDateInput.value = fmt(threeWeeksAgo);
+                endDateInput.value = fmt(today);
             } else {
                 const today = new Date();
                 const y = today.getFullYear();
@@ -6993,7 +7420,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
         
-        if (sheet === 'Handover' || sheet === 'Warranty Items' || sheet === 'Item Purchased') {
+        if (sheet === 'Handover' || sheet === 'Warranty Items' || sheet === 'Item Purchased' || sheet === 'Purchased Order') {
             const selectedStatus = document.getElementById('edit-status-filter').value;
             if (selectedStatus && selectedStatus !== 'All') {
                 const statusColIndex = (sheetColumns[sheet] || []).indexOf('Status');
@@ -7050,6 +7477,19 @@ document.addEventListener("DOMContentLoaded", function() {
             }
         }
         
+        if (sheet === 'Deliveries') {
+            const locationFilter = document.getElementById('edit-location-filter') ? document.getElementById('edit-location-filter').value.trim().toLowerCase() : '';
+            if (locationFilter) {
+                const locationColIndex = (sheetColumns[sheet] || []).indexOf('Location');
+                if (locationColIndex !== -1) {
+                    filteredData = filteredData.filter(row => {
+                        const val = (row[locationColIndex] || '').toString().toLowerCase();
+                        return val.includes(locationFilter);
+                    });
+                }
+            }
+        }
+
         if (sheet === 'MarvsPCStufz Expenses') {
             const selectedCategory = document.getElementById('edit-category-filter') ? document.getElementById('edit-category-filter').value : 'All';
             if (selectedCategory && selectedCategory !== 'All') {
@@ -7118,6 +7558,11 @@ document.addEventListener("DOMContentLoaded", function() {
     const editCustomerNameInput = document.getElementById('edit-customer-name-filter');
     if (editCustomerNameInput) {
         editCustomerNameInput.addEventListener('input', applyEditModalFilters);
+    }
+
+    const editLocationInput = document.getElementById('edit-location-filter');
+    if (editLocationInput) {
+        editLocationInput.addEventListener('input', applyEditModalFilters);
     }
 
 
@@ -7289,304 +7734,259 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 
-    function renderRecords(rows, sheet) {
-        tbody.innerHTML = '';
-        if (!rows || rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found for this date range.</td></tr>';
-            return;
-        }
-        
+    function buildRecordRow(row, sheet) {
         const colsCount = (sheetColumns[sheet] || []).length;
-        
-        rows.forEach(row => {
-            const rowIndex = row[row.length - 1]; // The last element is the row index
-            const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
-            
-            // Render cells
-            for(let i = 0; i < colsCount; i++) {
-                const td = document.createElement('td');
-                td.style.padding = '8px';
-                td.style.whiteSpace = 'nowrap';
-                
-                let val = row[i];
-                if (val === undefined || val === null) val = '';
-                
-                const colName = sheetColumns[sheet][i] || '';
-                
-                // format date string if it's a date cell
-                let isDateCol = false;
-                if (sheet === 'Remitted amount' || sheet === 'Daily Survey' || sheet === 'Warranty Items' || sheet === 'Handover' || sheet === 'Item Purchased') {
-                    isDateCol = (i === 0);
-                } else if (sheet === 'Other Expenses') {
-                    isDateCol = (i === 0 || i === 1);
-                } else if (sheet === 'Customer Information Sheet') {
-                    isDateCol = (i === 0 || i === 6);
-                } else {
-                    isDateCol = (i === 1);
-                }
-                if (isDateCol && val) {
-                    val = String(val).split(/[T ]/)[0];
-                }
-                
-                // format time string if it's a time cell
-                if (colName.toLowerCase() === 'time' && val) {
-                    let h, m;
-                    const valStr = String(val);
-                    if (valStr.includes('T')) {
-                        const d = new Date(valStr);
-                        if (!isNaN(d.getTime())) {
-                            h = d.getHours();
-                            m = String(d.getMinutes()).padStart(2, '0');
-                        }
-                    } else if (valStr.includes(':')) {
-                        const timePart = valStr.includes(' ') ? valStr.split(' ')[1] : valStr;
-                        const parts = timePart.split(':');
-                        h = parseInt(parts[0], 10);
-                        m = parts[1].padStart(2, '0');
-                    }
-                    
-                    if (h !== undefined && m !== undefined) {
-                        const ampm = h >= 12 ? 'PM' : 'AM';
-                        h = h % 12;
-                        h = h ? h : 12;
-                        val = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
-                    }
-                }
-                
-                // format amount with commas
-                if (colName.toLowerCase().includes('amount') && val !== '' && !isNaN(String(val).replace(/,/g, ''))) {
-                    // Just in case it already has commas, remove them first
-                    const cleanVal = String(val).replace(/,/g, '');
-                    val = parseFloat(cleanVal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-                }
-                
-                const inputEl = document.createElement('div');
-                inputEl.innerText = val;
-                inputEl.className = `edit-input-${rowIndex}`;
-                inputEl.style.cssText = 'background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; color: inherit; width: 100%; min-width: 150px; outline: none; font-family: inherit; font-size: 0.95em; box-sizing: border-box; word-break: break-word; white-space: pre-wrap;';
-                
-                td.appendChild(inputEl);
-                tr.appendChild(td);
+        const rowIndex = row[row.length - 1]; // The last element is the row index
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+
+        // Render cells
+        for(let i = 0; i < colsCount; i++) {
+            const td = document.createElement('td');
+            td.style.padding = '8px';
+            td.style.whiteSpace = 'nowrap';
+
+            let val = row[i];
+            if (val === undefined || val === null) val = '';
+
+            const colName = sheetColumns[sheet][i] || '';
+
+            // format date string if it's a date cell
+            let isDateCol = false;
+            if (sheet === 'Remitted amount' || sheet === 'Daily Survey' || sheet === 'Warranty Items' || sheet === 'Handover' || sheet === 'Item Purchased' || sheet === 'Purchased Order') {
+                isDateCol = (i === 0);
+            } else if (sheet === 'Other Expenses') {
+                isDateCol = (i === 0 || i === 1);
+            } else if (sheet === 'Customer Information Sheet') {
+                isDateCol = (i === 0 || i === 6);
+            } else if (sheet === 'Deliveries') {
+                isDateCol = false; // no Date column at all for this sheet
+            } else {
+                isDateCol = (i === 1);
             }
-            
-            // Action cell
-            const actionTd = document.createElement('td');
-            actionTd.style.padding = '8px';
-            actionTd.style.whiteSpace = 'nowrap';
-            
-            const editBtn = document.createElement('button');
-            editBtn.innerHTML = '<i class="fas fa-edit"></i> Edit';
-            editBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
-            
-            const saveBtn = document.createElement('button');
-            saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
-            saveBtn.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; display: none;';
-            
-            const deleteBtn = document.createElement('button');
-            deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
-            deleteBtn.style.cssText = 'background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
-            
-            deleteBtn.addEventListener('click', async () => {
-                const rowIndex = row[row.length - 1];
-                showConfirm(
-                    'Delete Record',
-                    'Are you sure you want to delete this record? This cannot be undone.',
-                    async () => {
-                        deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                        deleteBtn.disabled = true;
-                        try {
-                            const response = await fetch(SCRIPT_URL, {
-                                method: 'POST',
-                                body: new URLSearchParams({
-                                    action: 'deleteRecord',
-                                    sheetName: sheet,
-                                    rowIndex: rowIndex,
-                                    encodedBy: sessionStorage.getItem('loggedInUser')
-                                })
-                            });
-                            const result = await response.json();
-                            if (result.status === 'success') {
-                                showToast('Record deleted successfully.', 'success');
-                                document.getElementById('filter-records-form').dispatchEvent(new Event('submit'));
-                            } else {
-                                showToast('Error: ' + result.message, 'error');
-                                deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
-                                deleteBtn.disabled = false;
-                            }
-                        } catch (error) {
-                            showToast('Error: ' + error.message, 'error');
+            if (isDateCol && val) {
+                val = String(val).split(/[T ]/)[0];
+            }
+
+            // format time string if it's a time cell
+            if (colName.toLowerCase() === 'time' && val) {
+                let h, m;
+                const valStr = String(val);
+                if (valStr.includes('T')) {
+                    const d = new Date(valStr);
+                    if (!isNaN(d.getTime())) {
+                        h = d.getHours();
+                        m = String(d.getMinutes()).padStart(2, '0');
+                    }
+                } else if (valStr.includes(':')) {
+                    const timePart = valStr.includes(' ') ? valStr.split(' ')[1] : valStr;
+                    const parts = timePart.split(':');
+                    h = parseInt(parts[0], 10);
+                    m = parts[1].padStart(2, '0');
+                }
+
+                if (h !== undefined && m !== undefined) {
+                    const ampm = h >= 12 ? 'PM' : 'AM';
+                    h = h % 12;
+                    h = h ? h : 12;
+                    val = `${String(h).padStart(2, '0')}:${m} ${ampm}`;
+                }
+            }
+
+            // format amount with commas
+            if (colName.toLowerCase().includes('amount') && val !== '' && !isNaN(String(val).replace(/,/g, ''))) {
+                // Just in case it already has commas, remove them first
+                const cleanVal = String(val).replace(/,/g, '');
+                val = parseFloat(cleanVal).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            }
+
+            const inputEl = document.createElement('div');
+            inputEl.innerText = val;
+            inputEl.className = `edit-input-${rowIndex}`;
+            inputEl.style.cssText = 'background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; color: inherit; width: 100%; min-width: 150px; outline: none; font-family: inherit; font-size: 0.95em; box-sizing: border-box; word-break: break-word; white-space: pre-wrap;';
+
+            td.appendChild(inputEl);
+            tr.appendChild(td);
+        }
+
+        // Action cell
+        const actionTd = document.createElement('td');
+        actionTd.style.padding = '8px';
+        actionTd.style.whiteSpace = 'nowrap';
+
+        const editBtn = document.createElement('button');
+        editBtn.innerHTML = '<i class="fas fa-edit"></i> Edit';
+        editBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
+
+        const saveBtn = document.createElement('button');
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+        saveBtn.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; display: none;';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+        deleteBtn.style.cssText = 'background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px;';
+
+        deleteBtn.addEventListener('click', async () => {
+            const rowIndex = row[row.length - 1];
+            showConfirm(
+                'Delete Record',
+                'Are you sure you want to delete this record? This cannot be undone.',
+                async () => {
+                    deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                    deleteBtn.disabled = true;
+                    try {
+                        const response = await fetch(SCRIPT_URL, {
+                            method: 'POST',
+                            body: new URLSearchParams({
+                                action: 'deleteRecord',
+                                sheetName: sheet,
+                                rowIndex: rowIndex,
+                                encodedBy: sessionStorage.getItem('loggedInUser')
+                            })
+                        });
+                        const result = await response.json();
+                        if (result.status === 'success') {
+                            showToast('Record deleted successfully.', 'success');
+                            document.getElementById('filter-records-form').dispatchEvent(new Event('submit'));
+                        } else {
+                            showToast('Error: ' + result.message, 'error');
                             deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
                             deleteBtn.disabled = false;
                         }
+                    } catch (error) {
+                        showToast('Error: ' + error.message, 'error');
+                        deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                        deleteBtn.disabled = false;
                     }
-                );
+                }
+            );
+        });
+
+        editBtn.addEventListener('click', () => {
+            const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
+            inputs.forEach(input => {
+                input.contentEditable = true;
+                input.style.background = 'rgba(0,0,0,0.3)';
+                input.style.border = '1px solid rgba(255,255,255,0.2)';
+                input.style.padding = '6px';
+                input.style.borderRadius = '4px';
             });
-            
-            editBtn.addEventListener('click', () => {
-                const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
-                inputs.forEach(input => {
-                    input.contentEditable = true;
-                    input.style.background = 'rgba(0,0,0,0.3)';
-                    input.style.border = '1px solid rgba(255,255,255,0.2)';
-                    input.style.padding = '6px';
-                    input.style.borderRadius = '4px';
-                });
-                editBtn.style.display = 'none';
-                saveBtn.style.display = 'inline-block';
+            editBtn.style.display = 'none';
+            saveBtn.style.display = 'inline-block';
+        });
+
+        saveBtn.addEventListener('click', async () => {
+            const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
+            const updatedData = [];
+            inputs.forEach((input, index) => {
+                let valToSave = input.value !== undefined ? input.value : input.innerText;
+                const colName = sheetColumns[sheet][index] || '';
+                if (colName.toLowerCase().includes('amount')) {
+                    // strip commas before saving back to server
+                    valToSave = valToSave.replace(/,/g, '');
+                }
+                updatedData.push(valToSave);
             });
-            
-            saveBtn.addEventListener('click', async () => {
-                const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
-                const updatedData = [];
-                inputs.forEach((input, index) => {
-                    let valToSave = input.value !== undefined ? input.value : input.innerText;
-                    const colName = sheetColumns[sheet][index] || '';
-                    if (colName.toLowerCase().includes('amount')) {
-                        // strip commas before saving back to server
-                        valToSave = valToSave.replace(/,/g, '');
-                    }
-                    updatedData.push(valToSave);
+
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            saveBtn.disabled = true;
+
+            try {
+                const formData = {
+                    action: 'updateExpenseRecord',
+                    sheetName: sheet,
+                    rowIndex: rowIndex,
+                    updatedData: updatedData,
+                    encodedBy: sessionStorage.getItem('loggedInUser')
+                };
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
                 });
-                
-                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                saveBtn.disabled = true;
-                
-                try {
-                    const formData = {
-                        action: 'updateExpenseRecord',
-                        sheetName: sheet,
-                        rowIndex: rowIndex,
-                        updatedData: updatedData,
-                        encodedBy: sessionStorage.getItem('loggedInUser')
-                    };
-                    
-                    const response = await fetch(SCRIPT_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify(formData)
-                    });
-                    const result = await response.json();
-                    
-                    if (result.status === 'success') {
-                        // Update local array for real-time refresh
-                        if (window.currentEditRecords) {
-                            const recIndex = window.currentEditRecords.findIndex(r => r[r.length - 1] === rowIndex);
-                            if (recIndex !== -1) {
-                                for(let i = 0; i < updatedData.length; i++) {
-                                    window.currentEditRecords[recIndex][i] = updatedData[i];
-                                }
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    // Update local array for real-time refresh
+                    if (window.currentEditRecords) {
+                        const recIndex = window.currentEditRecords.findIndex(r => r[r.length - 1] === rowIndex);
+                        if (recIndex !== -1) {
+                            for(let i = 0; i < updatedData.length; i++) {
+                                window.currentEditRecords[recIndex][i] = updatedData[i];
                             }
                         }
-                        showToast('Record updated successfully.', 'success');
-                        applyEditModalFilters();
-                    } else {
-                        alert("Error saving: " + result.message);
-                        saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
                     }
-                } catch(err) {
-                    console.error(err);
-                    alert("Error: " + err.message);
+                    showToast('Record updated successfully.', 'success');
+                    applyEditModalFilters();
+                } else {
+                    alert("Error saving: " + result.message);
                     saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
-                } finally {
-                    saveBtn.disabled = false;
                 }
-            });
-            
-            let viewBtn = null;
-            let urlToView = null;
-            for(let i = 0; i < colsCount; i++) {
-                if (typeof row[i] === 'string' && row[i].startsWith('http')) {
-                    urlToView = row[i];
-                    break;
+            } catch(err) {
+                console.error(err);
+                alert("Error: " + err.message);
+                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+            } finally {
+                saveBtn.disabled = false;
+            }
+        });
+
+        let viewBtn = null;
+        let urlToView = null;
+        for(let i = 0; i < colsCount; i++) {
+            if (typeof row[i] === 'string' && row[i].startsWith('http')) {
+                urlToView = row[i];
+                break;
+            }
+        }
+        if (urlToView) {
+            viewBtn = document.createElement('a');
+            viewBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> View';
+            viewBtn.href = urlToView;
+            viewBtn.target = '_blank';
+            viewBtn.style.cssText = 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px; text-decoration: none; display: inline-block;';
+        }
+
+        if (sheet !== 'Daily Survey') {
+            if (viewBtn) actionTd.appendChild(viewBtn);
+            if (sheet !== 'Warranty Items' && sheet !== 'Handover') {
+                if (sheet !== 'Item Purchased') {
+                    actionTd.appendChild(deleteBtn);
                 }
-            }
-            if (urlToView) {
-                viewBtn = document.createElement('a');
-                viewBtn.innerHTML = '<i class="fas fa-external-link-alt"></i> View';
-                viewBtn.href = urlToView;
-                viewBtn.target = '_blank';
-                viewBtn.style.cssText = 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 5px; text-decoration: none; display: inline-block;';
-            }
-            
-            if (sheet !== 'Daily Survey') {
-                if (viewBtn) actionTd.appendChild(viewBtn);
-                if (sheet !== 'Warranty Items' && sheet !== 'Handover') {
-                    if (sheet !== 'Item Purchased') {
-                        actionTd.appendChild(deleteBtn);
-                    }
-                    actionTd.appendChild(editBtn);
-                    actionTd.appendChild(saveBtn);
-                } else if (sheet === 'Warranty Items') {
-                    const currentRole = sessionStorage.getItem('userRole');
-                    if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
-                        const modifyBtn = document.createElement('button');
-                        modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
-                        modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
-                        modifyBtn.addEventListener('click', () => {
-                            try {
-                                document.getElementById('edit-records-modal').classList.add('hidden');
-                                document.getElementById('warranty-container').classList.remove('hidden');
-                                
-                                document.getElementById('warranty-row-index').value = rowIndex;
-                                document.getElementById('warranty-date').value = (row[0] || '').split('T')[0];
-                                document.getElementById('warranty-branch').value = row[1] || '';
-                                
-                                setTimeout(() => {
-                                    document.getElementById('warranty-tech').value = row[2] || '';
-                                }, 500);
-                                
-                                document.getElementById('warranty-item').value = row[3] || '';
-                                document.getElementById('warranty-serial').value = row[4] || '';
-                                document.getElementById('warranty-pc').value = row[5] || '';
-                                document.getElementById('warranty-qty').value = row[6] || '';
-                                document.getElementById('warranty-issue').value = row[7] || '';
-                                document.getElementById('warranty-approver').value = sessionStorage.getItem('loggedInUser') || '';
-                                document.getElementById('warranty-number').value = row[10] || '';
-                                
-                                const statusSelect = document.getElementById('warranty-status');
-                                if (statusSelect) {
-                                    statusSelect.disabled = false;
-                                    statusSelect.value = row[9] || 'Pending';
-                                }
-                            } catch(err) {
-                                alert("Error populating form: " + err.message);
-                            }
-                        });
-                        actionTd.appendChild(modifyBtn);
-                    }
-                } else if (sheet === 'Handover') {
-                    const currentRole = sessionStorage.getItem('userRole');
+                actionTd.appendChild(editBtn);
+                actionTd.appendChild(saveBtn);
+            } else if (sheet === 'Warranty Items') {
+                const currentRole = sessionStorage.getItem('userRole');
+                if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
                     const modifyBtn = document.createElement('button');
                     modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
                     modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
                     modifyBtn.addEventListener('click', () => {
                         try {
                             document.getElementById('edit-records-modal').classList.add('hidden');
-                            document.getElementById('handover-container').classList.remove('hidden');
-                            
-                            document.getElementById('handover-row-index').value = rowIndex;
-                            document.getElementById('handover-date').value = (row[0] || '').split('T')[0];
-                            document.getElementById('handover-branch').value = row[1] || '';
-                            
+                            document.getElementById('warranty-container').classList.remove('hidden');
+
+                            document.getElementById('warranty-row-index').value = rowIndex;
+                            document.getElementById('warranty-date').value = (row[0] || '').split('T')[0];
+                            document.getElementById('warranty-branch').value = row[1] || '';
+
                             setTimeout(() => {
-                                document.getElementById('handover-outgoing-staff').value = row[2] || '';
-                                document.getElementById('handover-incoming-staff').value = row[6] || '';
+                                document.getElementById('warranty-tech').value = row[2] || '';
                             }, 500);
-                            
-                            document.getElementById('handover-description').value = row[3] || '';
-                            document.getElementById('handover-discussion').value = row[4] || '';
-                            document.getElementById('handover-remarks').value = row[7] || '';
-                            document.getElementById('handover-approver').value = sessionStorage.getItem('loggedInUser') || '';
-                            
-                            const statusSelect = document.getElementById('handover-status');
+
+                            document.getElementById('warranty-item').value = row[3] || '';
+                            document.getElementById('warranty-serial').value = row[4] || '';
+                            document.getElementById('warranty-pc').value = row[5] || '';
+                            document.getElementById('warranty-qty').value = row[6] || '';
+                            document.getElementById('warranty-issue').value = row[7] || '';
+                            document.getElementById('warranty-approver').value = sessionStorage.getItem('loggedInUser') || '';
+                            document.getElementById('warranty-number').value = row[10] || '';
+
+                            const statusSelect = document.getElementById('warranty-status');
                             if (statusSelect) {
-                                if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
-                                    statusSelect.disabled = false;
-                                } else {
-                                    statusSelect.disabled = true;
-                                }
-                                statusSelect.value = row[5] || 'In Progress';
+                                statusSelect.disabled = false;
+                                statusSelect.value = row[9] || 'Pending';
                             }
                         } catch(err) {
                             alert("Error populating form: " + err.message);
@@ -7594,104 +7994,209 @@ document.addEventListener("DOMContentLoaded", function() {
                     });
                     actionTd.appendChild(modifyBtn);
                 }
-                
-                // --- ROW LEVEL PRINT BUTTON ---
-                const printRowBtn = document.createElement('button');
-                printRowBtn.innerHTML = '<i class="fas fa-print"></i> Print';
-                printRowBtn.style.cssText = 'background: rgba(255, 255, 255, 0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 5px; margin-top: 5px;';
-                printRowBtn.addEventListener('click', () => {
-                    const originalText = printRowBtn.innerHTML;
-                    printRowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-                    printRowBtn.disabled = true;
+            } else if (sheet === 'Handover') {
+                const currentRole = sessionStorage.getItem('userRole');
+                const modifyBtn = document.createElement('button');
+                modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
+                modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
+                modifyBtn.addEventListener('click', () => {
+                    try {
+                        document.getElementById('edit-records-modal').classList.add('hidden');
+                        document.getElementById('handover-container').classList.remove('hidden');
 
-                    const newTab = window.open('', '_blank');
-                    if (newTab) {
-                        newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Single Record PDF...</h3>');
-                    } else {
-                        alert('Popup blocked!');
+                        document.getElementById('handover-row-index').value = rowIndex;
+                        document.getElementById('handover-date').value = (row[0] || '').split('T')[0];
+                        document.getElementById('handover-branch').value = row[1] || '';
+
+                        setTimeout(() => {
+                            document.getElementById('handover-outgoing-staff').value = row[2] || '';
+                            document.getElementById('handover-incoming-staff').value = row[6] || '';
+                        }, 500);
+
+                        document.getElementById('handover-description').value = row[3] || '';
+                        document.getElementById('handover-discussion').value = row[4] || '';
+                        document.getElementById('handover-remarks').value = row[7] || '';
+                        document.getElementById('handover-approver').value = sessionStorage.getItem('loggedInUser') || '';
+
+                        const statusSelect = document.getElementById('handover-status');
+                        if (statusSelect) {
+                            if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
+                                statusSelect.disabled = false;
+                            } else {
+                                statusSelect.disabled = true;
+                            }
+                            statusSelect.value = row[5] || 'In Progress';
+                        }
+                    } catch(err) {
+                        alert("Error populating form: " + err.message);
+                    }
+                });
+                actionTd.appendChild(modifyBtn);
+            }
+
+            // --- ROW LEVEL PRINT BUTTON ---
+            const printRowBtn = document.createElement('button');
+            printRowBtn.innerHTML = '<i class="fas fa-print"></i> Print';
+            printRowBtn.style.cssText = 'background: rgba(255, 255, 255, 0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.3); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 5px; margin-top: 5px;';
+            printRowBtn.addEventListener('click', () => {
+                const originalText = printRowBtn.innerHTML;
+                printRowBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                printRowBtn.disabled = true;
+
+                const newTab = window.open('', '_blank');
+                if (newTab) {
+                    newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Single Record PDF...</h3>');
+                } else {
+                    alert('Popup blocked!');
+                }
+
+                try {
+                    let htmlRows = '';
+                    for(let i=0; i<colsCount; i++) {
+                        const colName = sheetColumns[sheet][i] || '';
+                        let colVal = row[i];
+                        if (colVal === undefined || colVal === null) colVal = '';
+
+                        const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
+                        if(inputs && inputs[i]) colVal = inputs[i].value !== undefined ? inputs[i].value : inputs[i].innerText;
+
+                        htmlRows += `
+                            <tr style="border-bottom: 1px solid #cbd5e1;">
+                                <th style="padding: 10px; background: #f8fafc; color: #475569; width: 35%; text-align: right; vertical-align: top;">${colName}</th>
+                                <td style="padding: 10px; color: #0f172a; white-space: pre-wrap; word-wrap: break-word;">${colVal}</td>
+                            </tr>
+                        `;
                     }
 
-                    try {
-                        let htmlRows = '';
-                        for(let i=0; i<colsCount; i++) {
-                            const colName = sheetColumns[sheet][i] || '';
-                            let colVal = row[i];
-                            if (colVal === undefined || colVal === null) colVal = '';
-                            
-                            const inputs = tr.querySelectorAll(`.edit-input-${rowIndex}`);
-                            if(inputs && inputs[i]) colVal = inputs[i].value !== undefined ? inputs[i].value : inputs[i].innerText;
-
-                            htmlRows += `
-                                <tr style="border-bottom: 1px solid #cbd5e1;">
-                                    <th style="padding: 10px; background: #f8fafc; color: #475569; width: 35%; text-align: right; vertical-align: top;">${colName}</th>
-                                    <td style="padding: 10px; color: #0f172a; white-space: pre-wrap; word-wrap: break-word;">${colVal}</td>
-                                </tr>
-                            `;
-                        }
-
-                        const htmlString = `
-                            <div style="font-family: sans-serif; color: #333; padding: 30px; background: white; max-width: 800px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
-                                <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
-                                    <h2 style="margin: 0 0 5px 0; color: #1e293b; font-size: 22px;">${sheet} Details</h2>
-                                    <p style="margin: 0; color: #64748b; font-size: 12px;">Printed on ${new Date().toLocaleString()}</p>
-                                </div>
-                                <table style="width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; word-wrap: break-word;">
-                                    <tbody>
-                                        ${htmlRows}
-                                    </tbody>
-                                </table>
+                    const htmlString = `
+                        <div style="font-family: sans-serif; color: #333; padding: 30px; background: white; max-width: 800px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                            <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                                <h2 style="margin: 0 0 5px 0; color: #1e293b; font-size: 22px;">${sheet} Details</h2>
+                                <p style="margin: 0; color: #64748b; font-size: 12px;">Printed on ${new Date().toLocaleString()}</p>
                             </div>
-                        `;
+                            <table style="width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; word-wrap: break-word;">
+                                <tbody>
+                                    ${htmlRows}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
 
-                        const hiddenDiv = document.createElement('div');
-                        hiddenDiv.innerHTML = htmlString;
-                        hiddenDiv.style.position = 'absolute';
-                        hiddenDiv.style.top = '-9999px';
-                        hiddenDiv.style.left = '-9999px';
-                        hiddenDiv.style.width = '800px';
-                        document.body.appendChild(hiddenDiv);
+                    const hiddenDiv = document.createElement('div');
+                    hiddenDiv.innerHTML = htmlString;
+                    hiddenDiv.style.position = 'absolute';
+                    hiddenDiv.style.top = '-9999px';
+                    hiddenDiv.style.left = '-9999px';
+                    hiddenDiv.style.width = '800px';
+                    document.body.appendChild(hiddenDiv);
 
-                        const opt = {
-                            margin:       0.5,
-                            filename:     `${sheet.replace(/\\s+/g, '_')}_Record.pdf`,
-                            image:        { type: 'jpeg', quality: 0.98 },
-                            html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-                            jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
-                        };
+                    const opt = {
+                        margin:       0.5,
+                        filename:     `${sheet.replace(/\\s+/g, '_')}_Record.pdf`,
+                        image:        { type: 'jpeg', quality: 0.98 },
+                        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+                    };
 
-                        html2pdf().set(opt).from(hiddenDiv.firstElementChild).output('bloburl').then(function(pdfUrl) {
-                            if (newTab) newTab.location.href = pdfUrl;
-                            document.body.removeChild(hiddenDiv);
-                            printRowBtn.innerHTML = originalText;
-                            printRowBtn.disabled = false;
-                        }).catch(err => {
-                            console.error(err);
-                            if(newTab) newTab.close();
-                            printRowBtn.innerHTML = originalText;
-                            printRowBtn.disabled = false;
-                        });
-                    } catch(err) {
+                    html2pdf().set(opt).from(hiddenDiv.firstElementChild).output('bloburl').then(function(pdfUrl) {
+                        if (newTab) newTab.location.href = pdfUrl;
+                        document.body.removeChild(hiddenDiv);
+                        printRowBtn.innerHTML = originalText;
+                        printRowBtn.disabled = false;
+                    }).catch(err => {
                         console.error(err);
                         if(newTab) newTab.close();
                         printRowBtn.innerHTML = originalText;
                         printRowBtn.disabled = false;
-                    }
-                });
-                actionTd.appendChild(printRowBtn);
-                // -----------------------------
-
-                if (sheet === 'Customer Information Sheet') {
-                    const releasingBtn = document.createElement('button');
-                    releasingBtn.innerHTML = '<i class="fas fa-dolly"></i> Releasing';
-                    releasingBtn.style.cssText = 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 5px;';
-                    releasingBtn.addEventListener('click', () => openItemReleasingModal(row, rowIndex));
-                    actionTd.appendChild(releasingBtn);
+                    });
+                } catch(err) {
+                    console.error(err);
+                    if(newTab) newTab.close();
+                    printRowBtn.innerHTML = originalText;
+                    printRowBtn.disabled = false;
                 }
+            });
+            actionTd.appendChild(printRowBtn);
+            // -----------------------------
 
-                tr.appendChild(actionTd);
+            if (sheet === 'Customer Information Sheet') {
+                const releasingBtn = document.createElement('button');
+                releasingBtn.innerHTML = '<i class="fas fa-dolly"></i> Releasing';
+                releasingBtn.style.cssText = 'background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245,158,11,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 5px;';
+                releasingBtn.addEventListener('click', () => openItemReleasingModal(row, rowIndex));
+                actionTd.appendChild(releasingBtn);
             }
-            tbody.appendChild(tr);
-        });
+
+            tr.appendChild(actionTd);
+        }
+
+        return tr;
+    }
+
+    const EDIT_MODAL_PAGE_SIZE = 100;
+    let editModalPageState = { rows: [], sheet: null, rendered: 0 };
+
+    // targetRendered (optional): render up through at least this many rows in one go
+    // instead of just EDIT_MODAL_PAGE_SIZE more. Used by renderRecords() to restore
+    // however many rows were already loaded before a refresh (e.g. right after
+    // editing/saving a row), so the user doesn't lose their scroll position/place in
+    // the list just because one row was saved.
+    function renderRecordsNextBatch(targetRendered) {
+        const existingLoadMoreRow = document.getElementById('edit-modal-load-more-row');
+        if (existingLoadMoreRow) existingLoadMoreRow.remove();
+
+        const rows = editModalPageState.rows;
+        const sheet = editModalPageState.sheet;
+        const start = editModalPageState.rendered;
+        const defaultEnd = start + EDIT_MODAL_PAGE_SIZE;
+        const wantedEnd = (typeof targetRendered === 'number' && targetRendered > defaultEnd) ? targetRendered : defaultEnd;
+        const end = Math.min(wantedEnd, rows.length);
+
+        for (let idx = start; idx < end; idx++) {
+            tbody.appendChild(buildRecordRow(rows[idx], sheet));
+        }
+        editModalPageState.rendered = end;
+
+        if (editModalPageState.rendered < rows.length) {
+            const remaining = rows.length - editModalPageState.rendered;
+            const colsCount = (sheetColumns[sheet] || []).length;
+            const loadMoreTr = document.createElement('tr');
+            loadMoreTr.id = 'edit-modal-load-more-row';
+            const loadMoreTd = document.createElement('td');
+            loadMoreTd.colSpan = colsCount + 1;
+            loadMoreTd.style.padding = '14px';
+            loadMoreTd.style.textAlign = 'center';
+            const loadMoreBtn = document.createElement('button');
+            loadMoreBtn.type = 'button';
+            loadMoreBtn.innerHTML = `<i class="fas fa-chevron-down"></i> Load More (${remaining} remaining)`;
+            loadMoreBtn.style.cssText = 'background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 0.9em;';
+            // Explicitly ignore the click event so it isn't mistaken for targetRendered.
+            loadMoreBtn.addEventListener('click', () => renderRecordsNextBatch());
+            loadMoreTd.appendChild(loadMoreBtn);
+            loadMoreTr.appendChild(loadMoreTd);
+            tbody.appendChild(loadMoreTr);
+        }
+    }
+
+    // Renders the filtered/sorted record set into the table. To avoid building
+    // hundreds of heavy DOM rows (each with several editable divs + action buttons
+    // with their own listeners) all at once -- which was causing scroll/UI hangs on
+    // large datasets like Customer Information Sheet -- only the first
+    // EDIT_MODAL_PAGE_SIZE rows are rendered immediately; the rest render in batches
+    // via the "Load More" button appended at the bottom of the table.
+    function renderRecords(rows, sheet) {
+        tbody.innerHTML = '';
+        // If this is a refresh of the same sheet's data (e.g. triggered right after
+        // saving one row's edit), keep however many rows were already loaded instead
+        // of collapsing back to just the first page.
+        const previouslyRendered = (editModalPageState.sheet === sheet) ? editModalPageState.rendered : 0;
+        editModalPageState = { rows: rows || [], sheet: sheet, rendered: 0 };
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found for this date range.</td></tr>';
+            return;
+        }
+
+        renderRecordsNextBatch(previouslyRendered > EDIT_MODAL_PAGE_SIZE ? previouslyRendered : undefined);
     }
 
     // Supplier Price List Logic

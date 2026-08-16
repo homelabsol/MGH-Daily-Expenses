@@ -257,7 +257,7 @@
 
 
     <!-- Category Modal -->
-    <div id="build-progress-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:20000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+    <div id="build-progress-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:20000; justify-content:center; align-items:center;">
         <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                 <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-tasks" style="margin-right:8px; color:#3b82f6;"></i>Build Progress</h3>
@@ -278,7 +278,7 @@
         </div>
     </div>
 
-    <div id="item-releasing-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:20000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+    <div id="item-releasing-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:20000; justify-content:center; align-items:center;">
         <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
                 <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-dolly" style="margin-right:8px; color:#f59e0b;"></i>Item Releasing</h3>
@@ -395,6 +395,14 @@
             <button class="menu-action-btn" id="menu-marvspc-deliveries-btn">
                 <span class="icon">🚚</span>
                 Deliveries
+            </button>
+            <button class="menu-action-btn" id="menu-marvspc-purchased-order-btn">
+                <span class="icon">🧾</span>
+                Purchased Order
+            </button>
+            <button class="menu-action-btn" id="menu-marvspc-customer-support-btn">
+                <span class="icon">💬</span>
+                Customer Support
             </button>
         </main>
     </div>
@@ -555,6 +563,98 @@
     <div class="container hidden" id="marvspc-deliveries-container">
         <header>
             <h1>Deliveries</h1>
+            <p>Log a delivery</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 8px; flex-wrap: wrap;">
+                <h2 style="margin: 0;">New Delivery</h2>
+                <button type="button" class="view-records-btn" data-sheet="Deliveries" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View Deliveries"><i class="fas fa-list-alt"></i> View</button>
+            </div>
+            <form id="delivery-form">
+                <div class="form-group">
+                    <label for="delivery-location">Location</label>
+                    <input type="text" id="delivery-location" required placeholder="e.g. Brgy. San Roque, Parañaque">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="delivery-method">Delivery Method</label>
+                        <select id="delivery-method" required>
+                            <option value="Motor" selected>Motor</option>
+                            <option value="Van">Van</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="delivery-cost">Cost</label>
+                        <input type="number" id="delivery-cost" min="0" step="0.01" required placeholder="0.00">
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn" id="delivery-submit-btn">
+                    <span class="btn-text">Save Delivery</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <div id="delivery-status-message" class="hidden"></div>
+            </form>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Purchased Order Container -->
+    <div class="container hidden" id="marvspc-purchased-order-container">
+        <header>
+            <h1>Purchased Order</h1>
+            <p>Request items to be purchased</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 8px; flex-wrap: wrap;">
+                <h2 style="margin: 0;">New Purchase Request</h2>
+                <button type="button" class="view-records-btn" data-sheet="Purchased Order" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View Purchase Requests"><i class="fas fa-list-alt"></i> View</button>
+            </div>
+            <form id="purchased-order-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="po-date-requested">Date Requested</label>
+                        <input type="date" id="po-date-requested" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="po-admin-requested">Admin Requested</label>
+                        <input type="text" id="po-admin-requested" disabled>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="po-item-description">Item Description</label>
+                    <textarea id="po-item-description" rows="2" required placeholder="Describe the item(s) to purchase"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="po-qty">Qty</label>
+                        <input type="number" id="po-qty" min="1" step="1" required placeholder="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="po-status">Status</label>
+                        <select id="po-status" required>
+                            <option value="Pending" selected>Pending</option>
+                            <option value="Ordered">Ordered</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn" id="po-submit-btn">
+                    <span class="btn-text">Submit Request</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <div id="po-status-message" class="hidden"></div>
+            </form>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Customer Support Container -->
+    <div class="container hidden" id="marvspc-customer-support-container">
+        <header>
+            <h1>Customer Support</h1>
             <p>Coming Soon</p>
             <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
         </header>
@@ -2464,11 +2564,11 @@
             <div style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02);">
                 <form id="filter-records-form" style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                     <input type="hidden" id="edit-sheet-name">
-                    <div style="flex: 1; min-width: 130px;">
+                    <div id="edit-start-date-container" style="flex: 1; min-width: 130px;">
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Start Date</label>
                         <input type="date" id="edit-start-date" required style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
                     </div>
-                    <div style="flex: 1; min-width: 130px;">
+                    <div id="edit-end-date-container" style="flex: 1; min-width: 130px;">
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">End Date</label>
                         <input type="date" id="edit-end-date" required style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%;">
                     </div>
@@ -2503,6 +2603,10 @@
                     <div id="edit-customer-name-container" class="hidden" style="flex: 1; min-width: 130px;">
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Customer Name</label>
                         <input type="text" id="edit-customer-name-filter" placeholder="Search name..." style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; box-sizing: border-box; color: inherit; font-size: 1em;">
+                    </div>
+                    <div id="edit-location-container" class="hidden" style="flex: 1; min-width: 130px;">
+                        <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Location</label>
+                        <input type="text" id="edit-location-filter" placeholder="Search location..." style="padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; box-sizing: border-box; color: inherit; font-size: 1em;">
                     </div>
                     <div style="flex: 1; min-width: 130px;" id="edit-status-container" class="hidden">
                         <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Status</label>
@@ -2539,7 +2643,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=6"></script>
+    <script src="app.js?v=15"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -2922,6 +3026,31 @@
                 </button>
             </form>
         </div>
+    </div>
+
+    <!-- AI Support Chatbot: global floating button, visible on every screen once logged in.
+         Not inside a .container div on purpose so hideAllContainers() (used for every
+         page navigation) never hides it. Visibility is toggled explicitly in showApp()/
+         showLogin() in app.js instead. -->
+    <button type="button" id="ai-chat-fab" class="hidden" title="Ask AI" style="position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), #8b5cf6); border: none; box-shadow: 0 4px 16px rgba(0,0,0,0.4); cursor: pointer; z-index: 9998; font-size: 1.4em; color: #fff; display: flex; align-items: center; justify-content: center;">
+        <i class="fas fa-robot"></i>
+    </button>
+
+    <div id="ai-chat-panel" class="hidden" style="position: fixed; bottom: 90px; right: 24px; width: 340px; max-width: calc(100vw - 32px); height: 460px; max-height: calc(100vh - 120px); background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 9998; display: flex; flex-direction: column; overflow: hidden;">
+        <div style="padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3); flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-robot" style="color: var(--primary);"></i>
+                <span style="font-weight: 600;">Ask AI</span>
+            </div>
+            <button type="button" id="ai-chat-close-btn" style="background: none; border: none; color: var(--text-muted); font-size: 1.3em; cursor: pointer; line-height: 1;">&times;</button>
+        </div>
+        <div id="ai-chat-messages" style="flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 0.9em;">
+            <div style="align-self: flex-start; background: rgba(255,255,255,0.06); border-radius: 10px; padding: 8px 12px; max-width: 85%;">Hi! Tanong mo lang kung paano gamitin ang app na ito.</div>
+        </div>
+        <form id="ai-chat-form" style="display: flex; gap: 8px; padding: 10px; border-top: 1px solid rgba(255,255,255,0.1); flex-shrink: 0;">
+            <input type="text" id="ai-chat-input" placeholder="Mag-type ng tanong..." autocomplete="off" style="flex: 1; padding: 9px 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: inherit; min-width: 0;">
+            <button type="submit" id="ai-chat-send-btn" style="width: 38px; height: 38px; border-radius: 50%; border: none; background: var(--primary); color: #fff; cursor: pointer; flex-shrink: 0;"><i class="fas fa-paper-plane"></i></button>
+        </form>
     </div>
 
 </body>
