@@ -200,6 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const aiChatPanelEl = document.getElementById('ai-chat-panel');
         if (aiChatFabEl) aiChatFabEl.classList.add('hidden');
         if (aiChatPanelEl) aiChatPanelEl.classList.add('hidden');
+        if (window.speechSynthesis) window.speechSynthesis.cancel(); // stop any AI voice reply mid-sentence on logout
     }
 
     // Navigation Listeners
@@ -2160,6 +2161,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiChatInput = document.getElementById('ai-chat-input');
     const aiChatMessages = document.getElementById('ai-chat-messages');
     const aiChatSendBtn = document.getElementById('ai-chat-send-btn');
+    const aiChatMicBtn = document.getElementById('ai-chat-mic-btn');
+    const aiChatVoiceToggleBtn = document.getElementById('ai-chat-voice-toggle-btn');
     let aiChatHistory = []; // session-only, in-memory, not persisted anywhere
 
     function appendAiChatMessage(text, role) {
@@ -2173,16 +2176,128 @@ document.addEventListener('DOMContentLoaded', () => {
         aiChatMessages.scrollTop = aiChatMessages.scrollHeight;
     }
 
+    // --- Voice OUTPUT (text-to-speech): reads the AI's replies aloud using the
+    // browser's own built-in speech engine (window.speechSynthesis). No API key,
+    // no extra cost, no backend involvement — this is entirely a frontend/browser
+    // capability, separate from the Anthropic API key that powers the text answers.
+    // Defaults OFF (toggle button in the chat header) since this is a shared,
+    // multi-staff business app and unexpected audio at a shop counter would be
+    // disruptive. Because chat replies default to Taglish/Tagalog but most
+    // browsers don't ship a native Filipino voice, this will sound "off"/mispronounced
+    // for Tagalog words unless the device happens to have a fil-PH voice installed
+    // (some Android/Chrome setups do) — this is a known limitation of free
+    // browser TTS, not a bug; a natural-sounding voice would require a separate,
+    // paid TTS API (e.g. ElevenLabs) which was not requested.
+    const ttsSupported = 'speechSynthesis' in window;
+    let aiVoiceEnabled = false;
+
+    function pickFilipinoVoice() {
+        if (!ttsSupported) return null;
+        const voices = window.speechSynthesis.getVoices() || [];
+        return voices.find(v => /^(fil|tl)/i.test(v.lang)) || null;
+    }
+
+    function speakAiReply(text) {
+        if (!ttsSupported || !aiVoiceEnabled || !text) return;
+        window.speechSynthesis.cancel(); // don't let replies overlap/queue up
+        const utterance = new SpeechSynthesisUtterance(text);
+        const filVoice = pickFilipinoVoice();
+        if (filVoice) utterance.voice = filVoice;
+        utterance.rate = 1.0;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    if (aiChatVoiceToggleBtn) {
+        if (!ttsSupported) {
+            aiChatVoiceToggleBtn.disabled = true;
+            aiChatVoiceToggleBtn.title = 'Hindi supported ng browser mo ang text-to-speech';
+            aiChatVoiceToggleBtn.style.opacity = '0.4';
+        } else {
+            aiChatVoiceToggleBtn.addEventListener('click', () => {
+                aiVoiceEnabled = !aiVoiceEnabled;
+                aiChatVoiceToggleBtn.innerHTML = aiVoiceEnabled ? '<i class="fas fa-volume-up"></i>' : '<i class="fas fa-volume-mute"></i>';
+                aiChatVoiceToggleBtn.title = aiVoiceEnabled ? 'Naka-on ang pagbasa ng sagot (i-click para i-off)' : 'I-on/off ang pagbasa ng sagot (text-to-speech)';
+                if (!aiVoiceEnabled) window.speechSynthesis.cancel();
+            });
+        }
+    }
+
+    // --- Voice INPUT (speech-to-text): lets the user talk instead of type, using
+    // the browser's own built-in speech recognition (Web Speech API). Same as TTS
+    // above — no API key, no extra cost, no backend involvement. Support varies by
+    // browser (works in Chrome/Edge; not supported in Firefox and limited on some
+    // mobile browsers) — the mic button is disabled with an explanatory title when
+    // unsupported instead of silently failing. Populates the text box with the
+    // transcript rather than auto-sending, so the user can double-check/edit a
+    // misheard word before sending — voice recognition accuracy for Tagalog/Taglish
+    // varies by device and isn't guaranteed to be perfect.
+    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const sttSupported = !!SpeechRecognitionCtor;
+    let aiRecognition = null;
+    let aiListening = false;
+
+    if (aiChatMicBtn) {
+        if (!sttSupported) {
+            aiChatMicBtn.disabled = true;
+            aiChatMicBtn.title = 'Hindi supported ng browser mo ang voice input';
+            aiChatMicBtn.style.opacity = '0.4';
+        } else {
+            aiRecognition = new SpeechRecognitionCtor();
+            aiRecognition.lang = 'fil-PH';
+            aiRecognition.continuous = false;
+            aiRecognition.interimResults = false;
+
+            const setListeningUI = (listening) => {
+                aiListening = listening;
+                aiChatMicBtn.style.background = listening ? '#ef4444' : 'rgba(255,255,255,0.1)';
+                aiChatMicBtn.title = listening ? 'Nakikinig... i-click para itigil' : 'Mag-mic ng tanong';
+            };
+
+            aiChatMicBtn.addEventListener('click', () => {
+                if (aiListening) {
+                    aiRecognition.stop();
+                    return;
+                }
+                if (aiChatInput) aiChatInput.value = '';
+                try {
+                    aiRecognition.start();
+                    setListeningUI(true);
+                } catch (err) {
+                    // start() throws if called while already running/starting; ignore.
+                }
+            });
+
+            aiRecognition.onresult = (event) => {
+                const transcript = event.results && event.results[0] && event.results[0][0]
+                    ? event.results[0][0].transcript
+                    : '';
+                if (aiChatInput && transcript) {
+                    aiChatInput.value = transcript;
+                    aiChatInput.focus();
+                }
+            };
+            aiRecognition.onerror = () => setListeningUI(false);
+            aiRecognition.onend = () => setListeningUI(false);
+        }
+    }
+
     if (aiChatFab && aiChatPanel) {
         aiChatFab.addEventListener('click', () => {
             aiChatPanel.classList.toggle('hidden');
-            if (!aiChatPanel.classList.contains('hidden') && aiChatInput) aiChatInput.focus();
+            if (!aiChatPanel.classList.contains('hidden') && aiChatInput) {
+                aiChatInput.focus();
+            } else {
+                if (ttsSupported) window.speechSynthesis.cancel();
+                if (aiListening && aiRecognition) aiRecognition.stop();
+            }
         });
     }
 
     if (aiChatCloseBtn && aiChatPanel) {
         aiChatCloseBtn.addEventListener('click', () => {
             aiChatPanel.classList.add('hidden');
+            if (ttsSupported) window.speechSynthesis.cancel();
+            if (aiListening && aiRecognition) aiRecognition.stop();
         });
     }
 
@@ -2221,6 +2336,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (result.status === 'success') {
                     appendAiChatMessage(result.reply, 'assistant');
+                    speakAiReply(result.reply);
                     aiChatHistory.push({ role: 'user', content: question });
                     aiChatHistory.push({ role: 'assistant', content: result.reply });
                 } else {
