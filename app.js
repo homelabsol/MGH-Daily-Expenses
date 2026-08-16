@@ -2182,27 +2182,31 @@ document.addEventListener('DOMContentLoaded', () => {
     // capability, separate from the Anthropic API key that powers the text answers.
     // Defaults OFF (toggle button in the chat header) since this is a shared,
     // multi-staff business app and unexpected audio at a shop counter would be
-    // disruptive. Because chat replies default to Taglish/Tagalog but most
-    // browsers don't ship a native Filipino voice, this will sound "off"/mispronounced
-    // for Tagalog words unless the device happens to have a fil-PH voice installed
-    // (some Android/Chrome setups do) — this is a known limitation of free
-    // browser TTS, not a bug; a natural-sounding voice would require a separate,
-    // paid TTS API (e.g. ElevenLabs) which was not requested.
+    // disruptive. As of Fix 10l, the CHAT TEXT can be Taglish/Tagalog/English
+    // (matches the staff member, same as before Fix 10k) but the SPOKEN version is
+    // always a separate, backend-generated English-only rendition of the same
+    // answer (see result.replyVoice in the submit handler below) — so this picks
+    // an English voice/accent for TTS, since what it's actually speaking is
+    // guaranteed English regardless of what language the chat bubble shows. A
+    // natural "real person" sounding voice would still require a separate, paid
+    // TTS API (e.g. ElevenLabs) which was not requested.
     const ttsSupported = 'speechSynthesis' in window;
     let aiVoiceEnabled = false;
 
-    function pickFilipinoVoice() {
+    function pickEnglishVoice() {
         if (!ttsSupported) return null;
         const voices = window.speechSynthesis.getVoices() || [];
-        return voices.find(v => /^(fil|tl)/i.test(v.lang)) || null;
+        // Prefer an en-US/en-PH/en-GB etc. voice; fall back to any "en" voice.
+        return voices.find(v => /^en[-_]/i.test(v.lang)) || voices.find(v => /^en/i.test(v.lang)) || null;
     }
 
     function speakAiReply(text) {
         if (!ttsSupported || !aiVoiceEnabled || !text) return;
         window.speechSynthesis.cancel(); // don't let replies overlap/queue up
         const utterance = new SpeechSynthesisUtterance(text);
-        const filVoice = pickFilipinoVoice();
-        if (filVoice) utterance.voice = filVoice;
+        const enVoice = pickEnglishVoice();
+        if (enVoice) utterance.voice = enVoice;
+        utterance.lang = 'en-US';
         utterance.rate = 1.0;
         window.speechSynthesis.speak(utterance);
     }
@@ -2336,7 +2340,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (result.status === 'success') {
                     appendAiChatMessage(result.reply, 'assistant');
-                    speakAiReply(result.reply);
+                    // Fix 10l: speak the English-only "replyVoice" rendition, not the
+                    // displayed chat text (which may be Taglish/Tagalog) — falls back
+                    // to result.reply if the backend didn't send a separate voice
+                    // version for some reason (e.g. an older deployed backend).
+                    speakAiReply(result.replyVoice || result.reply);
                     aiChatHistory.push({ role: 'user', content: question });
                     aiChatHistory.push({ role: 'assistant', content: result.reply });
                 } else {
