@@ -394,6 +394,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const nameFilter = document.getElementById('releasing-status-search-name').value.trim().toLowerCase();
         const partsFilter = document.getElementById('releasing-status-parts-filter').value;
         let filtered = currentReleasingStatusRecords;
+        // Fix 18: once a build's Build Status is already "Completed" it no longer
+        // belongs on this page -- the user asked that these rows be removed
+        // outright. Unconditional filter, no toggle, same pattern as Fix 11 (Item
+        // Released) and Fix 17 (Deliveries list only shows Completed -- this page
+        // is the inverse: it EXCLUDES Completed).
+        filtered = filtered.filter(row => !(row[18] || '').toString().toLowerCase().includes('complet'));
         if (nameFilter) {
             filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(nameFilter));
         }
@@ -912,6 +918,310 @@ document.addEventListener('DOMContentLoaded', () => {
     const buildStatusFilterSelect = document.getElementById('build-status-filter');
     if (buildStatusFilterSelect) {
         buildStatusFilterSelect.addEventListener('change', applyBuildStatusFilter);
+    }
+
+    // ======= Deliveries (Fix 16) =======
+    // A SEPARATE feature from "Delivery Fee" (Fix 9/15) -- this reads/writes the
+    // Customer Information Sheet, NOT the "Deliveries" sheet tab (that's what
+    // "Delivery Fee" logs to). Per the user's exact spec: displays columns A-J, L,
+    // P, S-V; every field is read-only EXCEPT Payment Completion (T), Delivery
+    // Status (U), and Overall Status (V), which are editable dropdowns inside a
+    // "Modified" modal opened per row. Reuses getExpenseRecords for the list and
+    // updateExpenseRecord for the save -- same "reuse, don't rebuild" pattern as
+    // the Build Tracker Update modal (Fix 13, gotcha #11) -- no new backend
+    // actions needed.
+    function renderDeliveriesListTable(rows) {
+        const tbody = document.getElementById('deliveries-list-table-body');
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="17" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            return;
+        }
+        // Fix 19: the "Modified" button is Owner-only. Every other role sees a
+        // plain dash in the Actions column instead of a button at all -- same
+        // convention already used by the Releasing of Build Status page's Build
+        // Progress button (`canAccessBuildProgress`, ~line 334) for a role-gated
+        // per-row action: when the role isn't allowed, don't render a disabled
+        // button, just omit it entirely.
+        const currentRole = sessionStorage.getItem('userRole');
+        const canModifyDeliveries = currentRole === 'Owner';
+        tbody.innerHTML = rows.map(row => {
+            let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+            let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+            const actionsCell = canModifyDeliveries
+                ? `<button type="button" class="btn-deliveries-list-update" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Modified</button>`
+                : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
+            return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 8px 10px;">${dateStr}</td>
+                    <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[5] || ''}</td>
+                    <td style="padding: 8px 10px;">${deliveryDateStr}</td>
+                    <td style="padding: 8px 10px;">${row[7] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[8] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[9] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[11] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[15] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[18] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[19] || 'Pending'}</td>
+                    <td style="padding: 8px 10px;">${row[20] || 'Pending'}</td>
+                    <td style="padding: 8px 10px;">${row[21] || 'Pending'}</td>
+                    <td style="padding: 8px 10px;">${actionsCell}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    let currentDeliveriesListRecords = [];
+
+    // Fix 17: the user asked that this list only ever show customers whose Build
+    // Status (column S, index 18) is already "Completed" -- a build that hasn't
+    // finished yet has no delivery/payment status worth tracking here. Everything
+    // else (Pending, Ongoing Build, blank) is excluded, same "filter unconditionally,
+    // no toggle" approach as Fix 11's Item Released filter.
+    function applyDeliveriesListFilter() {
+        const filtered = currentDeliveriesListRecords.filter(row => (row[18] || '').toString().toLowerCase().includes('complet'));
+        renderDeliveriesListTable(filtered);
+    }
+
+    async function loadDeliveriesListRecords() {
+        const tbody = document.getElementById('deliveries-list-table-body');
+        const btnLoad = document.getElementById('btn-load-deliveries-list');
+        const btnText = btnLoad.querySelector('.btn-text');
+        const spinner = btnLoad.querySelector('.spinner');
+
+        const startDate = document.getElementById('deliveries-list-start-date').value;
+        const endDate = document.getElementById('deliveries-list-end-date').value;
+
+        btnLoad.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        tbody.innerHTML = '<tr><td colspan="17" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'Customer Information Sheet',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: 'All',
+                    noCache: true
+                })
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                currentDeliveriesListRecords = result.data || [];
+                applyDeliveriesListFilter();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="17" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error loading deliveries records:', error);
+            tbody.innerHTML = '<tr><td colspan="17" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        } finally {
+            btnLoad.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    const menuMarvsPcDeliveriesListBtn = document.getElementById('menu-marvspc-deliveries-list-btn');
+    if (menuMarvsPcDeliveriesListBtn) {
+        menuMarvsPcDeliveriesListBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-deliveries-list-container');
+            if (container) container.classList.remove('hidden');
+
+            // Default to last 3 weeks, same convention as every other Customer
+            // Information Sheet-backed list page (gotcha #8).
+            const startDateEl = document.getElementById('deliveries-list-start-date');
+            const endDateEl = document.getElementById('deliveries-list-end-date');
+            if (startDateEl && !startDateEl.value) {
+                const today = new Date();
+                const threeWeeksAgo = new Date();
+                threeWeeksAgo.setDate(today.getDate() - 21);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                startDateEl.value = fmt(threeWeeksAgo);
+                if (endDateEl && !endDateEl.value) endDateEl.value = fmt(today);
+            }
+
+            loadDeliveriesListRecords();
+        });
+    }
+
+    const btnLoadDeliveriesList = document.getElementById('btn-load-deliveries-list');
+    if (btnLoadDeliveriesList) {
+        btnLoadDeliveriesList.addEventListener('click', loadDeliveriesListRecords);
+    }
+
+    // ======= Deliveries "Modified" Update Modal =======
+    let currentDeliveriesListUpdateRow = null;
+
+    function openDeliveriesListUpdateModal(row) {
+        currentDeliveriesListUpdateRow = row;
+
+        let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+        let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+
+        const fields = [
+            { label: 'Date', value: dateStr || '-' },
+            { label: 'Customer Name', value: row[1] || '-' },
+            { label: 'Address', value: row[2] || '-' },
+            { label: 'Mobile#', value: row[3] || '-' },
+            { label: 'Number of Builds', value: row[4] || '-' },
+            { label: 'Type of Build', value: row[5] || '-' },
+            { label: 'Delivery Date', value: deliveryDateStr || '-' },
+            { label: 'Delivery Method', value: row[7] || '-' },
+            { label: 'Shipping Fee', value: row[8] || '-' },
+            { label: 'Free Shipping Justification', value: row[9] || '-' },
+            { label: 'Downpayment Amount', value: row[11] || '-' },
+            { label: 'Sales Admin', value: row[15] || '-' },
+            { label: 'Build Status', value: row[18] || '-' }
+        ];
+
+        const body = document.getElementById('deliveries-list-update-body');
+        body.innerHTML = fields.map(f => `
+            <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <span style="color: var(--text-muted); font-size: 0.82em; flex-shrink: 0;">${f.label}</span>
+                <span style="color: #e2e8f0; font-size: 0.85em; text-align: right; word-break: break-word;">${f.value}</span>
+            </div>
+        `).join('');
+
+        const paymentSelect = document.getElementById('deliveries-list-update-payment');
+        const deliveryStatusSelect = document.getElementById('deliveries-list-update-delivery-status');
+        const overallStatusSelect = document.getElementById('deliveries-list-update-overall-status');
+        paymentSelect.value = row[19] && ['Pending', 'Partial Payment', 'Full Payment'].includes(row[19]) ? row[19] : 'Pending';
+        deliveryStatusSelect.value = row[20] && ['Pending', 'Walk-in', 'Delivered'].includes(row[20]) ? row[20] : 'Pending';
+        overallStatusSelect.value = row[21] && ['Pending', 'Partially Completed', 'Completed'].includes(row[21]) ? row[21] : 'Pending';
+
+        const statusMsg = document.getElementById('deliveries-list-update-status-message');
+        statusMsg.classList.add('hidden');
+
+        document.getElementById('deliveries-list-update-modal').style.display = 'flex';
+    }
+
+    // Event delegation on the tbody (rows are fully re-rendered on every load, per-row
+    // listeners would need re-attaching every time -- one listener covers all rows).
+    const deliveriesListTableBody = document.getElementById('deliveries-list-table-body');
+    if (deliveriesListTableBody) {
+        deliveriesListTableBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-deliveries-list-update');
+            if (!btn) return;
+            // Fix 19: defense-in-depth -- the button itself is only ever rendered
+            // for Owner (see renderDeliveriesListTable), but re-check the role here
+            // too in case the table markup is stale from before a role change.
+            if (sessionStorage.getItem('userRole') !== 'Owner') return;
+            const idx = btn.getAttribute('data-row-index');
+            const matchedRow = currentDeliveriesListRecords.find(r => String(r[r.length - 1]) === String(idx));
+            if (matchedRow) openDeliveriesListUpdateModal(matchedRow);
+        });
+    }
+
+    const closeDeliveriesListUpdateModalBtn = document.getElementById('close-deliveries-list-update-modal');
+    const closeDeliveriesListUpdateBtn = document.getElementById('close-deliveries-list-update-btn');
+    [closeDeliveriesListUpdateModalBtn, closeDeliveriesListUpdateBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('deliveries-list-update-modal').style.display = 'none';
+            currentDeliveriesListUpdateRow = null;
+        });
+    });
+
+    const btnSaveDeliveriesListUpdate = document.getElementById('btn-save-deliveries-list-update');
+    if (btnSaveDeliveriesListUpdate) {
+        btnSaveDeliveriesListUpdate.addEventListener('click', async () => {
+            if (!currentDeliveriesListUpdateRow) return;
+
+            const statusMsg = document.getElementById('deliveries-list-update-status-message');
+            const newPayment = document.getElementById('deliveries-list-update-payment').value;
+            const newDeliveryStatus = document.getElementById('deliveries-list-update-delivery-status').value;
+            const newOverallStatus = document.getElementById('deliveries-list-update-overall-status').value;
+            const encodedBy = sessionStorage.getItem('loggedInUser') || 'Unknown';
+            const rowIndex = currentDeliveriesListUpdateRow[currentDeliveriesListUpdateRow.length - 1];
+
+            btnSaveDeliveriesListUpdate.disabled = true;
+            const originalHtml = btnSaveDeliveriesListUpdate.innerHTML;
+            btnSaveDeliveriesListUpdate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+            try {
+                // Same 24-column full-row-write pattern as the Build Tracker Update
+                // modal (Fix 13) -- send every column back unchanged except Payment
+                // Completion (19), Delivery Status (20), and Overall Status (21), via
+                // the existing updateExpenseRecord action. No new backend action.
+                const cols = ['Date', 'Customer Name', 'Address', 'Mobile#', 'Number of Builds', 'Type of Build', 'Delivery Date', 'Delivery Method', 'Shipping Fee', 'Free Shipping Justification', 'Free Shipping Screenshot URL', 'Downpayment Amount', 'Reference Number', 'DP MOP', 'Tech Builder', 'Sales Admin', 'MarvsPC Page', 'Client Request', 'Build Status', 'Payment Completion', 'Delivery Status', 'Overall Status', 'Encoded By', 'Parts Releasing'];
+                const updatedData = [];
+                for (let i = 0; i < cols.length; i++) {
+                    if (i === 19) {
+                        updatedData.push(newPayment);
+                    } else if (i === 20) {
+                        updatedData.push(newDeliveryStatus);
+                    } else if (i === 21) {
+                        updatedData.push(newOverallStatus);
+                    } else {
+                        updatedData.push(currentDeliveriesListUpdateRow[i] !== undefined ? currentDeliveriesListUpdateRow[i] : '');
+                    }
+                }
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'updateExpenseRecord',
+                        sheetName: 'Customer Information Sheet',
+                        rowIndex: rowIndex,
+                        updatedData: updatedData,
+                        encodedBy: encodedBy
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    currentDeliveriesListUpdateRow[19] = newPayment;
+                    currentDeliveriesListUpdateRow[20] = newDeliveryStatus;
+                    currentDeliveriesListUpdateRow[21] = newOverallStatus;
+                    const rec = currentDeliveriesListRecords.find(r => String(r[r.length - 1]) === String(rowIndex));
+                    if (rec) {
+                        rec[19] = newPayment;
+                        rec[20] = newDeliveryStatus;
+                        rec[21] = newOverallStatus;
+                    }
+
+                    applyDeliveriesListFilter();
+
+                    statusMsg.textContent = 'Saved successfully!';
+                    statusMsg.className = 'status-message success';
+                    statusMsg.classList.remove('hidden');
+                    showToast('Delivery info updated!', 'success');
+
+                    setTimeout(() => {
+                        document.getElementById('deliveries-list-update-modal').style.display = 'none';
+                        currentDeliveriesListUpdateRow = null;
+                    }, 700);
+                } else {
+                    statusMsg.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    statusMsg.className = 'status-message error';
+                    statusMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error saving deliveries list update:', error);
+                statusMsg.textContent = 'Network error. Please try again.';
+                statusMsg.className = 'status-message error';
+                statusMsg.classList.remove('hidden');
+            } finally {
+                btnSaveDeliveriesListUpdate.disabled = false;
+                btnSaveDeliveriesListUpdate.innerHTML = originalHtml;
+            }
+        });
     }
 
     // ======= Build Progress Modal =======
@@ -3165,11 +3475,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    showMessage(statusMessage, 'Delivery saved successfully!', 'success');
+                    showMessage(statusMessage, 'Delivery fee saved successfully!', 'success');
                     deliveryForm.reset();
                     document.getElementById('delivery-method').value = 'Motor';
                 } else {
-                    showMessage(statusMessage, 'Error saving delivery: ' + result.message, 'error');
+                    showMessage(statusMessage, 'Error saving delivery fee: ' + result.message, 'error');
                 }
             } catch (err) {
                 showMessage(statusMessage, 'Network error. Please try again.', 'error');
@@ -7440,11 +7750,19 @@ document.addEventListener("DOMContentLoaded", function() {
         'Deliveries': ['Location', 'Delivery Method', 'Cost']
     };
 
+    // Fix 15: the "Deliveries" Google Sheet tab name stays the same on the backend
+    // (all getExpenseRecords/updateExpenseRecord calls still use the literal sheet
+    // name "Deliveries"), but the app should now DISPLAY it to the user as
+    // "Delivery Fee" everywhere (modal titles, PDF report headers/filenames).
+    function sheetDisplayName(s) {
+        return s === 'Deliveries' ? 'Delivery Fee' : s;
+    }
+
     viewRecordsBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
             const sheet = btn.getAttribute('data-sheet');
             sheetNameInput.value = sheet;
-            editTitle.textContent = "View & Edit: " + sheet;
+            editTitle.textContent = "View & Edit: " + sheetDisplayName(sheet);
             
             const editStatusContainer = document.getElementById('edit-status-container');
             const editStatusFilter = document.getElementById('edit-status-filter');
@@ -8104,7 +8422,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 const htmlString = `
                     <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 1000px; margin: 0 auto;">
                         <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
-                            <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">${sheet} Report</h2>
+                            <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">${sheetDisplayName(sheet)} Report</h2>
                             <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Branch:</strong> ${branch === 'All' ? 'All Branches' : branch}</p>
                             <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Period:</strong> ${startDate} to ${endDate}</p>
                         </div>
@@ -8130,7 +8448,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 const opt = {
                     margin:       0.5,
-                    filename:     `${sheet.replace(/\s+/g, '_')}_Report_${startDate}_to_${endDate}.pdf`,
+                    filename:     `${sheetDisplayName(sheet).replace(/\s+/g, '_')}_Report_${startDate}_to_${endDate}.pdf`,
                     image:        { type: 'jpeg', quality: 0.98 },
                     html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
                     jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' },
@@ -8501,7 +8819,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     const htmlString = `
                         <div style="font-family: sans-serif; color: #333; padding: 30px; background: white; max-width: 800px; margin: 0 auto; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
                             <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
-                                <h2 style="margin: 0 0 5px 0; color: #1e293b; font-size: 22px;">${sheet} Details</h2>
+                                <h2 style="margin: 0 0 5px 0; color: #1e293b; font-size: 22px;">${sheetDisplayName(sheet)} Details</h2>
                                 <p style="margin: 0; color: #64748b; font-size: 12px;">Printed on ${new Date().toLocaleString()}</p>
                             </div>
                             <table style="width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; word-wrap: break-word;">
@@ -8522,7 +8840,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
                     const opt = {
                         margin:       0.5,
-                        filename:     `${sheet.replace(/\\s+/g, '_')}_Record.pdf`,
+                        filename:     `${sheetDisplayName(sheet).replace(/\\s+/g, '_')}_Record.pdf`,
                         image:        { type: 'jpeg', quality: 0.98 },
                         html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
                         jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }

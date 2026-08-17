@@ -303,6 +303,48 @@
         </div>
     </div>
 
+    <!-- Deliveries List Update Modal (Fix 16) -->
+    <div id="deliveries-list-update-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:20000; justify-content:center; align-items:center;">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-truck" style="margin-right:8px; color:#3b82f6;"></i>Update Delivery</h3>
+                <button id="close-deliveries-list-update-modal" style="background:none; border:none; color:#94a3b8; font-size:1.2em; cursor:pointer; padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="deliveries-list-update-body" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <div class="form-group" style="margin-top: 16px; margin-bottom: 0;">
+                <label for="deliveries-list-update-payment">Payment Completion</label>
+                <select id="deliveries-list-update-payment">
+                    <option value="Pending">Pending</option>
+                    <option value="Partial Payment">Partial Payment</option>
+                    <option value="Full Payment">Full Payment</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top: 10px; margin-bottom: 0;">
+                <label for="deliveries-list-update-delivery-status">Delivery Status</label>
+                <select id="deliveries-list-update-delivery-status">
+                    <option value="Pending">Pending</option>
+                    <option value="Walk-in">Walk-in</option>
+                    <option value="Delivered">Delivered</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top: 10px; margin-bottom: 0;">
+                <label for="deliveries-list-update-overall-status">Overall Status</label>
+                <select id="deliveries-list-update-overall-status">
+                    <option value="Pending">Pending</option>
+                    <option value="Partially Completed">Partially Completed</option>
+                    <option value="Completed">Completed</option>
+                </select>
+            </div>
+            <div id="deliveries-list-update-status-message" class="hidden" style="margin-top: 10px; font-size: 0.85em;"></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:22px;">
+                <button type="button" id="close-deliveries-list-update-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#94a3b8; border-radius:6px; padding:8px 18px; font-size:0.85em; cursor:pointer;">Close</button>
+                <button type="button" id="btn-save-deliveries-list-update" style="background:#10b981; border:none; color:#fff; border-radius:6px; padding:8px 18px; font-size:0.85em; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-save"></i> Modify
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="item-releasing-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:20000; justify-content:center; align-items:center;">
         <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -419,6 +461,10 @@
             </button>
             <button class="menu-action-btn" id="menu-marvspc-deliveries-btn">
                 <span class="icon">🚚</span>
+                Delivery Fee
+            </button>
+            <button class="menu-action-btn" id="menu-marvspc-deliveries-list-btn">
+                <span class="icon">🚛</span>
                 Deliveries
             </button>
             <button class="menu-action-btn" id="menu-marvspc-purchased-order-btn">
@@ -648,18 +694,18 @@
         </main>
     </div>
 
-    <!-- MarvsPCStufz Deliveries Container -->
+    <!-- MarvsPCStufz Delivery Fee Container (backend sheet tab is still literally named "Deliveries" — display label only renamed to "Delivery Fee", Fix 15) -->
     <div class="container hidden" id="marvspc-deliveries-container">
         <header>
-            <h1>Deliveries</h1>
-            <p>Log a delivery</p>
+            <h1>Delivery Fee</h1>
+            <p>Log a delivery fee</p>
             <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
         </header>
 
         <main class="glass-panel" style="margin-top: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 8px; flex-wrap: wrap;">
-                <h2 style="margin: 0;">New Delivery</h2>
-                <button type="button" class="view-records-btn" data-sheet="Deliveries" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View Deliveries"><i class="fas fa-list-alt"></i> View</button>
+                <h2 style="margin: 0;">New Delivery Fee</h2>
+                <button type="button" class="view-records-btn" data-sheet="Deliveries" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;" title="View Delivery Fee"><i class="fas fa-list-alt"></i> View</button>
             </div>
             <form id="delivery-form">
                 <div class="form-group">
@@ -680,11 +726,87 @@
                     </div>
                 </div>
                 <button type="submit" class="submit-btn" id="delivery-submit-btn">
-                    <span class="btn-text">Save Delivery</span>
+                    <span class="btn-text">Save Delivery Fee</span>
                     <div class="spinner hidden"></div>
                 </button>
                 <div id="delivery-status-message" class="hidden"></div>
             </form>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Deliveries Container (Fix 16 -- list view + Modify modal, separate
+         feature from "Delivery Fee" above; reads/writes the Customer Information Sheet,
+         not the "Deliveries" sheet tab) -->
+    <div class="container hidden" id="marvspc-deliveries-list-container" style="max-width: 1300px;">
+        <header>
+            <h1>Deliveries</h1>
+            <p>Track delivery &amp; payment status per customer build</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="deliveries-list-start-date">Date From</label>
+                    <input type="date" id="deliveries-list-start-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="deliveries-list-end-date">Date To</label>
+                    <input type="date" id="deliveries-list-end-date">
+                </div>
+                <button type="button" id="btn-load-deliveries-list" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 10px 18px;">
+                    <span class="btn-text"><i class="fas fa-search"></i> Load</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div style="overflow-x: auto; margin-top: 20px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1950px; table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 90px;">
+                        <col style="width: 140px;">
+                        <col style="width: 180px;">
+                        <col style="width: 105px;">
+                        <col style="width: 70px;">
+                        <col style="width: 100px;">
+                        <col style="width: 95px;">
+                        <col style="width: 110px;">
+                        <col style="width: 90px;">
+                        <col style="width: 160px;">
+                        <col style="width: 120px;">
+                        <col style="width: 110px;">
+                        <col style="width: 110px;">
+                        <col style="width: 130px;">
+                        <col style="width: 110px;">
+                        <col style="width: 130px;">
+                        <col style="width: 100px;">
+                    </colgroup>
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--glass-border);">
+                            <th style="padding: 10px; text-align: left;">Date</th>
+                            <th style="padding: 10px; text-align: left;">Customer Name</th>
+                            <th style="padding: 10px; text-align: left;">Address</th>
+                            <th style="padding: 10px; text-align: left;">Mobile#</th>
+                            <th style="padding: 10px; text-align: left;">No. of Builds</th>
+                            <th style="padding: 10px; text-align: left;">Type of Build</th>
+                            <th style="padding: 10px; text-align: left;">Delivery Date</th>
+                            <th style="padding: 10px; text-align: left;">Delivery Method</th>
+                            <th style="padding: 10px; text-align: left;">Shipping Fee</th>
+                            <th style="padding: 10px; text-align: left;">Free Shipping Justification</th>
+                            <th style="padding: 10px; text-align: left;">Downpayment Amount</th>
+                            <th style="padding: 10px; text-align: left;">Sales Admin</th>
+                            <th style="padding: 10px; text-align: left;">Build Status</th>
+                            <th style="padding: 10px; text-align: left;">Payment Completion</th>
+                            <th style="padding: 10px; text-align: left;">Delivery Status</th>
+                            <th style="padding: 10px; text-align: left;">Overall Status</th>
+                            <th style="padding: 10px; text-align: left;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="deliveries-list-table-body">
+                        <tr><td colspan="17" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </main>
     </div>
 
@@ -2732,7 +2854,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=21"></script>
+    <script src="app.js?v=26"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
