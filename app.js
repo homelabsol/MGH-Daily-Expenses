@@ -188,6 +188,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 menuMarvsPcBtnApp.style.display = 'none';
             }
         }
+
+        // Hide/Show Manual Quotation based on Store (Fix 20) -- same access rule
+        // the user asked for as the MarvsPCStufz button itself, above: only
+        // accounts set to store "All" or store "MarvsPCStufz" can see this button.
+        const menuManualQuotationBtnApp = document.getElementById('menu-manual-quotation-btn');
+        if (menuManualQuotationBtnApp) {
+            const isAllowedQuotationStore = (store === 'All' || store === 'MarvsPCStufz');
+            menuManualQuotationBtnApp.style.display = isAllowedQuotationStore ? '' : 'none';
+        }
     }
 
     function showLogin() {
@@ -256,6 +265,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (poDate && !poDate.value) poDate.valueAsDate = new Date();
             const poAdmin = document.getElementById('po-admin-requested');
             if (poAdmin) poAdmin.value = sessionStorage.getItem('loggedInUser') || '';
+            // Fix 24: this container/form is now reused for editing an existing
+            // Purchased Order record too (see the "Modify/Edit" button in the
+            // View & Edit Purchased Order list). Opening it fresh from the menu
+            // must clear any leftover edit state from a previous edit session.
+            const poRowIndex = document.getElementById('po-row-index');
+            if (poRowIndex) poRowIndex.value = '';
+            const poFormHeading = document.getElementById('po-form-heading');
+            if (poFormHeading) poFormHeading.textContent = 'New Purchase Request';
+            const poSubmitBtnTextReset = document.querySelector('#po-submit-btn .btn-text');
+            if (poSubmitBtnTextReset) poSubmitBtnTextReset.textContent = 'Submit Request';
         });
     }
 
@@ -283,6 +302,609 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
+
+    // ======= Manual Quotation (Fix 20) =======
+    // A brand-new main-menu-level feature (NOT under the MarvsPCStufz submenu) --
+    // per the user's spec: Date/Customer Name/Company Name/Mobile#/Address, plus a
+    // flexible (add/remove) list of item rows (Description/Qty/Amount), with
+    // per-row Total SRP (qty x amount) computed live, a running Total Qty and
+    // Total Amount (before discount), a Discount field, and a final Total Amount.
+    // Saved as ONE row per quotation in a new "Manual Quotation" sheet -- the
+    // variable-length item list is stored as a JSON string in a single "Items"
+    // column, per the user's explicit choice (see the AskUserQuestion round on
+    // storage design) over a normalized two-sheet design. This keeps the save
+    // action simple (one appendRow, no ID-linking between sheets) and reuses the
+    // same "1 record = 1 row" shape every other sheet in this app already uses.
+    function mqAddItemRow(data) {
+        const tbody = document.getElementById('mq-items-body');
+        if (!tbody) return;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="padding: 4px 8px; vertical-align: top;"><textarea class="mq-row-desc" rows="1" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-family: inherit; font-size: 0.88em;">${data && data.desc ? data.desc : ''}</textarea></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="mq-row-qty" min="0" step="1" value="${data && data.qty ? data.qty : ''}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-size: 0.88em;"></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="mq-row-amount" min="0" step="0.01" value="${data && data.amount ? data.amount : ''}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-size: 0.88em;"></td>
+            <td style="padding: 8px 8px; vertical-align: top; color: var(--primary); font-weight: 600; font-size: 0.88em;" class="mq-row-total">₱0.00</td>
+            <td style="padding: 4px 8px; vertical-align: top; text-align: center;"><button type="button" class="mq-btn-remove-row" title="Remove row" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #ef4444; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 0.85em;">✕</button></td>
+        `;
+        tbody.appendChild(tr);
+        tr.querySelector('.mq-row-qty').addEventListener('input', mqRecompute);
+        tr.querySelector('.mq-row-amount').addEventListener('input', mqRecompute);
+        tr.querySelector('.mq-btn-remove-row').addEventListener('click', () => {
+            tr.remove();
+            mqRecompute();
+        });
+    }
+
+    function mqRecompute() {
+        const tbody = document.getElementById('mq-items-body');
+        if (!tbody) return;
+        let totalQty = 0;
+        let totalBeforeDiscount = 0;
+        tbody.querySelectorAll('tr').forEach(tr => {
+            const qty = parseFloat(tr.querySelector('.mq-row-qty').value) || 0;
+            const amount = parseFloat(tr.querySelector('.mq-row-amount').value) || 0;
+            const rowTotal = qty * amount;
+            tr.querySelector('.mq-row-total').textContent = '₱' + formatCurrency(rowTotal);
+            totalQty += qty;
+            totalBeforeDiscount += rowTotal;
+        });
+        const discount = parseFloat(document.getElementById('mq-discount').value) || 0;
+        const finalTotal = Math.max(totalBeforeDiscount - discount, 0);
+        document.getElementById('mq-total-qty').textContent = totalQty;
+        document.getElementById('mq-total-before').textContent = '₱' + formatCurrency(totalBeforeDiscount);
+        document.getElementById('mq-total-final').textContent = '₱' + formatCurrency(finalTotal);
+    }
+
+    function mqResetForm() {
+        const form = document.getElementById('manual-quotation-form');
+        if (form) form.reset();
+        const dateEl = document.getElementById('mq-date');
+        if (dateEl) dateEl.valueAsDate = new Date();
+        const mobileEl = document.getElementById('mq-mobile');
+        if (mobileEl) mobileEl.value = '';
+        const discountEl = document.getElementById('mq-discount');
+        if (discountEl) discountEl.value = '0';
+        const tbody = document.getElementById('mq-items-body');
+        if (tbody) tbody.innerHTML = '';
+        mqAddItemRow(null); // start with one blank item row
+        mqRecompute();
+        const statusMsg = document.getElementById('mq-status-message');
+        if (statusMsg) statusMsg.classList.add('hidden');
+    }
+
+    const menuManualQuotationBtn = document.getElementById('menu-manual-quotation-btn');
+    if (menuManualQuotationBtn) {
+        menuManualQuotationBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('manual-quotation-container');
+            if (container) container.classList.remove('hidden');
+            mqResetForm(); // always start fresh -- this is a data-entry-only page, no edit/resume of a prior quotation
+        });
+    }
+
+    // ======= Manual Quotation Records list view (Fix 21) =======
+    // A plain container page (NOT a modal stacked over anything -- see gotcha #7),
+    // reached via the "View Records" button on the Manual Quotation form. Auto-
+    // loads immediately when opened (no separate "Load" click needed, per the
+    // user's explicit request), defaulting to the last 3 weeks (gotcha #8). Date
+    // range changes re-fetch from the backend (via the Search button); Customer
+    // Name and Quotation # are cheap client-side filters over the already-loaded
+    // rows, same "load once, filter locally" pattern as Build Tracker/Build Status.
+    let currentManualQuotationRecords = [];
+    // Tracks whatever array was most recently passed to renderManualQuotationListTable
+    // (i.e. the FILTERED rows actually on screen, not necessarily every loaded row) --
+    // the per-row Print button's delegated click handler (Fix 23) looks up the clicked
+    // row here by index, since the row array itself isn't stored in the DOM.
+    let currentMqListRenderedRows = [];
+
+    function renderManualQuotationListTable(rows) {
+        const tbody = document.getElementById('manual-quotation-list-table-body');
+        if (!tbody) return;
+        currentMqListRenderedRows = rows || [];
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map((row, idx) => {
+            const dateStr = (row[1] || '').toString().split(/[T ]/)[0];
+            const totalQty = row[7] || 0;
+            const totalAmount = parseFloat(row[10]) || 0;
+            return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 8px 10px; font-weight: 600; color: var(--primary);">${row[0] || ''}</td>
+                    <td style="padding: 8px 10px;">${dateStr}</td>
+                    <td style="padding: 8px 10px; font-weight: 500;">${row[2] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
+                    <td style="padding: 8px 10px;">${totalQty}</td>
+                    <td style="padding: 8px 10px; font-weight: 600;">₱${formatCurrency(totalAmount)}</td>
+                    <td style="padding: 8px 10px;">${row[11] || ''}</td>
+                    <td style="padding: 8px 10px;">
+                        <button type="button" class="btn-mq-print-row" data-mq-row-index="${idx}" style="background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Print</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Fix 23: per-row "Print" button on the Manual Quotation Records list, generating
+    // a formal 2-page quotation PDF (page 1: MarvsPCStufz-branded quotation with the
+    // real saved item breakdown; page 2: the full Replacement & Warranty Terms and
+    // Conditions). Reuses the app's existing html2pdf-based PDF pattern (hidden
+    // off-screen div + html2pdf().from(element).output('bloburl') into a pre-opened
+    // tab) already used throughout app.js, rather than inventing a new print mechanism
+    // -- see gotcha #11's "reuse, don't rebuild" principle.
+    const MQ_BRAND = {
+        name: 'MarvsPCStufz',
+        tagline: 'Custom PC Builds & Computer Parts',
+        address: 'Unit 7, Parian Commercial Complex, Old Balara, Quezon City',
+        phone: '0998-860-2011',
+        email: 'homelabsol@gmail.com'
+    };
+
+    function mqWarrantyTermsHtml() {
+        return `
+            <div id="mq-terms-page" style="page-break-before: always; padding-top: 10px;">
+                <h2 style="text-align:center; color:#4f46e5; font-size:16px; border-bottom:3px solid #4f46e5; padding-bottom:12px; margin-bottom:16px; letter-spacing:0.3px;">REPLACEMENT AND WARRANTY TERMS AND CONDITIONS</h2>
+                <p style="font-size:11px; color:#374151; margin-bottom:16px; line-height:1.5;">All items/parts of Marv's PC Stuffz will be released with SALES INVOICE indicating the date of purchase.</p>
+
+                <div style="margin-bottom:14px;">
+                    <h4 style="font-size:11.5px; font-weight:800; color:#1f2937; margin:0 0 5px; text-transform:uppercase; letter-spacing:0.04em;">Product Replacement</h4>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0 0 6px;">Seven (7) days item replacement policy is followed; provided that it must be in good condition w/ complete accessories and packaging. Any form of physical damage will not be covered by seven (7) days replacement.</p>
+                </div>
+
+                <div style="margin-bottom:14px;">
+                    <h4 style="font-size:11.5px; font-weight:800; color:#1f2937; margin:0 0 5px; text-transform:uppercase; letter-spacing:0.04em;">Product Warranty</h4>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0 0 6px;">The Sales Invoice issued by Marv's PC Stufz must be presented together with the concerned item with the correct serial number and the warranty sticker is intact. <span style="font-weight:700; color:#b91c1c;">"NO sales invoice, NO WARRANTY."</span></p>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0 0 6px;">During warranty period, Marv's PC Stufz will provide the warranty repair at our store, which <strong>DOES NOT INCLUDE ANY SOFTWARE PROBLEMS.</strong> If necessary, client should back up all your valuable files before bringing in your unit. Marv's PC Stufz will not be liable for any loss of data or files in your computer.</p>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0;"><strong>NO RETURN POLICY</strong> unless the product is defective.</p>
+                </div>
+
+                <div style="margin-bottom:14px;">
+                    <h4 style="font-size:11.5px; font-weight:800; color:#1f2937; margin:0 0 5px; text-transform:uppercase; letter-spacing:0.04em;">Warranty Period</h4>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0 0 6px;">Warranty period will start upon the date of item purchase. <strong>We DO NOT PROVIDE CASH REFUND.</strong></p>
+                    <ul style="margin:4px 0 6px; padding-left:16px;">
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">12 Months: All parts</li>
+                    </ul>
+                </div>
+
+                <div style="margin-bottom:14px;">
+                    <h4 style="font-size:11.5px; font-weight:800; color:#1f2937; margin:0 0 5px; text-transform:uppercase; letter-spacing:0.04em;">Monitor Warranty for Dead Pixels</h4>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0 0 6px;">LCD/LED that have 1-5 dead pixels are considered as good unit. Monitor that has 6 and more dead pixels are subject for warranty. Monitor for warranty should be complete with box, accessories, stand and styro packaging. Within the warranty period, all defective items are subject for inspection and repair only. The decision and duration of replacement depends on the distributor/manufacturer of the defective items.</p>
+                </div>
+
+                <div style="margin-bottom:14px;">
+                    <h4 style="font-size:11.5px; font-weight:800; color:#1f2937; margin:0 0 5px; text-transform:uppercase; letter-spacing:0.04em;">The Warranty Does Not Cover the Following</h4>
+                    <ul style="margin:4px 0 6px; padding-left:16px;">
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">Warranty sticker is tampered or missing; warranty slip is not presented.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">The product serial number has been altered, defaced, or removed.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">Freebies, promo items given away, raffle prizes, casing, mouse pads, cables.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">Software issues such as defects/malfunction caused by viruses and software incompatibility.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">Damage including bent pins, blown metal burns, cracks, corner, rust corrosion, molten wires, circuit board cut braces, scratches, dents, moist, pest infection, natural disaster.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">Damage caused by the customer due to accident, transport, delivery, misuse, mishandling, negligence, incidents, or use of product in voltages other than designated.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">Damages caused by self-repair or modification not authorized by Marv's PC Stufz.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">Incompatibility of items — checking specs and product compatibility should be the customer's responsibility. Marv's PC Stufz is not liable for any customer's decision.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;">There will be no on-site service and no lending of backup/service units.</li>
+                        <li style="font-size:10.5px; color:#374151; line-height:1.55; margin-bottom:3px;"><strong>All shipping costs related to warranty concerns shall be shouldered by the customer.</strong></li>
+                    </ul>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0 0 6px;">In the event that the replacement for a defective item is no longer available (phased-out already), Marv's PC Stufz reserves the right to offer an alternative brand/model to the customer based on the current market value of the item or the actual purchase price, whichever is lower. In case of upgrades, Marv's PC Stufz reserves the right to ask for additional payment from the customer provided the said amount is agreeable to the customer (e.g., ₱350 upgrade from 250GB to 500GB hard disk).</p>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0;">In no event or circumstance will our company or our supplier be liable to the client for any direct, indirect, incidental, special, or consequential damages arising out of the use of any product or documentation like computer hardware, software, accessories, upgrades, etc., including any lost profit or lost savings or any claim by any party. We will not be held liable for delays on the items sent to third-party manufacturing either for repair or replacement.</p>
+                </div>
+
+                <div style="margin-bottom:14px;">
+                    <h4 style="font-size:11.5px; font-weight:800; color:#1f2937; margin:0 0 5px; text-transform:uppercase; letter-spacing:0.04em;">Unclaimed Items</h4>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0 0 6px;">Any warranty items not claimed within 30 days from date of notice will be charged ₱50/day as a storage fee. <span style="font-weight:700; color:#b91c1c;">Warranty items not claimed within 90 days will be subject to disposal.</span></p>
+                    <p style="font-size:10.5px; color:#374151; line-height:1.55; margin:0;">If the items were purchased online, it is considered that the customer agrees with the above warranty terms and conditions even without their signature.</p>
+                </div>
+
+                <div style="margin-top:18px; padding-top:12px; border-top:1px solid #e5e7eb; font-size:10.5px; color:#374151; font-style:italic;">
+                    Declaration: We declare that the invoice shows the actual price of the goods described.
+                </div>
+            </div>
+        `;
+    }
+
+    function printManualQuotationRecord(row, btnEl) {
+        const originalHtml = btnEl.innerHTML;
+        btnEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        btnEl.disabled = true;
+
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+            newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Quotation PDF...</h3>');
+        } else {
+            alert('Popup blocked! Please allow popups for this site to view the PDF.');
+        }
+
+        try {
+            const quotationNumber = row[0] || '';
+            const dateStr = (row[1] || '').toString().split(/[T ]/)[0];
+            const customerName = row[2] || '';
+            const companyName = row[3] || '';
+            const mobile = row[4] || '';
+            const address = row[5] || '';
+            let items = [];
+            try { items = JSON.parse(row[6] || '[]'); } catch (e) { items = []; }
+            const totalQty = row[7] || 0;
+            const totalBeforeDiscount = parseFloat(row[8]) || 0;
+            const discount = parseFloat(row[9]) || 0;
+            const totalAmount = parseFloat(row[10]) || 0;
+            const encodedBy = row[11] || '';
+
+            const dateFormatted = dateStr ? new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+
+            let itemsRowsHtml = '';
+            items.forEach(it => {
+                const qty = parseFloat(it.qty) || 0;
+                const amount = parseFloat(it.amount) || 0;
+                itemsRowsHtml += `
+                    <tr>
+                        <td style="padding:9px 10px; font-size:13px; border-bottom:1px solid #f0f1f3; color:#1f2937;">${it.desc || ''}</td>
+                        <td style="padding:9px 10px; font-size:13px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">${qty}</td>
+                        <td style="padding:9px 10px; font-size:13px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(amount)}</td>
+                        <td style="padding:9px 10px; font-size:13px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(qty * amount)}</td>
+                    </tr>
+                `;
+            });
+
+            const htmlString = `
+                <div id="mq-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
+                    <table style="width:100%; border-collapse:collapse; border-bottom:3px solid #4f46e5; padding-bottom:16px; margin-bottom:20px;">
+                        <tr>
+                            <td style="vertical-align:top; padding-bottom:16px;">
+                                <table style="border-collapse:collapse;"><tr>
+                                    <td style="width:46px; height:46px; background:#4f46e5; border-radius:10px; text-align:center; vertical-align:middle; color:#fff; font-size:22px; font-weight:700;">M</td>
+                                    <td style="padding-left:12px; vertical-align:middle;">
+                                        <div style="font-size:20px; font-weight:800; color:#1f2937; line-height:1.15;">${MQ_BRAND.name}</div>
+                                        <div style="font-size:11.5px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
+                                        <div style="font-size:11.5px; color:#6b7280; margin-top:5px;">📍 ${MQ_BRAND.address} &nbsp;|&nbsp; 📞 ${MQ_BRAND.phone}</div>
+                                        <div style="font-size:11.5px; color:#6b7280;">✉️ ${MQ_BRAND.email}</div>
+                                    </td>
+                                </tr></table>
+                            </td>
+                            <td style="vertical-align:top; text-align:right; padding-bottom:16px;">
+                                <div style="font-size:22px; font-weight:800; color:#4f46e5; letter-spacing:1px;">QUOTATION</div>
+                                <div style="font-size:14px; font-weight:700; color:#1f2937; margin-top:4px;">${quotationNumber}</div>
+                                <div style="font-size:12.5px; color:#6b7280; margin-top:2px;">Date: ${dateFormatted}</div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <table style="width:100%; margin-bottom:22px;">
+                        <tr>
+                            <td style="vertical-align:top; width:60%;">
+                                <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af; font-weight:700; margin-bottom:6px;">Quotation For</div>
+                                <p style="margin:2px 0; font-size:13.5px; color:#1f2937;"><strong>${customerName}</strong></p>
+                                ${companyName ? `<p style="margin:2px 0; font-size:13.5px; color:#1f2937;">${companyName}</p>` : ''}
+                                ${mobile ? `<p style="margin:2px 0; font-size:12.5px; color:#6b7280;">Mobile#: ${mobile}</p>` : ''}
+                                ${address ? `<p style="margin:2px 0; font-size:12.5px; color:#6b7280;">${address}</p>` : ''}
+                            </td>
+                            <td style="vertical-align:top; text-align:right;">
+                                <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af; font-weight:700; margin-bottom:6px;">Prepared By</div>
+                                <p style="margin:2px 0; font-size:13.5px; color:#1f2937;"><strong>${encodedBy}</strong></p>
+                                <p style="margin:2px 0; font-size:12.5px; color:#6b7280;">${MQ_BRAND.name}</p>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
+                        <thead>
+                            <tr style="background:#f3f4f6;">
+                                <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:left; border-bottom:2px solid #e5e7eb;">Description</th>
+                                <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Qty</th>
+                                <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Unit Price</th>
+                                <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${itemsRowsHtml}
+                        </tbody>
+                    </table>
+
+                    <div class="mq-avoid-break">
+                        <table style="width:260px; margin-left:auto; margin-top:6px;">
+                            <tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Total Qty</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">${totalQty}</td></tr>
+                            <tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Subtotal</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">₱${formatCurrency(totalBeforeDiscount)}</td></tr>
+                            <tr><td style="padding:5px 0; font-size:13.5px; color:#b91c1c;">Discount</td><td style="padding:5px 0; font-size:13.5px; color:#b91c1c; text-align:right;">− ₱${formatCurrency(discount)}</td></tr>
+                            <tr><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5;">Total Amount</td><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5; text-align:right;">₱${formatCurrency(totalAmount)}</td></tr>
+                        </table>
+
+                        <div style="margin-top:22px; padding:14px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
+                            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; font-weight:700; margin-bottom:8px;">Terms &amp; Conditions</div>
+                            <ul style="margin:0; padding-left:18px;">
+                                <li style="font-size:12.5px; color:#374151; margin-bottom:4px;">50% downpayment upon confirmation, balance due upon completion/delivery.</li>
+                                <li style="font-size:12.5px; color:#374151; margin-bottom:4px;">This quotation is valid for 7 days from the date issued.</li>
+                                <li style="font-size:12.5px; color:#374151;">Full Replacement &amp; Warranty Terms and Conditions on page 2 of this document.</li>
+                            </ul>
+                        </div>
+
+                        <table style="width:100%; margin-top:40px;">
+                            <tr>
+                                <td style="width:50%; text-align:center;">
+                                    <div style="width:200px; border-top:1px solid #9ca3af; margin:40px auto 4px;"></div>
+                                    <div style="font-size:12px; color:#374151; font-weight:600;">Authorized Signature</div>
+                                    <div style="font-size:10.5px; color:#9ca3af; margin-top:2px;">${MQ_BRAND.name}</div>
+                                </td>
+                                <td style="width:50%; text-align:center;">
+                                    <div style="width:200px; border-top:1px solid #9ca3af; margin:40px auto 4px;"></div>
+                                    <div style="font-size:12px; color:#374151; font-weight:600;">Conforme (Client Signature)</div>
+                                    <div style="font-size:10.5px; color:#9ca3af; margin-top:2px;">Printed Name &amp; Date</div>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="margin-top:28px; padding-top:14px; border-top:1px solid #e5e7eb; font-size:11px; color:#9ca3af; text-align:center;">
+                            ${MQ_BRAND.name} — this document is a quotation only and is not a final invoice or receipt.
+                        </div>
+                    </div>
+
+                    ${mqWarrantyTermsHtml()}
+                </div>
+            `;
+
+            const hiddenDiv = document.createElement('div');
+            hiddenDiv.innerHTML = htmlString;
+            hiddenDiv.style.position = 'absolute';
+            hiddenDiv.style.top = '-9999px';
+            hiddenDiv.style.left = '-9999px';
+            hiddenDiv.style.width = '800px';
+            document.body.appendChild(hiddenDiv);
+
+            const element = hiddenDiv.querySelector('#mq-print-wrapper');
+
+            const opt = {
+                // 0.4in margin combined with the page-break-before padding trick was
+                // confirmed in testing to occasionally trigger an extra, nearly-blank
+                // trailing page (a jsPDF/html2pdf page-height rounding interaction) --
+                // 0.3in tested cleanly across a 1-item, 4-item, and 10-item sample with
+                // no stray page.
+                margin: 0.3,
+                filename: `Quotation_${(quotationNumber || 'Draft').toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+                // 'legacy' mode adds its own height-estimation-based page break on TOP
+                // of the explicit CSS break already used to separate the quotation from
+                // the Terms page -- in testing this produced an extra, nearly-empty
+                // trailing 3rd page. Targeting the Terms page by ID via `before` (rather
+                // than relying only on the inline `page-break-before` style) gives
+                // html2pdf an exact element offset to break at, which in testing removed
+                // the stray trailing page that inline-style-only CSS mode still produced.
+                // '.mq-avoid-break' wraps the totals/terms-note/signatures/footer block as
+                // ONE unit -- without this, a longer item list (more rows) can push that
+                // block right up against the page boundary and have it get sliced mid-
+                // element (confirmed in testing: the footer sentence split across two
+                // pages, with a stray near-blank page after it). Keeping it atomic means
+                // it either fully fits after the items table, or cleanly moves as a whole
+                // to the next page -- never split mid-sentence/mid-table.
+                pagebreak: { mode: ['css'], before: '#mq-terms-page', avoid: ['tr', '.mq-avoid-break'] }
+            };
+
+            html2pdf().set(opt).from(element).output('bloburl').then(function (pdfUrl) {
+                if (newTab) newTab.location.href = pdfUrl;
+                document.body.removeChild(hiddenDiv);
+                btnEl.innerHTML = originalHtml;
+                btnEl.disabled = false;
+            }).catch(function (error) {
+                console.error('Quotation PDF generation error:', error);
+                if (newTab) newTab.close();
+                alert('Error generating quotation PDF.');
+                document.body.removeChild(hiddenDiv);
+                btnEl.innerHTML = originalHtml;
+                btnEl.disabled = false;
+            });
+        } catch (err) {
+            console.error(err);
+            if (newTab) newTab.close();
+            alert('Error generating quotation PDF.');
+            btnEl.innerHTML = originalHtml;
+            btnEl.disabled = false;
+        }
+    }
+
+    const mqListTableBody = document.getElementById('manual-quotation-list-table-body');
+    if (mqListTableBody) {
+        mqListTableBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-mq-print-row');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-mq-row-index'), 10);
+            const row = currentMqListRenderedRows[idx];
+            if (!row) return;
+            printManualQuotationRecord(row, btn);
+        });
+    }
+
+    function applyManualQuotationListFilter() {
+        const customerFilter = (document.getElementById('mq-list-customer-filter').value || '').trim().toLowerCase();
+        const quotationFilter = (document.getElementById('mq-list-quotation-filter').value || '').trim().toLowerCase();
+        let filtered = currentManualQuotationRecords;
+        if (customerFilter) {
+            filtered = filtered.filter(row => (row[2] || '').toString().toLowerCase().includes(customerFilter));
+        }
+        if (quotationFilter) {
+            filtered = filtered.filter(row => (row[0] || '').toString().toLowerCase().includes(quotationFilter));
+        }
+        renderManualQuotationListTable(filtered);
+    }
+
+    async function loadManualQuotationRecords() {
+        const tbody = document.getElementById('manual-quotation-list-table-body');
+        const btnLoad = document.getElementById('btn-load-manual-quotations');
+        const btnText = btnLoad.querySelector('.btn-text');
+        const spinner = btnLoad.querySelector('.spinner');
+
+        const startDate = document.getElementById('mq-list-start-date').value;
+        const endDate = document.getElementById('mq-list-end-date').value;
+
+        btnLoad.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'Manual Quotation',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: 'All',
+                    noCache: true
+                })
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                currentManualQuotationRecords = result.data || [];
+                applyManualQuotationListFilter();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error loading manual quotation records:', error);
+            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        } finally {
+            btnLoad.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    const mqBtnViewRecords = document.getElementById('mq-btn-view-records');
+    if (mqBtnViewRecords) {
+        mqBtnViewRecords.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('manual-quotation-list-container');
+            if (container) container.classList.remove('hidden');
+
+            // Default to last 3 weeks, same convention as every other Customer
+            // Information Sheet-backed list page (gotcha #8), then load immediately
+            // -- no separate "Load"/"Search" click needed to see data on open.
+            const startDateEl = document.getElementById('mq-list-start-date');
+            const endDateEl = document.getElementById('mq-list-end-date');
+            if (startDateEl && !startDateEl.value) {
+                const today = new Date();
+                const threeWeeksAgo = new Date();
+                threeWeeksAgo.setDate(today.getDate() - 21);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                startDateEl.value = fmt(threeWeeksAgo);
+                if (endDateEl && !endDateEl.value) endDateEl.value = fmt(today);
+            }
+
+            loadManualQuotationRecords();
+        });
+    }
+
+    const btnLoadManualQuotations = document.getElementById('btn-load-manual-quotations');
+    if (btnLoadManualQuotations) {
+        btnLoadManualQuotations.addEventListener('click', loadManualQuotationRecords);
+    }
+
+    const mqListCustomerFilter = document.getElementById('mq-list-customer-filter');
+    if (mqListCustomerFilter) {
+        mqListCustomerFilter.addEventListener('input', applyManualQuotationListFilter);
+    }
+
+    const mqListQuotationFilter = document.getElementById('mq-list-quotation-filter');
+    if (mqListQuotationFilter) {
+        mqListQuotationFilter.addEventListener('input', applyManualQuotationListFilter);
+    }
+
+    const mqBtnAddRow = document.getElementById('mq-btn-add-row');
+    if (mqBtnAddRow) {
+        mqBtnAddRow.addEventListener('click', () => mqAddItemRow(null));
+    }
+
+    const mqDiscountInput = document.getElementById('mq-discount');
+    if (mqDiscountInput) {
+        mqDiscountInput.addEventListener('input', mqRecompute);
+    }
+
+    const manualQuotationForm = document.getElementById('manual-quotation-form');
+    if (manualQuotationForm) {
+        manualQuotationForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('mq-submit-btn');
+            const statusMessage = document.getElementById('mq-status-message');
+
+            if (SCRIPT_URL === 'PASTE_YOUR_URL_HERE' || SCRIPT_URL === '') {
+                showMessage(statusMessage, 'Please set your Google Apps Script URL in app.js', 'error');
+                return;
+            }
+
+            // Gather item rows -- only keep rows that actually have a description
+            // AND a qty > 0, so a stray blank row (e.g. left over after removing
+            // its contents) doesn't get saved as a phantom line item.
+            const items = [];
+            document.querySelectorAll('#mq-items-body tr').forEach(tr => {
+                const desc = (tr.querySelector('.mq-row-desc').value || '').trim();
+                const qty = parseFloat(tr.querySelector('.mq-row-qty').value) || 0;
+                const amount = parseFloat(tr.querySelector('.mq-row-amount').value) || 0;
+                if (desc && qty > 0) {
+                    items.push({ desc: desc, qty: qty, amount: amount });
+                }
+            });
+            if (items.length === 0) {
+                showMessage(statusMessage, 'Add at least one item with a description and qty greater than 0.', 'error');
+                return;
+            }
+
+            const formData = {
+                action: 'saveManualQuotation',
+                date: document.getElementById('mq-date').value,
+                customerName: document.getElementById('mq-customer-name').value,
+                companyName: document.getElementById('mq-company-name').value,
+                mobile: document.getElementById('mq-mobile').value,
+                address: document.getElementById('mq-address').value,
+                items: JSON.stringify(items),
+                discount: parseFloat(document.getElementById('mq-discount').value) || 0,
+                encodedBy: sessionStorage.getItem('loggedInUser') || ''
+            };
+
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMessage.classList.add('hidden');
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    const savedNumberText = result.quotationNumber ? (result.quotationNumber + ' ') : '';
+                    // Fix 22: mqResetForm() hides #mq-status-message as part of its reset
+                    // (so a stale message isn't left showing when the form is re-opened
+                    // fresh). Must reset FIRST, then call showMessage() -- the other way
+                    // around, mqResetForm() immediately re-hid the just-shown success
+                    // message before it ever painted, so saves silently had no visible
+                    // confirmation even though they succeeded.
+                    mqResetForm();
+                    showMessage(statusMessage, 'Quotation ' + savedNumberText + 'saved successfully!', 'success');
+                } else {
+                    showMessage(statusMessage, 'Error saving quotation: ' + result.message, 'error');
+                }
+            } catch (err) {
+                showMessage(statusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
 
     // ======= Releasing of Build Status =======
     const RELEASING_STATUS_PAGE_SIZE = 100;
@@ -3109,7 +3731,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Clear the saved daily checks table and hide container
                 const savedChecksTbody = document.getElementById('recon-saved-checks-tbody');
-                if (savedChecksTbody) savedChecksTbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 20px;">No saved checks found</td></tr>';
+                if (savedChecksTbody) savedChecksTbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">No saved checks found</td></tr>';
                 const container = document.getElementById('daily-sales-list-container');
                 if (container) container.classList.add('hidden');
                 
@@ -3117,7 +3739,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const monthlyDailyContainer = document.getElementById('monthly-daily-record-list-container');
                 if (monthlyDailyContainer) monthlyDailyContainer.classList.add('hidden');
                 const monthlyDailyTbody = document.querySelector('#monthly-daily-record-list-table tbody');
-                if (monthlyDailyTbody) monthlyDailyTbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No records loaded.</td></tr>';
+                if (monthlyDailyTbody) monthlyDailyTbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);">No records loaded.</td></tr>';
             }
         });
     });
@@ -3389,15 +4011,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const formData = {
-                action: 'savePurchasedOrder',
-                dateRequested: document.getElementById('po-date-requested').value,
-                adminRequested: sessionStorage.getItem('loggedInUser') || '',
-                itemDescription: document.getElementById('po-item-description').value,
-                qty: qtyVal,
-                status: document.getElementById('po-status').value,
-                encodedBy: sessionStorage.getItem('loggedInUser')
-            };
+            // Fix 24: this form is reused both for a brand-new purchase request AND
+            // for editing an existing one (opened via the "Modify/Edit" button on the
+            // View & Edit Purchased Order list). A non-empty po-row-index means we're
+            // editing, so update the existing sheet row in place instead of appending
+            // a new one -- same pattern already used by the Warranty Items/Handover forms.
+            const poRowIndexVal = document.getElementById('po-row-index').value;
+            const dateRequestedVal = document.getElementById('po-date-requested').value;
+            const currentUserVal = sessionStorage.getItem('loggedInUser') || '';
+            // Fix 24b: "Admin Requested" identifies who ORIGINALLY made the purchase
+            // request, so editing a record (e.g. just updating its Status) must not
+            // silently reassign it to whoever happens to be editing. For a brand-new
+            // request this field is auto-filled with the current user (see the menu
+            // button handler above); for an edit it's pre-filled with the record's
+            // original requester (see the Modify/Edit button handler below) and left
+            // untouched here -- read it from the (disabled but still readable) field
+            // itself rather than always taking the current session user.
+            const adminRequestedVal = document.getElementById('po-admin-requested').value || currentUserVal;
+            const itemDescriptionVal = document.getElementById('po-item-description').value;
+            const statusVal = document.getElementById('po-status').value;
+
+            let formData = {};
+            if (poRowIndexVal) {
+                formData = {
+                    action: 'updateExpenseRecord',
+                    sheetName: 'Purchased Order',
+                    rowIndex: poRowIndexVal,
+                    updatedData: [dateRequestedVal, adminRequestedVal, itemDescriptionVal, qtyVal, statusVal],
+                    encodedBy: currentUserVal
+                };
+            } else {
+                formData = {
+                    action: 'savePurchasedOrder',
+                    dateRequested: dateRequestedVal,
+                    adminRequested: adminRequestedVal,
+                    itemDescription: itemDescriptionVal,
+                    qty: qtyVal,
+                    status: statusVal,
+                    encodedBy: currentUserVal
+                };
+            }
 
             const btnText = submitBtn.querySelector('.btn-text');
             const spinner = submitBtn.querySelector('.spinner');
@@ -3415,11 +4068,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    showMessage(statusMessage, 'Purchase request saved successfully!', 'success');
+                    showMessage(statusMessage, poRowIndexVal ? 'Purchase request updated successfully!' : 'Purchase request saved successfully!', 'success');
                     purchasedOrderForm.reset();
+                    document.getElementById('po-row-index').value = '';
                     document.getElementById('po-date-requested').valueAsDate = new Date();
                     document.getElementById('po-admin-requested').value = sessionStorage.getItem('loggedInUser') || '';
                     document.getElementById('po-status').value = 'Pending';
+                    const poFormHeadingReset = document.getElementById('po-form-heading');
+                    if (poFormHeadingReset) poFormHeadingReset.textContent = 'New Purchase Request';
+                    if (btnText) btnText.textContent = 'Submit Request';
                 } else {
                     showMessage(statusMessage, 'Error saving request: ' + result.message, 'error');
                 }
@@ -5670,7 +6327,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let rowsHtml = '';
                 
                 if (!rows || rows.length === 0) {
-                    rowsHtml = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #9ca3af; font-family: Arial, Helvetica, sans-serif;">No saved Daily Records found for the selected date range and branch.</td></tr>';
+                    rowsHtml = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: #9ca3af; font-family: Arial, Helvetica, sans-serif;">No saved Daily Records found for the selected date range and branch.</td></tr>';
                 } else {
                     rows.forEach(row => {
                         const [rowDate, rowBranch, cashExp, gcashExp, gcashRec, coh, dSales, pAmt, disc] = row;
@@ -5829,7 +6486,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = '';
         
         if (!window.monthlyDailyRecords || window.monthlyDailyRecords.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No saved Daily Records found for the selected date range and branch.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);">No saved Daily Records found for the selected date range and branch.</td></tr>';
             return;
         }
         
@@ -5969,7 +6626,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     tbody.innerHTML = '';
 
                     if (!rows || rows.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No saved Daily Checks found for the selected date and branch.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);">No saved Daily Checks found for the selected date and branch.</td></tr>';
                     } else {
                         rows.forEach(row => {
                             const [rowDate, rowBranch, cashExp, gcashExp, gcashRec, cashOnHand, dailySales, pondoAmt, discrepancy] = row;
@@ -7061,7 +7718,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btnText.classList.add('hidden');
             spinner.classList.remove('hidden');
             submitBtn.disabled = true;
-            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Generating report...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Generating report...</td></tr>';
             
             try {
                 const response = await fetch(SCRIPT_URL, {
@@ -7085,7 +7742,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     filtered.sort((a, b) => new Date(b[1]) - new Date(a[1]));
                     
                     if (filtered.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No attendance records found for this period.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);">No attendance records found for this period.</td></tr>';
                     } else {
                         tbody.innerHTML = '';
                         filtered.forEach(row => {
@@ -7157,11 +7814,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                     }
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--error);">Failed to load records.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--error);">Failed to load records.</td></tr>';
                 }
             } catch (error) {
                 console.error(error);
-                tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--error);">Network error. Try again.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--error);">Network error. Try again.</td></tr>';
             } finally {
                 submitBtn.disabled = false;
                 btnText.classList.remove('hidden');
@@ -7781,7 +8438,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     editStatusFilter.value = 'All';
                 } else if (sheet === 'Purchased Order') {
                     editStatusContainer.classList.remove('hidden');
-                    editStatusFilter.innerHTML = '<option value="All">All Status</option><option value="Pending">Pending</option><option value="Ordered">Ordered</option><option value="Completed">Completed</option>';
+                    editStatusFilter.innerHTML = '<option value="All">All Status</option><option value="Pending">Pending</option><option value="Partially Purchased">Partially Purchased</option><option value="Completed">Completed</option><option value="Rejected">Rejected</option>';
                     editStatusFilter.value = 'All';
                 } else {
                     editStatusContainer.classList.add('hidden');
@@ -7891,9 +8548,11 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             
             // Set default dates: last 3 weeks for Customer Information Sheet (avoid loading the entire
-            // sheet at once, which was causing the modal/table to hang on large record counts), today for other sheets.
+            // sheet at once, which was causing the modal/table to hang on large record counts) and for
+            // Purchased Order (Fix 24 -- so the list auto-loads a useful history instead of just today),
+            // today for other sheets.
             // Users can still widen the Start/End Date fields manually to reach older records.
-            if (sheet === 'Customer Information Sheet') {
+            if (sheet === 'Customer Information Sheet' || sheet === 'Purchased Order') {
                 const today = new Date();
                 const threeWeeksAgo = new Date();
                 threeWeeksAgo.setDate(today.getDate() - 21);
@@ -8165,9 +8824,20 @@ document.addEventListener("DOMContentLoaded", function() {
                         return val === selectedStatus.trim().toLowerCase();
                     });
                 }
+            } else if (sheet === 'Purchased Order') {
+                // Fix 24c: a purchase request that's already Completed is done and just
+                // clutters this list, so keep it out of the default "All Status" view
+                // (mirrors the same idea already used for Customer Information Sheet's
+                // "Item Released" rows). Explicitly picking "Completed" in the Status
+                // filter above still shows them, since there's no separate dedicated
+                // page for completed Purchased Orders the way Customer Info Sheet has.
+                const statusColIndex = (sheetColumns[sheet] || []).indexOf('Status');
+                if (statusColIndex !== -1) {
+                    filteredData = filteredData.filter(row => (row[statusColIndex] || '').toString().trim().toLowerCase() !== 'completed');
+                }
             }
         }
-        
+
         if (sheet === 'Item Purchased') {
             const selectedSupplier = document.getElementById('edit-supplier-filter') ? document.getElementById('edit-supplier-filter').value : 'All';
             if (selectedSupplier && selectedSupplier !== 'All') {
@@ -8488,6 +9158,21 @@ document.addEventListener("DOMContentLoaded", function() {
         const tr = document.createElement('tr');
         tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
 
+        // Fix 24c: color-code the whole Purchased Order row by Status so it's easy to
+        // spot at a glance -- Rejected in red, Pending in amber/orange. The per-cell
+        // divs below use "color: inherit" so setting it here on the <tr> cascades to
+        // every cell's text; the Delete/Modify-Edit buttons set their own explicit
+        // colors so they're unaffected.
+        if (sheet === 'Purchased Order') {
+            const statusColIdx = (sheetColumns[sheet] || []).indexOf('Status');
+            const statusVal = (row[statusColIdx] || '').toString().trim();
+            if (statusVal === 'Rejected') {
+                tr.style.color = '#ef4444';
+            } else if (statusVal === 'Pending') {
+                tr.style.color = '#f59e0b';
+            }
+        }
+
         // Render cells
         for(let i = 0; i < colsCount; i++) {
             const td = document.createElement('td');
@@ -8698,7 +9383,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         if (sheet !== 'Daily Survey') {
             if (viewBtn) actionTd.appendChild(viewBtn);
-            if (sheet !== 'Warranty Items' && sheet !== 'Handover') {
+            if (sheet !== 'Warranty Items' && sheet !== 'Handover' && sheet !== 'Purchased Order') {
                 if (sheet !== 'Item Purchased') {
                     actionTd.appendChild(deleteBtn);
                 }
@@ -8775,6 +9460,41 @@ document.addEventListener("DOMContentLoaded", function() {
                             }
                             statusSelect.value = row[5] || 'In Progress';
                         }
+                    } catch(err) {
+                        alert("Error populating form: " + err.message);
+                    }
+                });
+                actionTd.appendChild(modifyBtn);
+            } else if (sheet === 'Purchased Order') {
+                // Fix 24: instead of the old inline row-editing (cells turning into
+                // contenteditable divs right in the table), Purchased Order now opens
+                // its own dedicated form -- same "Modify/Edit" pattern already used by
+                // Warranty Items and Handover above -- so Status can be a proper
+                // dropdown (Pending / Partially Purchased / Completed) there.
+                actionTd.appendChild(deleteBtn);
+                const modifyBtn = document.createElement('button');
+                modifyBtn.innerHTML = '<i class="fas fa-edit"></i> Modify/Edit';
+                modifyBtn.style.cssText = 'background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;';
+                modifyBtn.addEventListener('click', () => {
+                    try {
+                        document.getElementById('edit-records-modal').classList.add('hidden');
+                        document.getElementById('marvspc-purchased-order-container').classList.remove('hidden');
+
+                        document.getElementById('po-row-index').value = rowIndex;
+                        document.getElementById('po-date-requested').value = (row[0] || '').split('T')[0];
+                        // Fix 24b: keep the ORIGINAL requester's name as-is when editing --
+                        // do not overwrite it with whoever is doing the editing right now.
+                        document.getElementById('po-admin-requested').value = row[1] || sessionStorage.getItem('loggedInUser') || '';
+                        document.getElementById('po-item-description').value = row[2] || '';
+                        document.getElementById('po-qty').value = row[3] || '';
+
+                        const statusSelect = document.getElementById('po-status');
+                        if (statusSelect) statusSelect.value = row[4] || 'Pending';
+
+                        const poFormHeadingEdit = document.getElementById('po-form-heading');
+                        if (poFormHeadingEdit) poFormHeadingEdit.textContent = 'Edit Purchase Request';
+                        const poSubmitBtnTextEdit = document.querySelector('#po-submit-btn .btn-text');
+                        if (poSubmitBtnTextEdit) poSubmitBtnTextEdit.textContent = 'Update Request';
                     } catch(err) {
                         alert("Error populating form: " + err.message);
                     }
