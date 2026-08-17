@@ -7599,6 +7599,19 @@ document.addEventListener("DOMContentLoaded", function() {
                     });
                 }
             }
+
+            // User request: once Parts Releasing reaches "Item Released", the
+            // customer's parts are fully done, so keep it out of this generic
+            // View & Edit list entirely (even when searching by name) to avoid
+            // clutter -- only "Pending" (blank) and "Partially Released" rows
+            // stay visible here. Fully-released customers are still viewable/
+            // editable via the dedicated "Releasing of Build Status" page,
+            // which shows every Parts Releasing state (including Item
+            // Released, color-coded white) by design.
+            const partsReleasingColIndex = (sheetColumns[sheet] || []).indexOf('Parts Releasing');
+            if (partsReleasingColIndex !== -1) {
+                filteredData = filteredData.filter(row => (row[partsReleasingColIndex] || '') !== 'Item Released');
+            }
         }
         
         if (sheet === 'Deliveries') {
