@@ -278,6 +278,31 @@
         </div>
     </div>
 
+    <!-- Build Tracker Update Modal -->
+    <div id="build-tracker-update-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:20000; justify-content:center; align-items:center;">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-tasks" style="margin-right:8px; color:#3b82f6;"></i>Update Build Status</h3>
+                <button id="close-build-tracker-update-modal" style="background:none; border:none; color:#94a3b8; font-size:1.2em; cursor:pointer; padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="build-tracker-update-body" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <div class="form-group" style="margin-top: 16px; margin-bottom: 0;">
+                <label for="build-tracker-update-status">Build Status</label>
+                <select id="build-tracker-update-status">
+                    <option value="Ongoing Build">Ongoing Build</option>
+                    <option value="Completed">Completed</option>
+                </select>
+            </div>
+            <div id="build-tracker-update-status-message" class="hidden" style="margin-top: 10px; font-size: 0.85em;"></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:22px;">
+                <button type="button" id="close-build-tracker-update-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#94a3b8; border-radius:6px; padding:8px 18px; font-size:0.85em; cursor:pointer;">Close</button>
+                <button type="button" id="btn-save-build-tracker-update" style="background:#10b981; border:none; color:#fff; border-radius:6px; padding:8px 18px; font-size:0.85em; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-save"></i> Save
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="item-releasing-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:20000; justify-content:center; align-items:center;">
         <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -513,7 +538,7 @@
             </div>
 
             <div style="overflow-x: auto; margin-top: 20px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1150px; table-layout: fixed;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1250px; table-layout: fixed;">
                     <colgroup>
                         <col style="width: 95px;">
                         <col style="width: 130px;">
@@ -526,6 +551,7 @@
                         <col style="width: 120px;">
                         <col style="width: 200px;">
                         <col style="width: 130px;">
+                        <col style="width: 100px;">
                     </colgroup>
                     <thead>
                         <tr style="border-bottom: 1px solid var(--glass-border);">
@@ -540,6 +566,7 @@
                             <th style="padding: 10px; text-align: left;">Sales Admin</th>
                             <th style="padding: 10px; text-align: left;">Client Request</th>
                             <th style="padding: 10px; text-align: left;">Build Status</th>
+                            <th style="padding: 10px; text-align: left;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="build-tracker-table-body">
@@ -551,12 +578,74 @@
     </div>
 
     <!-- MarvsPCStufz Build Status Container -->
-    <div class="container hidden" id="marvspc-build-status-container">
+    <div class="container hidden" id="marvspc-build-status-container" style="max-width: 1250px;">
         <header>
             <h1>Build Status</h1>
-            <p>Coming Soon</p>
+            <p>View build status per customer (read-only)</p>
             <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
         </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="build-status-start-date">Date From</label>
+                    <input type="date" id="build-status-start-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="build-status-end-date">Date To</label>
+                    <input type="date" id="build-status-end-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 150px;">
+                    <label for="build-status-filter">Build Status</label>
+                    <select id="build-status-filter">
+                        <option value="All">All</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Ongoing Build">Ongoing Build</option>
+                        <option value="Completed" selected>Completed</option>
+                    </select>
+                </div>
+                <button type="button" id="btn-load-build-status" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 10px 18px;">
+                    <span class="btn-text"><i class="fas fa-search"></i> Load</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div style="overflow-x: auto; margin-top: 20px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1200px; table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 95px;">
+                        <col style="width: 150px;">
+                        <col style="width: 220px;">
+                        <col style="width: 110px;">
+                        <col style="width: 75px;">
+                        <col style="width: 110px;">
+                        <col style="width: 100px;">
+                        <col style="width: 130px;">
+                        <col style="width: 130px;">
+                        <col style="width: 130px;">
+                        <col style="width: 130px;">
+                    </colgroup>
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--glass-border);">
+                            <th style="padding: 10px; text-align: left;">Date</th>
+                            <th style="padding: 10px; text-align: left;">Customer Name</th>
+                            <th style="padding: 10px; text-align: left;">Address</th>
+                            <th style="padding: 10px; text-align: left;">Mobile#</th>
+                            <th style="padding: 10px; text-align: left;">No. of Builds</th>
+                            <th style="padding: 10px; text-align: left;">Type of Build</th>
+                            <th style="padding: 10px; text-align: left;">Delivery Date</th>
+                            <th style="padding: 10px; text-align: left;">Tech Builder</th>
+                            <th style="padding: 10px; text-align: left;">Sales Admin</th>
+                            <th style="padding: 10px; text-align: left;">Build Status</th>
+                            <th style="padding: 10px; text-align: left;">Delivery Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="build-status-table-body">
+                        <tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
     </div>
 
     <!-- MarvsPCStufz Deliveries Container -->
@@ -2643,7 +2732,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=19"></script>
+    <script src="app.js?v=21"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

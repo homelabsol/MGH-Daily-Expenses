@@ -269,8 +269,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Simple placeholder navigation for remaining new MarvsPCStufz menu items
+    // ("Build Status" upgraded to a real read-only list view in Fix 14 -- see the
+    // dedicated "Build Status" section below, wired separately).
     [
-        ['menu-marvspc-build-status-btn', 'marvspc-build-status-container'],
         ['menu-marvspc-customer-support-btn', 'marvspc-customer-support-container']
     ].forEach(([btnId, containerId]) => {
         const btn = document.getElementById(btnId);
@@ -497,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderBuildTrackerTable(rows) {
         const tbody = document.getElementById('build-tracker-table-body');
         if (!rows || rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
             return;
         }
         tbody.innerHTML = rows.map(row => {
@@ -520,6 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="padding: 8px 10px;">${row[15] || ''}</td>
                     <td style="padding: 8px 10px;">${row[17] || ''}</td>
                     <td style="padding: 8px 10px;">${buildStatus}</td>
+                    <td style="padding: 8px 10px;"><button type="button" class="btn-build-tracker-update" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Update</button></td>
                 </tr>
             `;
         }).join('');
@@ -531,6 +533,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const nameFilter = document.getElementById('build-tracker-search-name').value.trim().toLowerCase();
         // Only show records that already have a Tech Builder assigned (column O, index 14)
         let filtered = currentBuildTrackerRecords.filter(row => (row[14] || '').toString().trim() !== '');
+        // User request: once a build's status is updated to "Completed" via the Update
+        // modal below, it should drop off this list entirely -- only builds still
+        // "Ongoing Build" (column S, index 18) belong here. Blank/other statuses (not
+        // yet started) are excluded too, same as before this change.
+        filtered = filtered.filter(row => (row[18] || '').toString().toLowerCase().includes('ongoing'));
         if (nameFilter) {
             filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(nameFilter));
         }
@@ -549,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnLoad.disabled = true;
         btnText.classList.add('hidden');
         spinner.classList.remove('hidden');
-        tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 
         try {
             const response = await fetch(SCRIPT_URL, {
@@ -570,11 +577,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentBuildTrackerRecords = result.data || [];
                 applyBuildTrackerNameFilter();
             } else {
-                tbody.innerHTML = `<tr><td colspan="11" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="12" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
             }
         } catch (error) {
             console.error('Error loading build tracker records:', error);
-            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
         } finally {
             btnLoad.disabled = false;
             btnText.classList.remove('hidden');
@@ -619,6 +626,292 @@ document.addEventListener('DOMContentLoaded', () => {
     const buildTrackerSearchName = document.getElementById('build-tracker-search-name');
     if (buildTrackerSearchName) {
         buildTrackerSearchName.addEventListener('input', applyBuildTrackerNameFilter);
+    }
+
+    // ======= Build Tracker Update Modal =======
+    // Lets a staff member flip a build from "Ongoing Build" to "Completed" (or back)
+    // straight from the Build Tracker list. Every field except Build Status is shown
+    // read-only (columns A-G, O, P, R, S -- matching exactly what the Build Tracker
+    // table already displays) so this modal never accidentally overwrites anything
+    // else on the Customer Information Sheet row. Reuses the existing
+    // `updateExpenseRecord` backend action (already used by the Build Progress
+    // modal above) -- no backend changes needed for this feature.
+    let currentBuildTrackerUpdateRow = null;
+
+    function openBuildTrackerUpdateModal(row) {
+        currentBuildTrackerUpdateRow = row;
+
+        let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+        let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+
+        const fields = [
+            { label: 'Date', value: dateStr || '-' },
+            { label: 'Customer Name', value: row[1] || '-' },
+            { label: 'Address', value: row[2] || '-' },
+            { label: 'Mobile#', value: row[3] || '-' },
+            { label: 'Number of Builds', value: row[4] || '-' },
+            { label: 'Type of Build', value: row[5] || '-' },
+            { label: 'Delivery Date', value: deliveryDateStr || '-' },
+            { label: 'Tech Builder', value: row[14] || '-' },
+            { label: 'Sales Admin', value: row[15] || '-' },
+            { label: 'Client Request', value: row[17] || '-' }
+        ];
+
+        const body = document.getElementById('build-tracker-update-body');
+        body.innerHTML = fields.map(f => `
+            <div style="display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                <span style="color: var(--text-muted); font-size: 0.82em; flex-shrink: 0;">${f.label}</span>
+                <span style="color: #e2e8f0; font-size: 0.85em; text-align: right; word-break: break-word;">${f.value}</span>
+            </div>
+        `).join('');
+
+        const statusSelect = document.getElementById('build-tracker-update-status');
+        const currentStatus = (row[18] || '').toString().toLowerCase().includes('complet') ? 'Completed' : 'Ongoing Build';
+        statusSelect.value = currentStatus;
+
+        const statusMsg = document.getElementById('build-tracker-update-status-message');
+        statusMsg.classList.add('hidden');
+
+        document.getElementById('build-tracker-update-modal').style.display = 'flex';
+    }
+
+    // Event delegation on the tbody (rows are fully re-rendered on every load/filter,
+    // per-row listeners would need re-attaching every time -- one listener here
+    // covers all current and future rows).
+    const buildTrackerTableBody = document.getElementById('build-tracker-table-body');
+    if (buildTrackerTableBody) {
+        buildTrackerTableBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-build-tracker-update');
+            if (!btn) return;
+            const idx = btn.getAttribute('data-row-index');
+            const matchedRow = currentBuildTrackerRecords.find(r => String(r[r.length - 1]) === String(idx));
+            if (matchedRow) openBuildTrackerUpdateModal(matchedRow);
+        });
+    }
+
+    const closeBuildTrackerUpdateModalBtn = document.getElementById('close-build-tracker-update-modal');
+    const closeBuildTrackerUpdateBtn = document.getElementById('close-build-tracker-update-btn');
+    [closeBuildTrackerUpdateModalBtn, closeBuildTrackerUpdateBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('build-tracker-update-modal').style.display = 'none';
+            currentBuildTrackerUpdateRow = null;
+        });
+    });
+
+    const btnSaveBuildTrackerUpdate = document.getElementById('btn-save-build-tracker-update');
+    if (btnSaveBuildTrackerUpdate) {
+        btnSaveBuildTrackerUpdate.addEventListener('click', async () => {
+            if (!currentBuildTrackerUpdateRow) return;
+
+            const statusMsg = document.getElementById('build-tracker-update-status-message');
+            const newBuildStatus = document.getElementById('build-tracker-update-status').value;
+            const encodedBy = sessionStorage.getItem('loggedInUser') || 'Unknown';
+            const rowIndex = currentBuildTrackerUpdateRow[currentBuildTrackerUpdateRow.length - 1];
+
+            btnSaveBuildTrackerUpdate.disabled = true;
+            const originalHtml = btnSaveBuildTrackerUpdate.innerHTML;
+            btnSaveBuildTrackerUpdate.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+            try {
+                // Same 24-column layout as the Build Progress modal's save handler above --
+                // send every column back unchanged except Build Status (index 18), so
+                // nothing else on the row gets accidentally cleared or overwritten.
+                const cols = ['Date', 'Customer Name', 'Address', 'Mobile#', 'Number of Builds', 'Type of Build', 'Delivery Date', 'Delivery Method', 'Shipping Fee', 'Free Shipping Justification', 'Free Shipping Screenshot URL', 'Downpayment Amount', 'Reference Number', 'DP MOP', 'Tech Builder', 'Sales Admin', 'MarvsPC Page', 'Client Request', 'Build Status', 'Payment Completion', 'Delivery Status', 'Overall Status', 'Encoded By', 'Parts Releasing'];
+                const updatedData = [];
+                for (let i = 0; i < cols.length; i++) {
+                    if (i === 18) {
+                        updatedData.push(newBuildStatus); // Build Status
+                    } else {
+                        updatedData.push(currentBuildTrackerUpdateRow[i] !== undefined ? currentBuildTrackerUpdateRow[i] : '');
+                    }
+                }
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'updateExpenseRecord',
+                        sheetName: 'Customer Information Sheet',
+                        rowIndex: rowIndex,
+                        updatedData: updatedData,
+                        encodedBy: encodedBy
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    currentBuildTrackerUpdateRow[18] = newBuildStatus;
+                    const rec = currentBuildTrackerRecords.find(r => String(r[r.length - 1]) === String(rowIndex));
+                    if (rec) rec[18] = newBuildStatus;
+
+                    // Re-apply the list filter -- a build marked "Completed" drops out of
+                    // the Build Tracker list automatically, since only "Ongoing Build"
+                    // rows are shown there (see applyBuildTrackerNameFilter above).
+                    applyBuildTrackerNameFilter();
+
+                    statusMsg.textContent = 'Saved successfully!';
+                    statusMsg.className = 'status-message success';
+                    statusMsg.classList.remove('hidden');
+                    showToast('Build status updated!', 'success');
+
+                    setTimeout(() => {
+                        document.getElementById('build-tracker-update-modal').style.display = 'none';
+                        currentBuildTrackerUpdateRow = null;
+                    }, 700);
+                } else {
+                    statusMsg.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    statusMsg.className = 'status-message error';
+                    statusMsg.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error saving build tracker update:', error);
+                statusMsg.textContent = 'Network error. Please try again.';
+                statusMsg.className = 'status-message error';
+                statusMsg.classList.remove('hidden');
+            } finally {
+                btnSaveBuildTrackerUpdate.disabled = false;
+                btnSaveBuildTrackerUpdate.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    // ======= Build Status (read-only list view, Fix 14) =======
+    // Plain view of the Customer Information Sheet, filtered to columns
+    // A-G/O/P/S/U, with Date range + Build Status filters. No edit/delete/update
+    // actions on purpose -- the user explicitly asked for a pure read-only list
+    // here (updating Build Status itself lives on the Build Tracker page's
+    // "Update" modal, Fix 13). Same generic reuse pattern as gotcha #11.
+    function renderBuildStatusTable(rows) {
+        const tbody = document.getElementById('build-status-table-body');
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(row => {
+            let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+            let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+            const buildStatus = row[18] || 'Pending';
+            const isCompleted = buildStatus.toString().toLowerCase().includes('complet');
+            const rowColor = isCompleted ? '#10b981' : (buildStatus.toString().toLowerCase().includes('ongoing') ? '#f59e0b' : 'inherit');
+            return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
+                    <td style="padding: 8px 10px;">${dateStr}</td>
+                    <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[5] || ''}</td>
+                    <td style="padding: 8px 10px;">${deliveryDateStr}</td>
+                    <td style="padding: 8px 10px;">${row[14] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[15] || ''}</td>
+                    <td style="padding: 8px 10px;">${buildStatus}</td>
+                    <td style="padding: 8px 10px;">${row[20] || ''}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    let currentBuildStatusRecords = [];
+
+    function applyBuildStatusFilter() {
+        const statusFilter = document.getElementById('build-status-filter').value;
+        let filtered = currentBuildStatusRecords;
+        if (statusFilter && statusFilter !== 'All') {
+            if (statusFilter === 'Pending') {
+                // "Pending" = Build Status is blank/not started yet, same convention
+                // as the Parts Releasing filter on the Releasing of Build Status page.
+                filtered = filtered.filter(row => (row[18] || '').toString().trim() === '');
+            } else {
+                filtered = filtered.filter(row => (row[18] || '').toString().toLowerCase() === statusFilter.toLowerCase());
+            }
+        }
+        renderBuildStatusTable(filtered);
+    }
+
+    async function loadBuildStatusRecords() {
+        const tbody = document.getElementById('build-status-table-body');
+        const btnLoad = document.getElementById('btn-load-build-status');
+        const btnText = btnLoad.querySelector('.btn-text');
+        const spinner = btnLoad.querySelector('.spinner');
+
+        const startDate = document.getElementById('build-status-start-date').value;
+        const endDate = document.getElementById('build-status-end-date').value;
+
+        btnLoad.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'Customer Information Sheet',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: 'All',
+                    noCache: true
+                })
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                currentBuildStatusRecords = result.data || [];
+                applyBuildStatusFilter();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="11" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error loading build status records:', error);
+            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        } finally {
+            btnLoad.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    const menuMarvsPcBuildStatusBtn = document.getElementById('menu-marvspc-build-status-btn');
+    if (menuMarvsPcBuildStatusBtn) {
+        menuMarvsPcBuildStatusBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-build-status-container');
+            if (container) container.classList.remove('hidden');
+
+            // Default to last 3 weeks, same convention as every other Customer
+            // Information Sheet-backed list page (gotcha #8) -- the Build Status
+            // filter itself already defaults to "Completed" via the <select>'s
+            // `selected` attribute in index.html, per the user's explicit request.
+            const startDateEl = document.getElementById('build-status-start-date');
+            const endDateEl = document.getElementById('build-status-end-date');
+            if (startDateEl && !startDateEl.value) {
+                const today = new Date();
+                const threeWeeksAgo = new Date();
+                threeWeeksAgo.setDate(today.getDate() - 21);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                startDateEl.value = fmt(threeWeeksAgo);
+                if (endDateEl && !endDateEl.value) endDateEl.value = fmt(today);
+            }
+
+            loadBuildStatusRecords();
+        });
+    }
+
+    const btnLoadBuildStatus = document.getElementById('btn-load-build-status');
+    if (btnLoadBuildStatus) {
+        btnLoadBuildStatus.addEventListener('click', loadBuildStatusRecords);
+    }
+
+    const buildStatusFilterSelect = document.getElementById('build-status-filter');
+    if (buildStatusFilterSelect) {
+        buildStatusFilterSelect.addEventListener('change', applyBuildStatusFilter);
     }
 
     // ======= Build Progress Modal =======
