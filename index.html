@@ -99,7 +99,7 @@
     <!-- Manual Quotation Container (Fix 20) -->
     <div class="container hidden" id="manual-quotation-container" style="max-width: 750px;">
         <header>
-            <h1><i class="fas fa-file-invoice-dollar" style="margin-right: 8px;"></i>Manual Quotation</h1>
+            <h1><i class="fas fa-file-invoice-dollar" style="margin-right: 8px;"></i><span id="mq-form-heading">Manual Quotation</span></h1>
             <p>Create a manual price quotation for a customer</p>
             <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
             <button class="back-btn" data-target="main-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
@@ -110,6 +110,14 @@
                 <button type="button" id="mq-btn-view-records" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-list-alt"></i> View Records</button>
             </div>
             <form id="manual-quotation-form">
+                <!-- Fix 27: this form is reused both for a brand-new quotation AND for
+                     editing an existing one (opened via the "Edit" button on the Manual
+                     Quotation Records list) -- same "Modify/Edit re-uses the creation
+                     form" pattern already used by Purchased Order (Fix 24), Warranty
+                     Items, and Handover. A non-empty mq-row-index means we're editing. -->
+                <input type="hidden" id="mq-row-index">
+                <input type="hidden" id="mq-quotation-number">
+                <input type="hidden" id="mq-original-encoded-by">
                 <div class="form-row">
                     <div class="form-group">
                         <label for="mq-date">Date</label>
@@ -507,6 +515,75 @@
         </div>
     </div>
 
+    <!-- Delivery Receipt Modal (Fix 29) -- collects the handful of fields that
+         only exist at print time (Sales Invoice #, Invoice Balance, Installation/
+         Service Fee Amount, Delivery Rider) and aren't stored in the Customer
+         Information Sheet at all, before generating the branded PDF receipt.
+         Same lightweight custom-modal pattern as Category/Supplier modals. -->
+    <div id="delivery-receipt-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:20000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:440px; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-receipt" style="margin-right:8px; color:#3b82f6;"></i>Print Delivery Receipt</h3>
+                <button id="close-delivery-receipt-modal" style="background:none; border:none; color:#94a3b8; font-size:1.2em; cursor:pointer; padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <p style="margin: 0 0 16px; color: #94a3b8; font-size: 0.85em;">For: <strong id="dr-customer-name-preview" style="color:#e2e8f0;"></strong></p>
+
+            <!-- Fix 31: if a receipt was already generated for this delivery, show
+                 it here instead of forcing a brand-new sequential Receipt # every
+                 time someone just wants to view/reprint what was already printed --
+                 avoids polluting the Delivery Receipts audit log with duplicates for
+                 what's really the same transaction. -->
+            <div id="dr-loading-existing" style="text-align:center; padding: 10px 0; color:#94a3b8; font-size:0.85em;"><i class="fas fa-spinner fa-spin"></i> Checking for an existing receipt...</div>
+
+            <div id="dr-existing-receipt-notice" class="hidden" style="background:rgba(59,130,246,0.1); border:1px solid rgba(59,130,246,0.3); border-radius:8px; padding:14px; margin-bottom:18px;">
+                <div style="font-size:0.82em; color:#94a3b8; margin-bottom:6px;">A receipt was already generated for this delivery:</div>
+                <div style="font-size:0.95em; color:#e2e8f0; font-weight:700;" id="dr-existing-receipt-number"></div>
+                <div style="font-size:0.8em; color:#94a3b8; margin-top:2px;">Printed: <span id="dr-existing-receipt-date"></span> &nbsp;|&nbsp; Total: <span id="dr-existing-receipt-total"></span></div>
+                <div style="display:flex; gap:8px; margin-top:12px;">
+                    <button type="button" id="dr-btn-view-existing" style="flex:1; background:#3b82f6; border:none; color:#fff; border-radius:6px; padding:9px 12px; font-size:0.85em; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;">
+                        <i class="fas fa-eye"></i> View / Reprint Receipt
+                    </button>
+                </div>
+                <button type="button" id="dr-btn-show-new-form" style="background:none; border:none; color:#94a3b8; font-size:0.8em; text-decoration:underline; cursor:pointer; padding:10px 0 0; display:block;">+ Generate a new receipt instead</button>
+            </div>
+
+            <div id="dr-new-receipt-fields">
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:0.8em; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Sales Invoice #</label>
+                    <input type="text" id="dr-sales-invoice-number" placeholder="e.g. SI-00123" style="width:100%; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#f1f5f9; font-size:0.95em; box-sizing:border-box;">
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:0.8em; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Invoice Balance (₱)</label>
+                    <input type="number" id="dr-invoice-balance" min="0" step="0.01" value="0" style="width:100%; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#f1f5f9; font-size:0.95em; box-sizing:border-box;">
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:0.8em; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Installation/Service Fee Amount (₱)</label>
+                    <input type="number" id="dr-installation-fee" min="0" step="0.01" value="0" style="width:100%; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#f1f5f9; font-size:0.95em; box-sizing:border-box;">
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:0.8em; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Transportation Method</label>
+                    <select id="dr-transportation-method" style="width:100%; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#f1f5f9; font-size:0.95em; box-sizing:border-box;">
+                        <option value="Motor">Motor</option>
+                        <option value="Van">Van</option>
+                    </select>
+                </div>
+                <div style="margin-bottom:18px;">
+                    <label style="display:block; font-size:0.8em; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Delivery Rider</label>
+                    <input type="text" id="dr-rider-name" placeholder="e.g. Mark Santos" style="width:100%; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#f1f5f9; font-size:0.95em; box-sizing:border-box;">
+                </div>
+                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                    <button type="button" id="btn-generate-delivery-receipt" style="background:#3b82f6; border:none; color:#fff; border-radius:6px; padding:8px 18px; font-size:0.85em; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fas fa-print"></i> Generate Receipt
+                    </button>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+                <button type="button" id="cancel-delivery-receipt-modal" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#94a3b8; border-radius:6px; padding:8px 18px; font-size:0.85em; cursor:pointer;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div id="item-releasing-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:20000; justify-content:center; align-items:center;">
         <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
@@ -634,9 +711,48 @@
                 Purchased Order
             </button>
             <button class="menu-action-btn" id="menu-marvspc-customer-support-btn">
-                <span class="icon">💬</span>
-                Customer Support
+                <span class="icon">💰</span>
+                Daily Sales
             </button>
+            <button class="menu-action-btn" id="menu-marvspc-sheet-health-btn">
+                <span class="icon">🩺</span>
+                Sheet Health Check
+            </button>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Sheet Health Check Container (Fix 28) -- a lightweight "how
+         big is our database" report: lists every Google Sheet tab with its used
+         row/column count, so growth can be tracked over time instead of guessed
+         at. Auto-loads on open, same "no separate Load click needed" convention
+         as Daily Sales/Deliveries. -->
+    <div class="container hidden" id="marvspc-sheet-health-container" style="max-width: 900px;">
+        <header>
+            <h1><i class="fas fa-heartbeat" style="margin-right: 8px;"></i>Sheet Health Check</h1>
+            <p>Row/column usage per Google Sheet tab, so you can see growth before it becomes a problem</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                <div id="sh-summary" style="font-size: 0.95em; color: var(--text-muted);">Loading...</div>
+                <button type="button" id="sh-refresh-btn" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 14px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-sync-alt"></i> Refresh</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--glass-border); text-align: left;">
+                            <th style="padding: 10px;">Sheet (Tab)</th>
+                            <th style="padding: 10px;">Data Rows</th>
+                            <th style="padding: 10px;">Columns</th>
+                            <th style="padding: 10px;">Cells Used</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sh-table-body">
+                        <tr><td colspan="4" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </main>
     </div>
 
@@ -1026,13 +1142,54 @@
         </main>
     </div>
 
-    <!-- MarvsPCStufz Customer Support Container -->
+    <!-- MarvsPCStufz Daily Sales Container (Fix 25 -- was "Customer Support"/"Coming
+         Soon" placeholder; id/container kept as-is since only the label/icon changed
+         earlier, now filled in with the real weekly-sales feature. "Daily Sales" here
+         means: for each date, the SUM of the "Number of Builds" column across every
+         Customer Information Sheet row recorded on that date -- shown Monday through
+         Saturday for the picked week (Fix 25b: originally counted rows/entries, but
+         one entry can represent multiple builds, so it sums Number of Builds instead). -->
     <div class="container hidden" id="marvspc-customer-support-container">
         <header>
-            <h1>Customer Support</h1>
-            <p>Coming Soon</p>
+            <h1>Daily Sales</h1>
+            <p>Weekly Number of Builds total from the Customer Information Sheet, Monday to Saturday</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
             <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
         </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="align-items: flex-end; gap: 10px; flex-wrap: wrap;">
+                <div class="form-group" style="flex: 1; min-width: 160px;">
+                    <label for="ds-week-pick">Pumili ng araw sa linggong gusto mong tingnan</label>
+                    <input type="date" id="ds-week-pick">
+                </div>
+                <button type="button" class="submit-btn" id="ds-prev-week-btn" style="width: auto; margin: 0; padding: 9px 15px;">&laquo; Prev Week</button>
+                <button type="button" class="submit-btn" id="ds-load-btn" style="width: auto; margin: 0; padding: 9px 15px;">
+                    <span class="btn-text">Load</span>
+                    <div class="spinner hidden" style="width: 16px; height: 16px; border-width: 2px;"></div>
+                </button>
+                <button type="button" class="submit-btn" id="ds-next-week-btn" style="width: auto; margin: 0; padding: 9px 15px;">Next Week &raquo;</button>
+            </div>
+            <p id="ds-week-range-label" style="color: var(--text-muted); margin-top: 12px; font-size: 0.9em;"></p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.95em;">
+                <thead>
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); text-align: left;">
+                        <th style="padding: 8px;">Day</th>
+                        <th style="padding: 8px;">Date</th>
+                        <th style="padding: 8px;">Daily Sales (Number of Builds)</th>
+                    </tr>
+                </thead>
+                <tbody id="ds-table-body">
+                    <tr><td colspan="3" style="padding: 15px; text-align: center; color: var(--text-muted);">Pumili ng linggo at pindutin ang Load.</td></tr>
+                </tbody>
+                <tfoot>
+                    <tr style="border-top: 1px solid rgba(255,255,255,0.1); font-weight: 600;">
+                        <td style="padding: 8px;" colspan="2">Total (Mon–Sat)</td>
+                        <td style="padding: 8px;" id="ds-total-cell">0</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </main>
     </div>
 
     <!-- MarvsPCStufz Customer Information Sheet Container -->
@@ -3018,7 +3175,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=33"></script>
+    <script src="app.js?v=43"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

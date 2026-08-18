@@ -288,10 +288,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Simple placeholder navigation for remaining new MarvsPCStufz menu items
-    // ("Build Status" upgraded to a real read-only list view in Fix 14 -- see the
-    // dedicated "Build Status" section below, wired separately).
+    // ("Build Status" upgraded to a real read-only list view in Fix 14, "Daily Sales"
+    // (was "Customer Support") upgraded to a real weekly view in Fix 25 -- see their
+    // own dedicated sections, wired separately). Nothing left in this array for now;
+    // kept as the drop-in spot for any future still-unbuilt placeholder menu item.
     [
-        ['menu-marvspc-customer-support-btn', 'marvspc-customer-support-container']
     ].forEach(([btnId, containerId]) => {
         const btn = document.getElementById(btnId);
         if (btn) {
@@ -302,6 +303,233 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
+
+    // ======= Daily Sales (Fix 25) =======
+    // "Daily Sales" was a "Coming Soon" placeholder under the MarvsPCStufz menu
+    // (originally labeled "Customer Support"). Per the user's spec: the "daily
+    // sales" number for a given date is simply how many Customer Information
+    // Sheet rows (customer/build entries) were recorded on that date -- shown as
+    // a Monday-to-Saturday weekly breakdown (Sunday intentionally excluded, per
+    // spec) with a week total, plus Prev/Next Week navigation. Reuses the
+    // existing generic getExpenseRecords action (already used by every other
+    // View & Edit list in this app) rather than adding a new backend action --
+    // it already returns date-range-filtered raw rows for any sheet by name, so
+    // counting-by-date is done here on the frontend from that same response.
+    const menuMarvsPcCustomerSupportBtn = document.getElementById('menu-marvspc-customer-support-btn');
+    const dsWeekPick = document.getElementById('ds-week-pick');
+    const dsLoadBtn = document.getElementById('ds-load-btn');
+    const dsPrevWeekBtn = document.getElementById('ds-prev-week-btn');
+    const dsNextWeekBtn = document.getElementById('ds-next-week-btn');
+    const dsTableBody = document.getElementById('ds-table-body');
+    const dsTotalCell = document.getElementById('ds-total-cell');
+    const dsWeekRangeLabel = document.getElementById('ds-week-range-label');
+
+    function dsFormatDate(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    // Given any Date, return that week's Monday (weeks run Mon-Sat per spec).
+    // Date.getDay(): 0=Sun,1=Mon,...6=Sat. A Sunday is treated as belonging to
+    // the Mon-Sat week that just ended (i.e. the Monday 6 days before it), not
+    // the week about to start.
+    function dsGetMondayOf(d) {
+        const date = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const day = date.getDay();
+        const diffToMonday = day === 0 ? -6 : (1 - day);
+        date.setDate(date.getDate() + diffToMonday);
+        return date;
+    }
+
+    async function dsLoadWeek() {
+        if (!dsWeekPick || !dsWeekPick.value) return;
+        const picked = new Date(dsWeekPick.value + 'T00:00:00');
+        const monday = dsGetMondayOf(picked);
+        const saturday = new Date(monday);
+        saturday.setDate(monday.getDate() + 5);
+
+        const startStr = dsFormatDate(monday);
+        const endStr = dsFormatDate(saturday);
+        if (dsWeekRangeLabel) dsWeekRangeLabel.textContent = `Linggo: ${startStr} (Mon) hanggang ${endStr} (Sat)`;
+
+        const btnText = dsLoadBtn ? dsLoadBtn.querySelector('.btn-text') : null;
+        const spinner = dsLoadBtn ? dsLoadBtn.querySelector('.spinner') : null;
+        if (dsLoadBtn) dsLoadBtn.disabled = true;
+        if (btnText) btnText.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+        if (dsTableBody) dsTableBody.innerHTML = '<tr><td colspan="3" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'Customer Information Sheet',
+                    startDate: startStr,
+                    endDate: endStr,
+                    branch: 'All',
+                    noCache: true
+                })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                if (dsTableBody) dsTableBody.innerHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+                if (dsTotalCell) dsTotalCell.textContent = '0';
+                return;
+            }
+
+            // Fix 25b: "Daily Sales" for a date is the SUM of "Number of Builds"
+            // (column E, index 4) across every row on that date -- NOT a plain row
+            // count. A single customer entry can represent multiple builds (e.g.
+            // "11" in one row), so summing that column is what actually reflects
+            // sales volume for the day, not just how many customers/orders came in.
+            const countsByDate = {};
+            (result.data || []).forEach(row => {
+                const dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+                if (!dateStr) return;
+                const numBuilds = parseInt(row[4], 10) || 0;
+                countsByDate[dateStr] = (countsByDate[dateStr] || 0) + numBuilds;
+            });
+
+            const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const todayStr = dsFormatDate(new Date());
+            let rowsHtml = '';
+            let total = 0;
+            for (let i = 0; i < 6; i++) {
+                const d = new Date(monday);
+                d.setDate(monday.getDate() + i);
+                const dStr = dsFormatDate(d);
+                const count = countsByDate[dStr] || 0;
+                total += count;
+                const isToday = dStr === todayStr;
+                rowsHtml += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);${isToday ? ' background: rgba(59,130,246,0.12);' : ''}">
+                    <td style="padding: 8px;">${dayNames[i]}</td>
+                    <td style="padding: 8px;">${dStr}</td>
+                    <td style="padding: 8px; font-weight: 600;">${count}</td>
+                </tr>`;
+            }
+            if (dsTableBody) dsTableBody.innerHTML = rowsHtml;
+            if (dsTotalCell) dsTotalCell.textContent = total;
+        } catch (error) {
+            if (dsTableBody) dsTableBody.innerHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${error.message}</td></tr>`;
+            if (dsTotalCell) dsTotalCell.textContent = '0';
+        } finally {
+            if (dsLoadBtn) dsLoadBtn.disabled = false;
+            if (btnText) btnText.classList.remove('hidden');
+            if (spinner) spinner.classList.add('hidden');
+        }
+    }
+
+    if (menuMarvsPcCustomerSupportBtn) {
+        menuMarvsPcCustomerSupportBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-customer-support-container');
+            if (container) container.classList.remove('hidden');
+            if (dsWeekPick && !dsWeekPick.value) dsWeekPick.valueAsDate = new Date();
+            dsLoadWeek();
+        });
+    }
+
+    if (dsLoadBtn) {
+        dsLoadBtn.addEventListener('click', dsLoadWeek);
+    }
+
+    if (dsPrevWeekBtn) {
+        dsPrevWeekBtn.addEventListener('click', () => {
+            if (dsWeekPick && !dsWeekPick.value) dsWeekPick.valueAsDate = new Date();
+            const d = new Date(dsWeekPick.value + 'T00:00:00');
+            d.setDate(d.getDate() - 7);
+            dsWeekPick.value = dsFormatDate(d);
+            dsLoadWeek();
+        });
+    }
+
+    if (dsNextWeekBtn) {
+        dsNextWeekBtn.addEventListener('click', () => {
+            if (dsWeekPick && !dsWeekPick.value) dsWeekPick.valueAsDate = new Date();
+            const d = new Date(dsWeekPick.value + 'T00:00:00');
+            d.setDate(d.getDate() + 7);
+            dsWeekPick.value = dsFormatDate(d);
+            dsLoadWeek();
+        });
+    }
+
+    // ======= Sheet Health Check (Fix 28) =======
+    // A lightweight "how big is our database" report -- calls the backend's
+    // getSheetHealthCheck action, which lists every Google Sheet tab with its
+    // used row/column count, and renders it as a simple table + summary line
+    // (total cells used out of Google Sheets' 10,000,000-cell-per-spreadsheet
+    // cap). Auto-loads on menu open, same convention as Daily Sales/Deliveries.
+    async function shLoadHealthCheck() {
+        const tbody = document.getElementById('sh-table-body');
+        const summaryEl = document.getElementById('sh-summary');
+        const refreshBtn = document.getElementById('sh-refresh-btn');
+        if (!tbody) return;
+
+        if (refreshBtn) refreshBtn.disabled = true;
+        tbody.innerHTML = '<tr><td colspan="4" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        if (summaryEl) summaryEl.textContent = 'Loading...';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getSheetHealthCheck' })
+            });
+            const result = await response.json();
+
+            if (result.status === 'success' && result.data) {
+                const sheets = result.data.sheets || [];
+                const totalCellsUsed = result.data.totalCellsUsed || 0;
+                const cellCap = result.data.cellCap || 10000000;
+                const pctUsed = cellCap > 0 ? ((totalCellsUsed / cellCap) * 100) : 0;
+
+                if (summaryEl) {
+                    summaryEl.innerHTML = `Total cells used: <strong>${totalCellsUsed.toLocaleString()}</strong> / ${cellCap.toLocaleString()} (${pctUsed.toFixed(2)}% of the Google Sheets cap)`;
+                }
+
+                if (sheets.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="padding: 15px; text-align: center; color: var(--text-muted);">No sheets found.</td></tr>';
+                } else {
+                    tbody.innerHTML = sheets.map(sh => `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 8px 10px; font-weight: 500;">${sh.name || ''}</td>
+                            <td style="padding: 8px 10px;">${(sh.dataRows || 0).toLocaleString()}</td>
+                            <td style="padding: 8px 10px;">${(sh.columns || 0).toLocaleString()}</td>
+                            <td style="padding: 8px 10px;">${(sh.cellsUsed || 0).toLocaleString()}</td>
+                        </tr>
+                    `).join('');
+                }
+            } else {
+                tbody.innerHTML = `<tr><td colspan="4" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load sheet health check'}</td></tr>`;
+                if (summaryEl) summaryEl.textContent = '';
+            }
+        } catch (error) {
+            console.error('Error loading sheet health check:', error);
+            tbody.innerHTML = '<tr><td colspan="4" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            if (summaryEl) summaryEl.textContent = '';
+        } finally {
+            if (refreshBtn) refreshBtn.disabled = false;
+        }
+    }
+
+    const menuMarvsPcSheetHealthBtn = document.getElementById('menu-marvspc-sheet-health-btn');
+    if (menuMarvsPcSheetHealthBtn) {
+        menuMarvsPcSheetHealthBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-sheet-health-container');
+            if (container) container.classList.remove('hidden');
+            shLoadHealthCheck();
+        });
+    }
+
+    const shRefreshBtn = document.getElementById('sh-refresh-btn');
+    if (shRefreshBtn) {
+        shRefreshBtn.addEventListener('click', shLoadHealthCheck);
+    }
 
     // ======= Manual Quotation (Fix 20) =======
     // A brand-new main-menu-level feature (NOT under the MarvsPCStufz submenu) --
@@ -370,6 +598,85 @@ document.addEventListener('DOMContentLoaded', () => {
         mqRecompute();
         const statusMsg = document.getElementById('mq-status-message');
         if (statusMsg) statusMsg.classList.add('hidden');
+        // Fix 27: also clear any leftover edit-mode state (row index, original
+        // Quotation #/Encoded By, heading text, submit button label) so opening
+        // this form fresh from the main menu never silently resumes editing a
+        // previously-clicked record -- same guard Purchased Order's Fix 24 uses.
+        const rowIndexEl = document.getElementById('mq-row-index');
+        if (rowIndexEl) rowIndexEl.value = '';
+        const quotationNumberEl = document.getElementById('mq-quotation-number');
+        if (quotationNumberEl) quotationNumberEl.value = '';
+        const origEncodedByEl = document.getElementById('mq-original-encoded-by');
+        if (origEncodedByEl) origEncodedByEl.value = '';
+        const headingEl = document.getElementById('mq-form-heading');
+        if (headingEl) headingEl.textContent = 'Manual Quotation';
+        const submitBtnReset = document.getElementById('mq-submit-btn');
+        if (submitBtnReset) {
+            const btnTextReset = submitBtnReset.querySelector('.btn-text');
+            if (btnTextReset) btnTextReset.textContent = 'Save Quotation';
+        }
+    }
+
+    // Fix 27: populates the Manual Quotation form (fields + item rows) from an
+    // existing saved record's row array, for the Manual Quotation Records list's
+    // "Edit" button -- same "Modify/Edit re-uses the creation form" pattern as
+    // Purchased Order's Fix 24. Row layout (see saveManualQuotation/getExpenseRecords
+    // in google_apps_script.js): [0]Quotation#, [1]Date, [2]Customer Name,
+    // [3]Company Name, [4]Mobile#, [5]Address, [6]Items(JSON), [7]Total Qty,
+    // [8]Total Before Discount, [9]Discount, [10]Total Amount, [11]Encoded By,
+    // [last]rowIndex.
+    function mqLoadRecordIntoForm(row) {
+        hideAllContainers();
+        const container = document.getElementById('manual-quotation-container');
+        if (container) container.classList.remove('hidden');
+
+        const rowIndex = row[row.length - 1];
+        const rowIndexEl = document.getElementById('mq-row-index');
+        if (rowIndexEl) rowIndexEl.value = rowIndex;
+        const quotationNumberEl = document.getElementById('mq-quotation-number');
+        if (quotationNumberEl) quotationNumberEl.value = row[0] || '';
+        // Fix 27: preserve the original "Encoded By" on edit -- don't silently
+        // reassign authorship to whoever happens to be editing later, same rule
+        // Fix 24b established for Purchased Order's Admin Requested field.
+        const origEncodedByEl = document.getElementById('mq-original-encoded-by');
+        if (origEncodedByEl) origEncodedByEl.value = row[11] || '';
+
+        const dateStr = (row[1] || '').toString().split(/[T ]/)[0];
+        const dateEl = document.getElementById('mq-date');
+        if (dateEl) dateEl.value = dateStr;
+        const customerNameEl = document.getElementById('mq-customer-name');
+        if (customerNameEl) customerNameEl.value = row[2] || '';
+        const companyNameEl = document.getElementById('mq-company-name');
+        if (companyNameEl) companyNameEl.value = row[3] || '';
+        const mobileEl = document.getElementById('mq-mobile');
+        if (mobileEl) mobileEl.value = row[4] || '';
+        const addressEl = document.getElementById('mq-address');
+        if (addressEl) addressEl.value = row[5] || '';
+
+        let items = [];
+        try { items = JSON.parse(row[6] || '[]'); } catch (e) { items = []; }
+        const tbody = document.getElementById('mq-items-body');
+        if (tbody) tbody.innerHTML = '';
+        if (items.length > 0) {
+            items.forEach(it => mqAddItemRow(it));
+        } else {
+            mqAddItemRow(null);
+        }
+
+        const discountEl = document.getElementById('mq-discount');
+        if (discountEl) discountEl.value = parseFloat(row[9]) || 0;
+        mqRecompute();
+
+        const statusMsg = document.getElementById('mq-status-message');
+        if (statusMsg) statusMsg.classList.add('hidden');
+
+        const headingEl = document.getElementById('mq-form-heading');
+        if (headingEl) headingEl.textContent = 'Edit Quotation' + (row[0] ? (' ' + row[0]) : '');
+        const submitBtn = document.getElementById('mq-submit-btn');
+        if (submitBtn) {
+            const btnText = submitBtn.querySelector('.btn-text');
+            if (btnText) btnText.textContent = 'Update Quotation';
+        }
     }
 
     const menuManualQuotationBtn = document.getElementById('menu-manual-quotation-btn');
@@ -378,7 +685,10 @@ document.addEventListener('DOMContentLoaded', () => {
             hideAllContainers();
             const container = document.getElementById('manual-quotation-container');
             if (container) container.classList.remove('hidden');
-            mqResetForm(); // always start fresh -- this is a data-entry-only page, no edit/resume of a prior quotation
+            // Fix 27: mqResetForm() now also clears any leftover edit-mode state, so
+            // opening this fresh from the main menu always starts a brand-new quotation
+            // even if a "Modify/Edit" was left in progress on a previous visit.
+            mqResetForm();
         });
     }
 
@@ -419,8 +729,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="padding: 8px 10px;">${totalQty}</td>
                     <td style="padding: 8px 10px; font-weight: 600;">₱${formatCurrency(totalAmount)}</td>
                     <td style="padding: 8px 10px;">${row[11] || ''}</td>
-                    <td style="padding: 8px 10px;">
+                    <td style="padding: 8px 10px; white-space: nowrap;">
                         <button type="button" class="btn-mq-print-row" data-mq-row-index="${idx}" style="background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Print</button>
+                        <button type="button" class="btn-mq-edit-row" data-mq-row-index="${idx}" style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-edit"></i> Edit</button>
                     </td>
                 </tr>
             `;
@@ -705,12 +1016,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const mqListTableBody = document.getElementById('manual-quotation-list-table-body');
     if (mqListTableBody) {
         mqListTableBody.addEventListener('click', (e) => {
-            const btn = e.target.closest('.btn-mq-print-row');
-            if (!btn) return;
-            const idx = parseInt(btn.getAttribute('data-mq-row-index'), 10);
-            const row = currentMqListRenderedRows[idx];
-            if (!row) return;
-            printManualQuotationRecord(row, btn);
+            const printBtn = e.target.closest('.btn-mq-print-row');
+            if (printBtn) {
+                const idx = parseInt(printBtn.getAttribute('data-mq-row-index'), 10);
+                const row = currentMqListRenderedRows[idx];
+                if (row) printManualQuotationRecord(row, printBtn);
+                return;
+            }
+            // Fix 27: "Edit" button on each row opens the same form used to create a
+            // quotation, pre-filled with this record's details, per the user's request.
+            const editBtn = e.target.closest('.btn-mq-edit-row');
+            if (editBtn) {
+                const idx = parseInt(editBtn.getAttribute('data-mq-row-index'), 10);
+                const row = currentMqListRenderedRows[idx];
+                if (row) mqLoadRecordIntoForm(row);
+            }
         });
     }
 
@@ -856,17 +1176,66 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const formData = {
-                action: 'saveManualQuotation',
-                date: document.getElementById('mq-date').value,
-                customerName: document.getElementById('mq-customer-name').value,
-                companyName: document.getElementById('mq-company-name').value,
-                mobile: document.getElementById('mq-mobile').value,
-                address: document.getElementById('mq-address').value,
-                items: JSON.stringify(items),
-                discount: parseFloat(document.getElementById('mq-discount').value) || 0,
-                encodedBy: sessionStorage.getItem('loggedInUser') || ''
-            };
+            const currentUserVal = sessionStorage.getItem('loggedInUser') || '';
+            // Fix 27: this form is reused both for a brand-new quotation AND for
+            // editing an existing one (opened via the "Edit" button on the Manual
+            // Quotation Records list). A non-empty mq-row-index means we're editing,
+            // so update the existing sheet row in place instead of appending a new
+            // one -- same pattern already used by Purchased Order's Fix 24.
+            const mqRowIndexVal = document.getElementById('mq-row-index').value;
+
+            let formData = {};
+            if (mqRowIndexVal) {
+                // updateExpenseRecord writes updatedData verbatim (no server-side
+                // recompute like saveManualQuotation does for a new quotation), so
+                // recompute totals from the (possibly edited) items array ourselves.
+                let totalQty = 0;
+                let totalBeforeDiscount = 0;
+                items.forEach(it => {
+                    totalQty += it.qty;
+                    totalBeforeDiscount += (it.qty * it.amount);
+                });
+                const discountVal = parseFloat(document.getElementById('mq-discount').value) || 0;
+                const totalAmountVal = Math.max(totalBeforeDiscount - discountVal, 0);
+                // Quotation # and the original Encoded By are kept as-is -- same
+                // "don't reassign authorship on edit" rule Fix 24b established for
+                // Purchased Order's Admin Requested field.
+                const quotationNumberVal = document.getElementById('mq-quotation-number').value || '';
+                const originalEncodedByVal = document.getElementById('mq-original-encoded-by').value || currentUserVal;
+
+                formData = {
+                    action: 'updateExpenseRecord',
+                    sheetName: 'Manual Quotation',
+                    rowIndex: mqRowIndexVal,
+                    updatedData: [
+                        quotationNumberVal,
+                        document.getElementById('mq-date').value,
+                        document.getElementById('mq-customer-name').value,
+                        document.getElementById('mq-company-name').value,
+                        document.getElementById('mq-mobile').value,
+                        document.getElementById('mq-address').value,
+                        JSON.stringify(items),
+                        totalQty,
+                        totalBeforeDiscount,
+                        discountVal,
+                        totalAmountVal,
+                        originalEncodedByVal
+                    ],
+                    encodedBy: currentUserVal
+                };
+            } else {
+                formData = {
+                    action: 'saveManualQuotation',
+                    date: document.getElementById('mq-date').value,
+                    customerName: document.getElementById('mq-customer-name').value,
+                    companyName: document.getElementById('mq-company-name').value,
+                    mobile: document.getElementById('mq-mobile').value,
+                    address: document.getElementById('mq-address').value,
+                    items: JSON.stringify(items),
+                    discount: parseFloat(document.getElementById('mq-discount').value) || 0,
+                    encodedBy: currentUserVal
+                };
+            }
 
             const btnText = submitBtn.querySelector('.btn-text');
             const spinner = submitBtn.querySelector('.spinner');
@@ -884,6 +1253,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
 
                 if (result.status === 'success') {
+                    const wasEditing = !!mqRowIndexVal;
                     const savedNumberText = result.quotationNumber ? (result.quotationNumber + ' ') : '';
                     // Fix 22: mqResetForm() hides #mq-status-message as part of its reset
                     // (so a stale message isn't left showing when the form is re-opened
@@ -892,9 +1262,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     // message before it ever painted, so saves silently had no visible
                     // confirmation even though they succeeded.
                     mqResetForm();
-                    showMessage(statusMessage, 'Quotation ' + savedNumberText + 'saved successfully!', 'success');
+                    if (wasEditing) {
+                        showMessage(statusMessage, 'Quotation updated successfully!', 'success');
+                    } else {
+                        showMessage(statusMessage, 'Quotation ' + savedNumberText + 'saved successfully!', 'success');
+                    }
                 } else {
-                    showMessage(statusMessage, 'Error saving quotation: ' + result.message, 'error');
+                    showMessage(statusMessage, (mqRowIndexVal ? 'Error updating quotation: ' : 'Error saving quotation: ') + result.message, 'error');
                 }
             } catch (err) {
                 showMessage(statusMessage, 'Network error. Please try again.', 'error');
@@ -1569,11 +1943,34 @@ document.addEventListener('DOMContentLoaded', () => {
         tbody.innerHTML = rows.map(row => {
             let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
             let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
-            const actionsCell = canModifyDeliveries
+            const modifyBtnHtml = canModifyDeliveries
                 ? `<button type="button" class="btn-deliveries-list-update" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Modified</button>`
+                : '';
+            // Fix 29: "Print" (delivery receipt) is available to everyone who can see
+            // this list, not just Owner -- unlike Modified/editing, printing a receipt
+            // for a rider/customer handoff is a read-only action any staff should be
+            // able to do. Explicit color keeps it readable even on a red (pending) row.
+            const printBtnHtml = `<button type="button" class="btn-deliveries-list-print" data-row-index="${row[row.length - 1]}" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-print"></i> Print</button>`;
+            const actionsCell = (modifyBtnHtml || printBtnHtml)
+                ? `${modifyBtnHtml}${printBtnHtml}`
                 : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
+            // Fix 26 (corrected): color the whole row red as long as ANY of Payment
+            // Completion, Delivery Status, or Overall Status is still "Pending" --
+            // not only when all three are. A customer with Payment "Partial Payment"
+            // but Delivery/Overall still "Pending" still needs attention, so it stays
+            // red too; it only turns off once EVERY one of the three has moved past
+            // Pending. The "Modified" button keeps its own explicit blue color
+            // regardless (set via its own style="color:#3b82f6" above), so it stays
+            // readable/clickable even on a red row.
+            const paymentCompletion = (row[19] || 'Pending').toString().trim();
+            const deliveryStatus = (row[20] || 'Pending').toString().trim();
+            const overallStatus = (row[21] || 'Pending').toString().trim();
+            const anyStillPending = paymentCompletion.toLowerCase() === 'pending' ||
+                deliveryStatus.toLowerCase() === 'pending' ||
+                overallStatus.toLowerCase() === 'pending';
+            const rowStyle = `border-bottom: 1px solid rgba(255,255,255,0.05);${anyStillPending ? ' color: #ef4444;' : ''}`;
             return `
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <tr style="${rowStyle}">
                     <td style="padding: 8px 10px;">${dateStr}</td>
                     <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
                     <td style="padding: 8px 10px;">${row[2] || ''}</td>
@@ -1587,9 +1984,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="padding: 8px 10px;">${row[11] || ''}</td>
                     <td style="padding: 8px 10px;">${row[15] || ''}</td>
                     <td style="padding: 8px 10px;">${row[18] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[19] || 'Pending'}</td>
-                    <td style="padding: 8px 10px;">${row[20] || 'Pending'}</td>
-                    <td style="padding: 8px 10px;">${row[21] || 'Pending'}</td>
+                    <td style="padding: 8px 10px;">${paymentCompletion}</td>
+                    <td style="padding: 8px 10px;">${deliveryStatus}</td>
+                    <td style="padding: 8px 10px;">${overallStatus}</td>
                     <td style="padding: 8px 10px;">${actionsCell}</td>
                 </tr>
             `;
@@ -1603,8 +2000,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // finished yet has no delivery/payment status worth tracking here. Everything
     // else (Pending, Ongoing Build, blank) is excluded, same "filter unconditionally,
     // no toggle" approach as Fix 11's Item Released filter.
+    //
+    // Fix 26: ALSO exclude rows whose Overall Status (column V, index 21) is already
+    // "Completed" -- once delivery AND payment are both done, there's nothing left
+    // to track here and it just clutters the list. Same unconditional-exclude
+    // pattern as the Build Status filter right above (and as Fix 11's Item Released
+    // filter / the Purchased Order Completed-hide filter elsewhere in the app) --
+    // NOT a toggle, always hidden. Note this checks a DIFFERENT status column
+    // (Overall Status, not Build Status), so a build can be "Completed" (finished
+    // building, passes the filter above) while its Overall Status is still Pending
+    // (still shows here) -- it only disappears once BOTH are true.
     function applyDeliveriesListFilter() {
-        const filtered = currentDeliveriesListRecords.filter(row => (row[18] || '').toString().toLowerCase().includes('complet'));
+        const filtered = currentDeliveriesListRecords
+            .filter(row => (row[18] || '').toString().toLowerCase().includes('complet'))
+            .filter(row => (row[21] || '').toString().trim().toLowerCase() !== 'completed');
         renderDeliveriesListTable(filtered);
     }
 
@@ -1842,6 +2251,393 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 btnSaveDeliveriesListUpdate.disabled = false;
                 btnSaveDeliveriesListUpdate.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    // ======= Delivery Receipt (Fix 29) =======
+    // Per-row "Print" button on the Deliveries list generates a branded delivery
+    // receipt PDF -- Customer/Build/Delivery details come straight from the
+    // Customer Information Sheet row (columns A-I), while Sales Invoice #,
+    // Invoice Balance, Installation/Service Fee Amount, and Delivery Rider only
+    // exist at print time (not stored in the sheet), so a small modal collects
+    // them first. Reuses the same MQ_BRAND letterhead and html2pdf ->
+    // bloburl -> pre-opened tab pattern already used by Manual Quotation's print.
+    let currentDeliveryReceiptRow = null;
+    // Fix 31: the most recent existing Delivery Receipts row (if any) found for
+    // the currently-open modal's customer row -- used by "View / Reprint
+    // Receipt" to reprint the EXACT same receipt (same number, same amounts)
+    // without minting a new sequential Receipt # via logDeliveryReceipt.
+    let currentExistingDeliveryReceipt = null;
+
+    function resetDeliveryReceiptFormFields() {
+        const invoiceNumEl = document.getElementById('dr-sales-invoice-number');
+        if (invoiceNumEl) invoiceNumEl.value = '';
+        const balanceEl = document.getElementById('dr-invoice-balance');
+        if (balanceEl) balanceEl.value = '0';
+        const installEl = document.getElementById('dr-installation-fee');
+        if (installEl) installEl.value = '0';
+        const transportEl = document.getElementById('dr-transportation-method');
+        if (transportEl) transportEl.value = 'Motor';
+        const riderEl = document.getElementById('dr-rider-name');
+        if (riderEl) riderEl.value = '';
+    }
+
+    async function openDeliveryReceiptModal(row) {
+        currentDeliveryReceiptRow = row;
+        currentExistingDeliveryReceipt = null;
+        const preview = document.getElementById('dr-customer-name-preview');
+        if (preview) preview.textContent = row[1] || '';
+        resetDeliveryReceiptFormFields();
+
+        const loadingEl = document.getElementById('dr-loading-existing');
+        const existingNoticeEl = document.getElementById('dr-existing-receipt-notice');
+        const newFieldsEl = document.getElementById('dr-new-receipt-fields');
+        if (loadingEl) loadingEl.classList.remove('hidden');
+        if (existingNoticeEl) existingNoticeEl.classList.add('hidden');
+        if (newFieldsEl) newFieldsEl.classList.add('hidden');
+
+        document.getElementById('delivery-receipt-modal').style.display = 'flex';
+
+        const rowIndex = row[row.length - 1];
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getDeliveryReceiptsForRow', rowIndex: rowIndex })
+            });
+            const result = await response.json();
+            // Bail out if the user already closed/cancelled the modal (or opened
+            // a different row) while this lookup was in flight.
+            if (currentDeliveryReceiptRow !== row) return;
+
+            if (result.status === 'success' && result.data && result.data.length > 0) {
+                const latest = result.data[0];
+                currentExistingDeliveryReceipt = latest;
+                const numEl = document.getElementById('dr-existing-receipt-number');
+                if (numEl) numEl.textContent = latest[0] || '';
+                const dateEl = document.getElementById('dr-existing-receipt-date');
+                if (dateEl) dateEl.textContent = latest[1] || '';
+                const totalEl = document.getElementById('dr-existing-receipt-total');
+                if (totalEl) totalEl.textContent = '₱' + formatCurrency(parseFloat(latest[8]) || 0);
+                if (existingNoticeEl) existingNoticeEl.classList.remove('hidden');
+                if (newFieldsEl) newFieldsEl.classList.add('hidden');
+            } else {
+                if (existingNoticeEl) existingNoticeEl.classList.add('hidden');
+                if (newFieldsEl) newFieldsEl.classList.remove('hidden');
+            }
+        } catch (err) {
+            console.error('Error checking for an existing delivery receipt:', err);
+            // Network hiccup checking for an existing receipt shouldn't block
+            // printing altogether -- fall back to the normal new-receipt form.
+            if (existingNoticeEl) existingNoticeEl.classList.add('hidden');
+            if (newFieldsEl) newFieldsEl.classList.remove('hidden');
+        } finally {
+            if (loadingEl) loadingEl.classList.add('hidden');
+        }
+    }
+
+    const deliveriesListTableBodyForPrint = document.getElementById('deliveries-list-table-body');
+    if (deliveriesListTableBodyForPrint) {
+        deliveriesListTableBodyForPrint.addEventListener('click', (e) => {
+            const printBtn = e.target.closest('.btn-deliveries-list-print');
+            if (!printBtn) return;
+            const idx = printBtn.getAttribute('data-row-index');
+            const matchedRow = currentDeliveriesListRecords.find(r => String(r[r.length - 1]) === String(idx));
+            if (matchedRow) openDeliveryReceiptModal(matchedRow);
+        });
+    }
+
+    const closeDeliveryReceiptModalBtn = document.getElementById('close-delivery-receipt-modal');
+    const cancelDeliveryReceiptModalBtn = document.getElementById('cancel-delivery-receipt-modal');
+    [closeDeliveryReceiptModalBtn, cancelDeliveryReceiptModalBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('delivery-receipt-modal').style.display = 'none';
+            currentDeliveryReceiptRow = null;
+            currentExistingDeliveryReceipt = null;
+        });
+    });
+
+    const drBtnShowNewForm = document.getElementById('dr-btn-show-new-form');
+    if (drBtnShowNewForm) {
+        drBtnShowNewForm.addEventListener('click', () => {
+            document.getElementById('dr-existing-receipt-notice').classList.add('hidden');
+            document.getElementById('dr-new-receipt-fields').classList.remove('hidden');
+        });
+    }
+
+    const drBtnViewExisting = document.getElementById('dr-btn-view-existing');
+    if (drBtnViewExisting) {
+        drBtnViewExisting.addEventListener('click', () => {
+            if (!currentExistingDeliveryReceipt || !currentDeliveryReceiptRow) return;
+            // Delivery Receipts sheet columns (see logDeliveryReceipt in
+            // google_apps_script.js): [0]Receipt#, [1]Date Printed,
+            // [2]Customer Info Row Index, [3]Customer Name, [4]Sales Invoice #,
+            // [5]Invoice Balance, [6]Shipping Fee, [7]Installation/Service Fee,
+            // [8]Total Collected, [9]Transportation Method, [10]Delivery Rider,
+            // [11]Printed By.
+            const existing = currentExistingDeliveryReceipt;
+            const row = currentDeliveryReceiptRow;
+            const extra = {
+                salesInvoiceNumber: existing[4] || '',
+                invoiceBalance: parseFloat(existing[5]) || 0,
+                installationFee: parseFloat(existing[7]) || 0,
+                transportationMethod: existing[9] || '',
+                riderName: existing[10] || '',
+                receiptNumber: existing[0] || ''
+            };
+            document.getElementById('delivery-receipt-modal').style.display = 'none';
+            currentDeliveryReceiptRow = null;
+            currentExistingDeliveryReceipt = null;
+            // No logDeliveryReceipt call here on purpose -- this is a reprint of
+            // an already-logged receipt, not a new one, so no new number/row.
+            generateDeliveryReceiptPdf(row, extra, drBtnViewExisting);
+        });
+    }
+
+    function generateDeliveryReceiptPdf(row, extra, btnEl) {
+        const originalHtml = btnEl ? btnEl.innerHTML : '';
+        if (btnEl) {
+            btnEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            btnEl.disabled = true;
+        }
+
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+            newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Delivery Receipt PDF...</h3>');
+        } else {
+            alert('Popup blocked! Please allow popups for this site to view the PDF.');
+        }
+
+        function restoreBtn() {
+            if (btnEl) {
+                btnEl.innerHTML = originalHtml;
+                btnEl.disabled = false;
+            }
+        }
+
+        try {
+            // Customer Information Sheet columns A-I (row[0]-row[8]) -- see
+            // saveCustomerInfo in google_apps_script.js for the authoritative order.
+            const dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+            const customerName = row[1] || '';
+            const address = row[2] || '';
+            const mobile = row[3] || '';
+            const numberOfBuilds = row[4] || '';
+            const typeOfBuild = row[5] || '';
+            const deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+            const deliveryMethod = row[7] || '';
+            const shippingFee = parseFloat(row[8]) || 0;
+
+            const deliveryDateFormatted = deliveryDateStr ? new Date(deliveryDateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : (dateStr ? new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '');
+            const datePrintedFormatted = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+            const salesInvoiceNumber = extra.salesInvoiceNumber || '';
+            const invoiceBalance = extra.invoiceBalance || 0;
+            const installationFee = extra.installationFee || 0;
+            const transportationMethod = extra.transportationMethod || '';
+            const riderName = extra.riderName || '';
+            const receiptNumber = extra.receiptNumber || '';
+            // Total = Invoice Balance + Shipping Fee + Installation/Service Fee Amount,
+            // per the user's explicit spec (Downpayment Amount is deliberately NOT
+            // part of this receipt at all).
+            const totalToCollect = invoiceBalance + shippingFee + installationFee;
+
+            const htmlString = `
+                <div id="dr-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
+                    <table style="width:100%; border-collapse:collapse; border-bottom:3px solid #4f46e5; padding-bottom:16px; margin-bottom:20px; table-layout:fixed;">
+                        <tr>
+                            <td style="width:60%; vertical-align:top; padding-bottom:16px;">
+                                <table style="border-collapse:collapse;"><tr>
+                                    <td style="width:46px; height:46px; background:#4f46e5; border-radius:10px; text-align:center; vertical-align:middle; color:#fff; font-size:22px; font-weight:700;">M</td>
+                                    <td style="padding-left:12px; vertical-align:middle;">
+                                        <div style="font-size:20px; font-weight:800; color:#1f2937; line-height:1.15;">${MQ_BRAND.name}</div>
+                                        <div style="font-size:11.5px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
+                                        <div style="font-size:11.5px; color:#6b7280; margin-top:5px;">📍 ${MQ_BRAND.address}</div>
+                                        <div style="font-size:11.5px; color:#6b7280; margin-top:2px;">📞 ${MQ_BRAND.phone} &nbsp;|&nbsp; ✉️ ${MQ_BRAND.email}</div>
+                                    </td>
+                                </tr></table>
+                            </td>
+                            <td style="width:40%; vertical-align:top; text-align:right; padding-bottom:16px;">
+                                <div style="font-size:22px; font-weight:800; color:#4f46e5; letter-spacing:1px; white-space:nowrap;">DELIVERY RECEIPT</div>
+                                <div style="font-size:12.5px; color:#4f46e5; font-weight:700; margin-top:6px;">Receipt No.: ${receiptNumber || '-'}</div>
+                                <div style="font-size:12.5px; color:#6b7280; margin-top:4px;">Date Printed: ${datePrintedFormatted}</div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <table style="width:100%; margin-bottom: 20px;">
+                        <tr>
+                            <td style="width: 52%; vertical-align: top;">
+                                <div style="font-size:11px; font-weight:800; color:#4f46e5; text-transform:uppercase; letter-spacing:0.05em; margin:0 0 8px; padding-bottom:4px; border-bottom:1px solid #e5e7eb;">Customer Details</div>
+                                <table style="width:100%;">
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; width:130px; vertical-align:top;">Customer Name</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${customerName}</td></tr>
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; vertical-align:top;">Address</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${address}</td></tr>
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; vertical-align:top;">Mobile #</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${mobile}</td></tr>
+                                </table>
+                            </td>
+                            <td style="width: 48%; vertical-align: top;">
+                                <div style="font-size:11px; font-weight:800; color:#4f46e5; text-transform:uppercase; letter-spacing:0.05em; margin:0 0 8px; padding-bottom:4px; border-bottom:1px solid #e5e7eb;">Build / Delivery Details</div>
+                                <table style="width:100%;">
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; width:130px; vertical-align:top;">Type of Build</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${typeOfBuild}</td></tr>
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; vertical-align:top;">Number of Builds</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${numberOfBuilds}</td></tr>
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; vertical-align:top;">Delivery Date</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${deliveryDateFormatted}</td></tr>
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; vertical-align:top;">Delivery Method</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${deliveryMethod}</td></tr>
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; vertical-align:top;">Transportation Method</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${transportationMethod}</td></tr>
+                                    <tr><td style="padding:4px 0; font-size:12.5px; color:#6b7280; vertical-align:top;">Delivery Rider</td><td style="padding:4px 0; font-size:12.5px; color:#1f2937; font-weight:600;">${riderName}</td></tr>
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style="font-size:11px; font-weight:800; color:#4f46e5; text-transform:uppercase; letter-spacing:0.05em; margin:0 0 8px; padding-bottom:4px; border-bottom:1px solid #e5e7eb;">Payment Summary</div>
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>
+                            <tr>
+                                <th style="padding:8px 10px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:#6b7280; text-align:left; border-bottom:2px solid #e5e7eb;">Item</th>
+                                <th style="padding:8px 10px; font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:#6b7280; text-align:right; border-bottom:2px solid #e5e7eb;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="padding:8px 10px; font-size:12.5px; border-bottom:1px solid #f0f1f3;">Sales Invoice #</td>
+                                <td style="padding:8px 10px; font-size:12.5px; border-bottom:1px solid #f0f1f3; text-align:right;">${salesInvoiceNumber || '-'}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:8px 10px; font-size:12.5px; border-bottom:1px solid #f0f1f3;">Invoice Balance</td>
+                                <td style="padding:8px 10px; font-size:12.5px; border-bottom:1px solid #f0f1f3; text-align:right;">₱${formatCurrency(invoiceBalance)}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:8px 10px; font-size:12.5px; border-bottom:1px solid #f0f1f3;">Shipping Fee</td>
+                                <td style="padding:8px 10px; font-size:12.5px; border-bottom:1px solid #f0f1f3; text-align:right;">₱${formatCurrency(shippingFee)}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:8px 10px; font-size:12.5px; border-bottom:1px solid #f0f1f3;">Installation/Service Fee Amount</td>
+                                <td style="padding:8px 10px; font-size:12.5px; border-bottom:1px solid #f0f1f3; text-align:right;">₱${formatCurrency(installationFee)}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:8px 10px; font-weight:800; font-size:14px; color:#4f46e5; border-top:2px solid #4f46e5;">TOTAL AMOUNT TO BE COLLECTED</td>
+                                <td style="padding:8px 10px; font-weight:800; font-size:14px; color:#4f46e5; border-top:2px solid #4f46e5; text-align:right;">₱${formatCurrency(totalToCollect)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div style="font-size:10px; color:#9ca3af; margin-top:4px;">* Total Amount to be Collected = Invoice Balance + Shipping Fee + Installation/Service Fee Amount</div>
+
+                    <table style="width:100%; margin-top: 40px;">
+                        <tr>
+                            <td style="width: 50%; padding-right: 20px; vertical-align: top;">
+                                <div style="border-top:1px solid #374151; margin-top:46px; padding-top:6px; font-size:11px; color:#374151; text-align:center;">Customer Signature over Printed Name</div>
+                            </td>
+                            <td style="width: 50%; padding-left: 20px; vertical-align: top;">
+                                <div style="border-top:1px solid #374151; margin-top:46px; padding-top:6px; font-size:11px; color:#374151; text-align:center;">Released By (Signature)<div style="margin-top:3px; color:#6b7280;">Printed Name: ${riderName || '_______________'}</div></div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <div style="margin-top: 24px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #9ca3af; text-align: center;">
+                        This receipt confirms that the above item(s) were received in good order and condition.
+                    </div>
+                </div>
+            `;
+
+            const hiddenDiv = document.createElement('div');
+            hiddenDiv.innerHTML = htmlString;
+            hiddenDiv.style.position = 'absolute';
+            hiddenDiv.style.top = '-9999px';
+            hiddenDiv.style.left = '-9999px';
+            hiddenDiv.style.width = '800px';
+            document.body.appendChild(hiddenDiv);
+
+            const element = hiddenDiv.querySelector('#dr-print-wrapper');
+
+            const opt = {
+                margin: 0.3,
+                filename: `Delivery_Receipt_${(receiptNumber || 'Draft')}_${(customerName || 'Customer').toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).output('bloburl').then(function (pdfUrl) {
+                if (newTab) newTab.location.href = pdfUrl;
+                document.body.removeChild(hiddenDiv);
+                restoreBtn();
+            }).catch(function (error) {
+                console.error('Delivery receipt PDF generation error:', error);
+                if (newTab) newTab.close();
+                alert('Error generating delivery receipt PDF.');
+                document.body.removeChild(hiddenDiv);
+                restoreBtn();
+            });
+        } catch (err) {
+            console.error(err);
+            if (newTab) newTab.close();
+            alert('Error generating delivery receipt PDF.');
+            restoreBtn();
+        }
+    }
+
+    const btnGenerateDeliveryReceipt = document.getElementById('btn-generate-delivery-receipt');
+    if (btnGenerateDeliveryReceipt) {
+        btnGenerateDeliveryReceipt.addEventListener('click', async () => {
+            if (!currentDeliveryReceiptRow) return;
+            const row = currentDeliveryReceiptRow;
+            const extra = {
+                salesInvoiceNumber: (document.getElementById('dr-sales-invoice-number').value || '').trim(),
+                invoiceBalance: parseFloat(document.getElementById('dr-invoice-balance').value) || 0,
+                installationFee: parseFloat(document.getElementById('dr-installation-fee').value) || 0,
+                transportationMethod: document.getElementById('dr-transportation-method').value || 'Motor',
+                riderName: (document.getElementById('dr-rider-name').value || '').trim()
+            };
+            const shippingFee = parseFloat(row[8]) || 0;
+            const totalToCollect = extra.invoiceBalance + shippingFee + extra.installationFee;
+            const currentUserVal = sessionStorage.getItem('loggedInUser') || '';
+
+            // Fix 30: get a real sequential Receipt # from the backend (logged into
+            // a new "Delivery Receipts" audit sheet) BEFORE generating the PDF, so
+            // the printed document can show it -- same two-step "number first, then
+            // render" flow Manual Quotation's Fix 21 uses for its Quotation #.
+            const originalBtnHtml = btnGenerateDeliveryReceipt.innerHTML;
+            btnGenerateDeliveryReceipt.disabled = true;
+            btnGenerateDeliveryReceipt.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'logDeliveryReceipt',
+                        rowIndex: row[row.length - 1],
+                        customerName: row[1] || '',
+                        datePrinted: dsFormatDate(new Date()),
+                        salesInvoiceNumber: extra.salesInvoiceNumber,
+                        invoiceBalance: extra.invoiceBalance,
+                        shippingFee: shippingFee,
+                        installationFee: extra.installationFee,
+                        totalCollected: totalToCollect,
+                        transportationMethod: extra.transportationMethod,
+                        riderName: extra.riderName,
+                        encodedBy: currentUserVal
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    extra.receiptNumber = result.receiptNumber || '';
+                    document.getElementById('delivery-receipt-modal').style.display = 'none';
+                    currentDeliveryReceiptRow = null;
+                    btnGenerateDeliveryReceipt.innerHTML = originalBtnHtml;
+                    generateDeliveryReceiptPdf(row, extra, btnGenerateDeliveryReceipt);
+                } else {
+                    alert('Error generating receipt number: ' + result.message);
+                    btnGenerateDeliveryReceipt.disabled = false;
+                    btnGenerateDeliveryReceipt.innerHTML = originalBtnHtml;
+                }
+            } catch (err) {
+                console.error('Error logging delivery receipt:', err);
+                alert('Network error. Please try again.');
+                btnGenerateDeliveryReceipt.disabled = false;
+                btnGenerateDeliveryReceipt.innerHTML = originalBtnHtml;
             }
         });
     }
