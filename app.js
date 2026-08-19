@@ -1,6 +1,43 @@
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE:
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyD4bJL8y0K0Kb3cKFA2Dm_OlDoPeTeo6MtiRzB_B8WBeX7GiU0gU2EBVAwd31BMPWV/exec';
 
+// Fix 32: "Failed to fetch" is a raw network-layer error (not a backend
+// error) -- it happens when the Apps Script web app is slow to cold-start or
+// a mobile/wifi connection drops an idle request. A plain fetch() has no
+// built-in timeout and no retry, so a single slow/hiccuping request looked
+// like a dead end to the user. This helper adds (a) a client-side timeout via
+// AbortController so a hung request fails fast instead of hanging
+// indefinitely, and (b) automatic retries with a short backoff for
+// network-level failures (fetch throwing / timing out) -- NOT for
+// application-level errors (HTTP response that parses fine but has
+// status !== "success"), since retrying those would just repeat the same
+// backend error. Used by Daily Sales first; safe to reuse for any other POST
+// to SCRIPT_URL.
+async function postToScriptWithRetry(payload, { retries = 2, timeoutMs = 20000, retryDelayMs = 1200 } = {}) {
+    let lastError = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
+            clearTimeout(timer);
+            return await response.json();
+        } catch (error) {
+            clearTimeout(timer);
+            lastError = error;
+            if (attempt < retries) {
+                await new Promise(r => setTimeout(r, retryDelayMs));
+            }
+        }
+    }
+    throw lastError;
+}
+
 function formatCurrency(amount) {
     return Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -197,6 +234,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const isAllowedQuotationStore = (store === 'All' || store === 'MarvsPCStufz');
             menuManualQuotationBtnApp.style.display = isAllowedQuotationStore ? '' : 'none';
         }
+
+        // Hide/Show Sheet Health Check based on Role (Fix 35) -- per the user's
+        // explicit request, ONLY the Owner role should ever see this button;
+        // everyone else (Manager, Supervisor, RMA Admin, Technician, etc.) must
+        // not see it at all under the MarvsPCStufz menu.
+        const menuMarvsPcSheetHealthBtnApp = document.getElementById('menu-marvspc-sheet-health-btn');
+        if (menuMarvsPcSheetHealthBtnApp) {
+            menuMarvsPcSheetHealthBtnApp.style.display = (role === 'Owner') ? '' : 'none';
+        }
     }
 
     function showLogin() {
@@ -323,6 +369,69 @@ document.addEventListener('DOMContentLoaded', () => {
     const dsTableBody = document.getElementById('ds-table-body');
     const dsTotalCell = document.getElementById('ds-total-cell');
     const dsWeekRangeLabel = document.getElementById('ds-week-range-label');
+    const dsTopAdminName = document.getElementById('ds-top-admin-name');
+    const dsTopAdminCount = document.getElementById('ds-top-admin-count');
+    const dsTopCustomerName = document.getElementById('ds-top-customer-name');
+    const dsTopCustomerCount = document.getElementById('ds-top-customer-count');
+    const dsTopPageName = document.getElementById('ds-top-page-name');
+    const dsTopPageCount = document.getElementById('ds-top-page-count');
+    const dsTopBuildTypeName = document.getElementById('ds-top-buildtype-name');
+    const dsTopBuildTypeCount = document.getElementById('ds-top-buildtype-count');
+
+    // Fix 33: Top Performers -- for a given Customer Information Sheet
+    // column index, sum "Number of Builds" (column E, index 4) grouped by
+    // that column's value across the SAME rows already fetched for the
+    // week's table (no separate backend call). Rows with a blank value for
+    // that specific column are skipped for that dimension (a blank Sales
+    // Admin shouldn't count as a "" winner), but can still count toward the
+    // other dimensions. If nobody has builds > 0, show "Wala pang data" per
+    // the user's explicit spec. If two or more tie for the highest total,
+    // list all of them (comma-separated) rather than arbitrarily picking one.
+    function dsComputeTopBy(rows, columnIndex) {
+        // Fix 34: group by a NORMALIZED key (trimmed, collapsed internal
+        // whitespace, lowercased) so free-text data-entry inconsistencies --
+        // e.g. "PC Marvs" vs "PC  Marvs" vs "pc marvs" typed on different
+        // rows -- don't get split into separate buckets and silently dilute
+        // the real total for what is actually the same admin/page/customer/
+        // build-type. The DISPLAYED name still uses the original (trimmed,
+        // whitespace-collapsed) casing from the first row seen for that key.
+        const totals = {};       // normalizedKey -> summed builds
+        const displayNames = {}; // normalizedKey -> original-cased display text
+        rows.forEach(row => {
+            const raw = (row[columnIndex] || '').toString().trim().replace(/\s+/g, ' ');
+            if (!raw) return;
+            const normKey = raw.toLowerCase();
+            const numBuilds = parseInt(row[4], 10) || 0;
+            totals[normKey] = (totals[normKey] || 0) + numBuilds;
+            if (!(normKey in displayNames)) displayNames[normKey] = raw;
+        });
+        let maxCount = 0;
+        Object.keys(totals).forEach(key => {
+            if (totals[key] > maxCount) maxCount = totals[key];
+        });
+        if (maxCount <= 0) return { names: null, count: 0 };
+        const winners = Object.keys(totals).filter(key => totals[key] === maxCount).map(key => displayNames[key]);
+        return { names: winners.join(', '), count: maxCount };
+    }
+
+    function dsRenderTopPerformers(rows) {
+        const dims = [
+            { columnIndex: 15, nameEl: dsTopAdminName, countEl: dsTopAdminCount },      // Column P: Sales Admin
+            { columnIndex: 1, nameEl: dsTopCustomerName, countEl: dsTopCustomerCount }, // Column B: Customer Name
+            { columnIndex: 16, nameEl: dsTopPageName, countEl: dsTopPageCount },        // Column Q: MarvsPC Page
+            { columnIndex: 5, nameEl: dsTopBuildTypeName, countEl: dsTopBuildTypeCount } // Column F: Type of Build
+        ];
+        dims.forEach(dim => {
+            const top = dsComputeTopBy(rows, dim.columnIndex);
+            if (dim.nameEl) dim.nameEl.textContent = top.names === null ? 'Wala pang data' : top.names;
+            if (dim.countEl) dim.countEl.textContent = top.count;
+        });
+    }
+
+    function dsResetTopPerformers() {
+        [dsTopAdminName, dsTopCustomerName, dsTopPageName, dsTopBuildTypeName].forEach(el => { if (el) el.textContent = 'Wala pang data'; });
+        [dsTopAdminCount, dsTopCustomerCount, dsTopPageCount, dsTopBuildTypeCount].forEach(el => { if (el) el.textContent = '0'; });
+    }
 
     function dsFormatDate(d) {
         const y = d.getFullYear();
@@ -359,25 +468,21 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dsLoadBtn) dsLoadBtn.disabled = true;
         if (btnText) btnText.classList.add('hidden');
         if (spinner) spinner.classList.remove('hidden');
-        if (dsTableBody) dsTableBody.innerHTML = '<tr><td colspan="3" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+        if (dsTableBody) dsTableBody.innerHTML = '<tr><td colspan="3" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading... (pwedeng matagal kung malayo o mabagal ang connection)</td></tr>';
 
         try {
-            const response = await fetch(SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({
-                    action: 'getExpenseRecords',
-                    sheetName: 'Customer Information Sheet',
-                    startDate: startStr,
-                    endDate: endStr,
-                    branch: 'All',
-                    noCache: true
-                })
+            const result = await postToScriptWithRetry({
+                action: 'getExpenseRecords',
+                sheetName: 'Customer Information Sheet',
+                startDate: startStr,
+                endDate: endStr,
+                branch: 'All',
+                noCache: true
             });
-            const result = await response.json();
             if (result.status !== 'success') {
                 if (dsTableBody) dsTableBody.innerHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
                 if (dsTotalCell) dsTotalCell.textContent = '0';
+                dsResetTopPerformers();
                 return;
             }
 
@@ -413,9 +518,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (dsTableBody) dsTableBody.innerHTML = rowsHtml;
             if (dsTotalCell) dsTotalCell.textContent = total;
+            dsRenderTopPerformers(result.data || []);
         } catch (error) {
-            if (dsTableBody) dsTableBody.innerHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${error.message}</td></tr>`;
+            // Fix 32: postToScriptWithRetry already retried automatically on
+            // network-level failures (timeout / "Failed to fetch") before
+            // throwing here, so if we land in this catch it genuinely could
+            // not connect after retrying. Show a Filipino-friendly message
+            // and an inline Retry link (instead of just a dead-end error row)
+            // so the user doesn't have to hunt for the Load button again.
+            const isNetworkError = error && (error.name === 'AbortError' || /fetch/i.test(error.message || ''));
+            const friendlyMsg = isNetworkError
+                ? 'Hindi ma-contact ang server (baka mabagal ang connection o nag-timeout). Subukan ulit.'
+                : `Error: ${error.message}`;
+            if (dsTableBody) dsTableBody.innerHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #ef4444;">${friendlyMsg} <button type="button" id="ds-retry-btn" style="margin-left: 8px; background: #ef4444; color: white; border: none; border-radius: 6px; padding: 4px 10px; cursor: pointer;">Retry</button></td></tr>`;
             if (dsTotalCell) dsTotalCell.textContent = '0';
+            dsResetTopPerformers();
+            const retryBtn = document.getElementById('ds-retry-btn');
+            if (retryBtn) retryBtn.addEventListener('click', dsLoadWeek);
         } finally {
             if (dsLoadBtn) dsLoadBtn.disabled = false;
             if (btnText) btnText.classList.remove('hidden');
@@ -519,6 +638,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuMarvsPcSheetHealthBtn = document.getElementById('menu-marvspc-sheet-health-btn');
     if (menuMarvsPcSheetHealthBtn) {
         menuMarvsPcSheetHealthBtn.addEventListener('click', () => {
+            // Fix 35: defense-in-depth -- the button itself is hidden for
+            // non-Owner roles in showApp() below, but re-check here too in
+            // case the button was already in the DOM from before a role
+            // change (e.g. logout/login as a different role in the same tab).
+            if (sessionStorage.getItem('userRole') !== 'Owner') return;
             hideAllContainers();
             const container = document.getElementById('marvspc-sheet-health-container');
             if (container) container.classList.remove('hidden');

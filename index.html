@@ -1189,6 +1189,61 @@
                     </tr>
                 </tfoot>
             </table>
+
+            <!-- Fix 33: Top Performers -- Top Sales Admin (Column P), Top Customer
+                 (Column B), Top Page (Column Q), Top Build Type (Column F), all
+                 summed by "Number of Builds" (Column E) over the SAME date range as
+                 the table above (recomputed by dsLoadWeek on every Load/Prev/Next).
+                 Preview was approved by the user before this was built. -->
+            <div id="ds-top-performers-section">
+                <div style="margin: 22px 0 10px; font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); font-weight: 700;">🏆 Top Performers (parehong linggo)</div>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="background: rgba(129,140,248,0.08); border: 1px solid rgba(129,140,248,0.25); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                        <div style="font-size: 1.4em; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: rgba(129,140,248,0.18); border-radius: 50%; flex-shrink: 0;">👤</div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); font-weight: 600;">Top Sales Admin</div>
+                            <div id="ds-top-admin-name" style="font-size: 1.02em; font-weight: 700; color: #f1f5f9; margin-top: 2px;">-</div>
+                        </div>
+                        <div>
+                            <span id="ds-top-admin-count" style="font-size: 1.15em; font-weight: 700; color: var(--primary); white-space: nowrap;">0</span>
+                            <span style="font-size: 0.7em; color: var(--text-muted); font-weight: 500; display: block; text-align: right;">builds</span>
+                        </div>
+                    </div>
+                    <div style="background: rgba(129,140,248,0.08); border: 1px solid rgba(129,140,248,0.25); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                        <div style="font-size: 1.4em; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: rgba(129,140,248,0.18); border-radius: 50%; flex-shrink: 0;">🧑‍🤝‍🧑</div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); font-weight: 600;">Top Customer</div>
+                            <div id="ds-top-customer-name" style="font-size: 1.02em; font-weight: 700; color: #f1f5f9; margin-top: 2px;">-</div>
+                        </div>
+                        <div>
+                            <span id="ds-top-customer-count" style="font-size: 1.15em; font-weight: 700; color: var(--primary); white-space: nowrap;">0</span>
+                            <span style="font-size: 0.7em; color: var(--text-muted); font-weight: 500; display: block; text-align: right;">builds</span>
+                        </div>
+                    </div>
+                    <div style="background: rgba(129,140,248,0.08); border: 1px solid rgba(129,140,248,0.25); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                        <div style="font-size: 1.4em; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: rgba(129,140,248,0.18); border-radius: 50%; flex-shrink: 0;">📄</div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); font-weight: 600;">Top Page</div>
+                            <div id="ds-top-page-name" style="font-size: 1.02em; font-weight: 700; color: #f1f5f9; margin-top: 2px;">-</div>
+                        </div>
+                        <div>
+                            <span id="ds-top-page-count" style="font-size: 1.15em; font-weight: 700; color: var(--primary); white-space: nowrap;">0</span>
+                            <span style="font-size: 0.7em; color: var(--text-muted); font-weight: 500; display: block; text-align: right;">builds</span>
+                        </div>
+                    </div>
+                    <div style="background: rgba(129,140,248,0.08); border: 1px solid rgba(129,140,248,0.25); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; gap: 12px;">
+                        <div style="font-size: 1.4em; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; background: rgba(129,140,248,0.18); border-radius: 50%; flex-shrink: 0;">🖥️</div>
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); font-weight: 600;">Top Build Type</div>
+                            <div id="ds-top-buildtype-name" style="font-size: 1.02em; font-weight: 700; color: #f1f5f9; margin-top: 2px;">-</div>
+                        </div>
+                        <div>
+                            <span id="ds-top-buildtype-count" style="font-size: 1.15em; font-weight: 700; color: var(--primary); white-space: nowrap;">0</span>
+                            <span style="font-size: 0.7em; color: var(--text-muted); font-weight: 500; display: block; text-align: right;">builds</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -3175,7 +3230,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=43"></script>
+    <script src="app.js?v=47"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
