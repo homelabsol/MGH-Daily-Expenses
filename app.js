@@ -655,6 +655,274 @@ document.addEventListener('DOMContentLoaded', () => {
         shRefreshBtn.addEventListener('click', shLoadHealthCheck);
     }
 
+    // ======= Daily Parts Inventory Count =======
+    // Daily physical parts count, per the user's explicit approved layout:
+    // Category / Item Description / Qty / Missing / RMA / Total (net accounted
+    // = Qty - Missing - RMA), with an "Approved By" field restricted to Manager
+    // or Owner accounts only -- representing the second person who did the
+    // side-by-side physical count verification in person. There's no separate
+    // async approval step; this form just records that the verification
+    // happened at the moment of counting.
+    //
+    // Saved as ONE ROW PER ITEM (flattened, same shape as "Item Purchased"),
+    // not a JSON blob per submission -- every row in a single daily count
+    // shares the same Date/Branch/Counted By/Approved By/Timestamp, so
+    // reporting on individual items/categories over time works the same way
+    // as any other flat sheet, and the existing generic getExpenseRecords
+    // action can be reused for "View" with no new backend action needed there.
+    const DPI_CATEGORIES = [
+        "AMD Mobo and Proci", "Intel Mobo and Proci", "Memory", "SSD", "RGB Fans",
+        "Cooler", "Power Supply", "Monitor", "Keyboard", "Mouse", "Headset",
+        "2 in 1 Keyboard and Mouse", "4 in 1 Keyboard, Mouse, Headset and Pad",
+        "Speaker", "Bluetooth Dongle", "USB Wifi Dongle", "USB Storage",
+        "CCTV Camera", "DVR/NVR/XVR", "Cables", "Switch HUB", "Video Card/GPU", "Others"
+    ];
+
+    function dpiCategoryOptionsHtml(selected) {
+        return DPI_CATEGORIES.map(c => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
+    }
+
+    function dpiAddItemRow(data) {
+        const tbody = document.getElementById('dpi-items-body');
+        if (!tbody) return;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="padding: 4px 8px; vertical-align: top;"><select class="dpi-row-category" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--primary); font-family: inherit; font-size: 0.88em; font-weight: 600;">${dpiCategoryOptionsHtml(data ? data.category : DPI_CATEGORIES[0])}</select></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><textarea class="dpi-row-desc" rows="1" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-family: inherit; font-size: 0.88em;">${data && data.desc ? data.desc : ''}</textarea></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="dpi-row-qty" min="0" step="1" value="${data && data.qty ? data.qty : ''}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-size: 0.88em;"></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="dpi-row-missing" min="0" step="1" value="${data && data.missing ? data.missing : 0}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: #ef4444; font-size: 0.88em;"></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="dpi-row-rma" min="0" step="1" value="${data && data.rma ? data.rma : 0}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: #f59e0b; font-size: 0.88em;"></td>
+            <td style="padding: 8px 8px; vertical-align: top; color: #10b981; font-weight: 600; font-size: 0.88em;" class="dpi-row-total">0</td>
+            <td style="padding: 4px 8px; vertical-align: top; text-align: center;"><button type="button" class="dpi-btn-remove-row" title="Remove row" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #ef4444; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 0.85em;">✕</button></td>
+        `;
+        tbody.appendChild(tr);
+        tr.querySelector('.dpi-row-qty').addEventListener('input', dpiRecompute);
+        tr.querySelector('.dpi-row-missing').addEventListener('input', dpiRecompute);
+        tr.querySelector('.dpi-row-rma').addEventListener('input', dpiRecompute);
+        tr.querySelector('.dpi-btn-remove-row').addEventListener('click', () => {
+            tr.remove();
+            dpiRecompute();
+        });
+    }
+
+    function dpiRecompute() {
+        const tbody = document.getElementById('dpi-items-body');
+        if (!tbody) return;
+        let totalQty = 0, totalMissing = 0, totalRma = 0, totalNet = 0;
+        tbody.querySelectorAll('tr').forEach(tr => {
+            const qty = parseFloat(tr.querySelector('.dpi-row-qty').value) || 0;
+            const missing = parseFloat(tr.querySelector('.dpi-row-missing').value) || 0;
+            const rma = parseFloat(tr.querySelector('.dpi-row-rma').value) || 0;
+            const net = qty - missing - rma;
+            tr.querySelector('.dpi-row-total').textContent = net;
+            totalQty += qty;
+            totalMissing += missing;
+            totalRma += rma;
+            totalNet += net;
+        });
+        const elQty = document.getElementById('dpi-total-qty');
+        const elMissing = document.getElementById('dpi-total-missing');
+        const elRma = document.getElementById('dpi-total-rma');
+        const elNet = document.getElementById('dpi-total-net');
+        if (elQty) elQty.textContent = totalQty;
+        if (elMissing) elMissing.textContent = totalMissing;
+        if (elRma) elRma.textContent = totalRma;
+        if (elNet) elNet.textContent = totalNet;
+    }
+
+    function dpiResetForm() {
+        const form = document.getElementById('dpi-form');
+        if (form) form.reset();
+        const dateEl = document.getElementById('dpi-date');
+        if (dateEl) dateEl.valueAsDate = new Date();
+        const countedByEl = document.getElementById('dpi-counted-by');
+        if (countedByEl) countedByEl.value = sessionStorage.getItem('loggedInUser') || '';
+        const tbody = document.getElementById('dpi-items-body');
+        if (tbody) tbody.innerHTML = '';
+        dpiAddItemRow(null);
+        dpiRecompute();
+        const approvedByEl = document.getElementById('dpi-approved-by');
+        if (approvedByEl) approvedByEl.value = '';
+        const statusMsg = document.getElementById('dpi-status-message');
+        if (statusMsg) statusMsg.classList.add('hidden');
+    }
+
+    async function dpiLoadApprovers() {
+        const approvedByEl = document.getElementById('dpi-approved-by');
+        if (!approvedByEl) return;
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getManagerOwnerApprovers' })
+            });
+            const result = await response.json();
+            if (result.status === 'success' && Array.isArray(result.data)) {
+                const prevValue = approvedByEl.value;
+                approvedByEl.innerHTML = '<option value="">-- Select Manager or Owner --</option>' +
+                    result.data.map(name => `<option value="${name}">${name}</option>`).join('');
+                approvedByEl.value = prevValue;
+            }
+        } catch (err) {
+            console.error('Error loading Manager/Owner approvers.', err);
+        }
+    }
+
+    const menuMarvsPcPartsInventoryBtn = document.getElementById('menu-marvspc-parts-inventory-btn');
+    if (menuMarvsPcPartsInventoryBtn) {
+        menuMarvsPcPartsInventoryBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('daily-parts-inventory-container');
+            if (container) container.classList.remove('hidden');
+            dpiResetForm();
+            dpiLoadApprovers();
+        });
+    }
+
+    const dpiBtnAddRow = document.getElementById('dpi-btn-add-row');
+    if (dpiBtnAddRow) {
+        dpiBtnAddRow.addEventListener('click', () => {
+            dpiAddItemRow(null);
+            dpiRecompute();
+        });
+    }
+
+    const dpiForm = document.getElementById('dpi-form');
+    if (dpiForm) {
+        dpiForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('dpi-submit-btn');
+            const statusMsg = document.getElementById('dpi-status-message');
+            const btnText = submitBtn ? submitBtn.querySelector('.btn-text') : null;
+            const spinner = submitBtn ? submitBtn.querySelector('.spinner') : null;
+
+            const date = document.getElementById('dpi-date').value;
+            const branch = document.getElementById('dpi-branch').value;
+            const countedBy = sessionStorage.getItem('loggedInUser') || '';
+            const approvedBy = document.getElementById('dpi-approved-by').value;
+
+            const items = [];
+            document.querySelectorAll('#dpi-items-body tr').forEach(tr => {
+                const category = tr.querySelector('.dpi-row-category').value;
+                const desc = tr.querySelector('.dpi-row-desc').value.trim();
+                const qty = parseFloat(tr.querySelector('.dpi-row-qty').value) || 0;
+                const missing = parseFloat(tr.querySelector('.dpi-row-missing').value) || 0;
+                const rma = parseFloat(tr.querySelector('.dpi-row-rma').value) || 0;
+                if (desc && qty > 0) {
+                    items.push({ category, description: desc, qty, missing, rma });
+                }
+            });
+
+            if (items.length === 0) {
+                if (statusMsg) showMessage(statusMsg, 'Add at least one item with a description and qty greater than 0.', 'error');
+                return;
+            }
+            if (!approvedBy) {
+                if (statusMsg) showMessage(statusMsg, 'Select an Approved By (Manager or Owner) before saving.', 'error');
+                return;
+            }
+
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            if (submitBtn) submitBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'saveDailyPartsInventory',
+                        date, branch, items, countedBy, approvedBy
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    dpiResetForm();
+                    dpiLoadApprovers();
+                    if (statusMsg) showMessage(statusMsg, 'Daily parts count saved successfully!', 'success');
+                } else {
+                    if (statusMsg) showMessage(statusMsg, result.message || 'Error saving daily parts count.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                if (statusMsg) showMessage(statusMsg, 'Failed to save. Please check your connection and try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        });
+    }
+
+    // ======= Daily Parts Inventory Records List =======
+    async function dpiLoadRecords() {
+        const tbody = document.getElementById('dpi-list-table-body');
+        if (!tbody) return;
+        const startDate = document.getElementById('dpi-list-start-date').value;
+        const endDate = document.getElementById('dpi-list-end-date').value;
+        const branch = document.getElementById('dpi-list-branch').value;
+
+        tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'Daily Parts Inventory',
+                    startDate, endDate, branch
+                })
+            });
+            const result = await response.json();
+            const rows = (result.status === 'success' && result.data) ? result.data : [];
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.map(row => `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 8px 10px;">${row[0] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[1] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[4] || 0}</td>
+                    <td style="padding: 8px 10px; color: #ef4444;">${row[5] || 0}</td>
+                    <td style="padding: 8px 10px; color: #f59e0b;">${row[6] || 0}</td>
+                    <td style="padding: 8px 10px; color: #10b981; font-weight: 600;">${row[7] || 0}</td>
+                    <td style="padding: 8px 10px;">${row[8] || ''}</td>
+                    <td style="padding: 8px 10px;">${row[9] || ''}</td>
+                </tr>
+            `).join('');
+        } catch (err) {
+            console.error(err);
+            tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: #ef4444;">Failed to load records.</td></tr>';
+        }
+    }
+
+    const dpiBtnViewRecords = document.getElementById('dpi-btn-view-records');
+    if (dpiBtnViewRecords) {
+        dpiBtnViewRecords.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('daily-parts-inventory-list-container');
+            if (container) container.classList.remove('hidden');
+            const startDateEl = document.getElementById('dpi-list-start-date');
+            const endDateEl = document.getElementById('dpi-list-end-date');
+            if (startDateEl && !startDateEl.value) {
+                const d = new Date();
+                d.setDate(d.getDate() - 30);
+                startDateEl.valueAsDate = d;
+            }
+            if (endDateEl && !endDateEl.value) endDateEl.valueAsDate = new Date();
+            dpiLoadRecords();
+        });
+    }
+
+    const dpiBtnLoadRecords = document.getElementById('dpi-btn-load-records');
+    if (dpiBtnLoadRecords) {
+        dpiBtnLoadRecords.addEventListener('click', dpiLoadRecords);
+    }
+
     // ======= Manual Quotation (Fix 20) =======
     // A brand-new main-menu-level feature (NOT under the MarvsPCStufz submenu) --
     // per the user's spec: Date/Customer Name/Company Name/Mobile#/Address, plus a

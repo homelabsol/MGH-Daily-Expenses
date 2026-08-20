@@ -671,53 +671,200 @@
     </div>
 
     <!-- MarvsPCStufz Menu Container -->
+    <!-- Buttons in this specific menu are compressed (smaller padding/icon size,
+         tighter gap) per explicit request -- scoped to ONLY this container via
+         inline styles (not a shared style.css class change) so no other menu
+         in the app is affected. -->
     <div class="container hidden" id="marvspc-menu-container">
         <header>
             <h1>MarvsPCStufz</h1>
             <p>Select an option below</p>
             <button class="back-btn" data-target="main-menu-container"><i class="fas fa-arrow-left"></i> Back to Main Menu</button>
         </header>
-        <main class="glass-panel main-menu">
-            <button class="menu-action-btn" id="menu-marvspc-expenses-btn">
-                <span class="icon">💰</span>
+        <main class="glass-panel main-menu" style="gap: 6px;">
+            <button class="menu-action-btn" id="menu-marvspc-expenses-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">💰</span>
                 MarvsPCStufz Expenses
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-customer-info-btn">
-                <span class="icon">📋</span>
+            <button class="menu-action-btn" id="menu-marvspc-customer-info-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">📋</span>
                 Customer Information Sheet
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-releasing-btn">
-                <span class="icon">📦</span>
+            <button class="menu-action-btn" id="menu-marvspc-releasing-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">📦</span>
                 Releasing of Build Status
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-build-tracker-btn">
-                <span class="icon">🛠️</span>
+            <button class="menu-action-btn" id="menu-marvspc-build-tracker-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🛠️</span>
                 Build Tracker
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-build-status-btn">
-                <span class="icon">📊</span>
+            <button class="menu-action-btn" id="menu-marvspc-build-status-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">📊</span>
                 Build Status
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-deliveries-btn">
-                <span class="icon">🚚</span>
+            <button class="menu-action-btn" id="menu-marvspc-deliveries-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🚚</span>
                 Delivery Fee
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-deliveries-list-btn">
-                <span class="icon">🚛</span>
+            <button class="menu-action-btn" id="menu-marvspc-deliveries-list-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🚛</span>
                 Deliveries
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-purchased-order-btn">
-                <span class="icon">🧾</span>
+            <button class="menu-action-btn" id="menu-marvspc-purchased-order-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🧾</span>
                 Purchased Order
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-customer-support-btn">
-                <span class="icon">💰</span>
+            <button class="menu-action-btn" id="menu-marvspc-customer-support-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">💰</span>
                 Daily Sales
             </button>
-            <button class="menu-action-btn" id="menu-marvspc-sheet-health-btn">
-                <span class="icon">🩺</span>
+            <button class="menu-action-btn" id="menu-marvspc-sheet-health-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🩺</span>
                 Sheet Health Check
             </button>
+            <button class="menu-action-btn" id="menu-marvspc-parts-inventory-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🧮</span>
+                Daily Parts Inventory
+            </button>
+        </main>
+    </div>
+
+    <!-- Daily Parts Inventory Container -- daily physical parts count entry.
+         Category / Item Description / Qty / Missing / RMA / Total, per approved
+         layout preview. "Approved By" is populated dynamically (Manager/Owner
+         accounts only) and represents the second person who did the side-by-side
+         physical count verification in person -- this form just records that it
+         happened, there's no separate async approval step. -->
+    <div class="container hidden" id="daily-parts-inventory-container" style="max-width: 950px;">
+        <header>
+            <h1><i class="fas fa-boxes-stacked" style="margin-right: 8px;"></i>Daily Parts Inventory Count</h1>
+            <p>Physical parts count -- Category, Item Description, Qty, Missing, RMA</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+                <button type="button" id="dpi-btn-view-records" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-list-alt"></i> View</button>
+            </div>
+            <form id="dpi-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dpi-date">Date</label>
+                        <input type="date" id="dpi-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="dpi-branch">Branch</label>
+                        <select id="dpi-branch" required>
+                            <option value="MarvsPCStufz QC Main">MarvsPCStufz QC Main</option>
+                            <option value="MarvsPCStufz Marikina">MarvsPCStufz Marikina</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="dpi-counted-by">Counted By</label>
+                        <input type="text" id="dpi-counted-by" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;">
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin: 18px 0 8px; flex-wrap: wrap; gap: 8px;">
+                    <label style="margin: 0;">Items Counted</label>
+                    <button type="button" id="dpi-btn-add-row" style="background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.4); color: var(--primary); border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 600; cursor: pointer;">+ Add Item</button>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; min-width: 720px;">
+                        <thead>
+                            <tr style="text-align: left; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted);">
+                                <th style="padding: 6px 8px; width: 22%;">Category</th>
+                                <th style="padding: 6px 8px; width: 34%;">Item Description</th>
+                                <th style="padding: 6px 8px; width: 11%;">Qty</th>
+                                <th style="padding: 6px 8px; width: 11%;">Missing</th>
+                                <th style="padding: 6px 8px; width: 11%;">RMA</th>
+                                <th style="padding: 6px 8px; width: 11%;">Total</th>
+                                <th style="padding: 6px 8px; width: 6%;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="dpi-items-body"></tbody>
+                    </table>
+                </div>
+
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px 16px; margin-top: 14px; display: flex; flex-wrap: wrap; gap: 18px;">
+                    <div><span style="color: var(--text-muted); font-size: 0.8em; display: block;">Total Qty</span><span id="dpi-total-qty" style="font-weight: 700; font-size: 1.1em;">0</span></div>
+                    <div><span style="color: var(--text-muted); font-size: 0.8em; display: block;">Total Missing</span><span id="dpi-total-missing" style="font-weight: 700; font-size: 1.1em; color: #ef4444;">0</span></div>
+                    <div><span style="color: var(--text-muted); font-size: 0.8em; display: block;">Total RMA</span><span id="dpi-total-rma" style="font-weight: 700; font-size: 1.1em; color: #f59e0b;">0</span></div>
+                    <div><span style="color: var(--text-muted); font-size: 0.8em; display: block;">Total (Accounted)</span><span id="dpi-total-net" style="font-weight: 700; font-size: 1.1em; color: #10b981;">0</span></div>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label for="dpi-approved-by">Approved By <span style="color: var(--text-muted); font-weight: 400;">(Manager or Owner -- physically verified this count)</span></label>
+                    <select id="dpi-approved-by">
+                        <option value="">-- Select Manager or Owner --</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="submit-btn" id="dpi-submit-btn" style="margin-top: 16px;">
+                    <span class="btn-text">Save Daily Count</span>
+                    <div class="spinner hidden"></div>
+                </button>
+                <div id="dpi-status-message" class="hidden"></div>
+            </form>
+        </main>
+    </div>
+
+    <!-- Daily Parts Inventory Records List Container -- plain container page
+         (not a modal), auto-loads on open, same convention as Manual Quotation
+         Records/Item Purchased. -->
+    <div class="container hidden" id="daily-parts-inventory-list-container" style="max-width: 1100px;">
+        <header>
+            <h1><i class="fas fa-list-alt" style="margin-right: 8px;"></i>Daily Parts Inventory Records</h1>
+            <p>View saved daily parts counts</p>
+            <button class="back-btn" data-target="daily-parts-inventory-container"><i class="fas fa-arrow-left"></i> Back to Daily Parts Inventory</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="dpi-list-start-date">Date From</label>
+                    <input type="date" id="dpi-list-start-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="dpi-list-end-date">Date To</label>
+                    <input type="date" id="dpi-list-end-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 180px;">
+                    <label for="dpi-list-branch">Branch</label>
+                    <select id="dpi-list-branch">
+                        <option value="All">All Branches</option>
+                        <option value="MarvsPCStufz QC Main">MarvsPCStufz QC Main</option>
+                        <option value="MarvsPCStufz Marikina">MarvsPCStufz Marikina</option>
+                    </select>
+                </div>
+                <button type="button" id="dpi-btn-load-records" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 10px 18px;">
+                    <span class="btn-text"><i class="fas fa-search"></i> Search</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div style="overflow-x: auto; margin-top: 20px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 960px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--glass-border);">
+                            <th style="padding: 10px; text-align: left;">Date</th>
+                            <th style="padding: 10px; text-align: left;">Branch</th>
+                            <th style="padding: 10px; text-align: left;">Category</th>
+                            <th style="padding: 10px; text-align: left;">Item Description</th>
+                            <th style="padding: 10px; text-align: left;">Qty</th>
+                            <th style="padding: 10px; text-align: left;">Missing</th>
+                            <th style="padding: 10px; text-align: left;">RMA</th>
+                            <th style="padding: 10px; text-align: left;">Total</th>
+                            <th style="padding: 10px; text-align: left;">Counted By</th>
+                            <th style="padding: 10px; text-align: left;">Approved By</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dpi-list-table-body">
+                        <tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Search" to view records.</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </main>
     </div>
 
@@ -3267,7 +3414,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=49"></script>
+    <script src="app.js?v=50"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
