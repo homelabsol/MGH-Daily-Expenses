@@ -2345,6 +2345,43 @@
                     <canvas id="analytics-trend-chart"></canvas>
                 </div>
 
+                <!-- Fix 36: "Collections vs Expenses Trend" -- a SEPARATE chart
+                     placed below the existing trend chart (per the user's explicit
+                     placement choice). Sourced from the "Daily Check and Balance"
+                     tab (Cash Expenses/Gcash Expenses/Gcash Receivable/Cash on Hand
+                     columns) plus the "Other Expenses" tab (all cost columns
+                     summed, shown on each entry's Start Date), filtered by the
+                     SAME Branch/Date range as the "Generate Analytics" form above --
+                     no separate filter UI. Two lines (Collections vs Expenses,
+                     approved over a single combined line) plus 3 derived totals. -->
+                <div class="chart-card" style="margin-top: 20px; border-color: rgba(245,158,11,0.3); height: auto; overflow: visible;">
+                    <h3 style="margin: 0 0 4px; font-size: 1.05em; color: #f59e0b;">Collections vs Expenses Trend</h3>
+                    <p style="color: var(--text-muted); font-size: 0.8em; margin: 0 0 14px;">
+                        <span style="color:#10b981;">●</span> Collections: Gcash Receivable + Cash on Hand (Daily Check &amp; Balance)<br>
+                        <span style="color:#ef4444;">●</span> Expenses: Cash Expenses + Gcash Expenses (Daily Check &amp; Balance) + Other Expenses (buong total, sa Start Date)
+                    </p>
+                    <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+                        <div style="flex: 1; min-width: 160px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 12px 14px;">
+                            <div style="font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); font-weight: 600;">Total Receivable</div>
+                            <div style="font-size: 0.68em; color: var(--text-muted); opacity: 0.8; margin-top: 1px;">Gcash Receivable + Cash on Hand</div>
+                            <div id="analytics-cvse-total-receivable" style="font-size: 1.3em; font-weight: 700; margin-top: 4px; color:#10b981;">₱0.00</div>
+                        </div>
+                        <div style="flex: 1; min-width: 160px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 12px 14px;">
+                            <div style="font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); font-weight: 600;">Total Expenses</div>
+                            <div style="font-size: 0.68em; color: var(--text-muted); opacity: 0.8; margin-top: 1px;">Cash+Gcash Exp. + Other Expenses</div>
+                            <div id="analytics-cvse-total-expenses" style="font-size: 1.3em; font-weight: 700; margin-top: 4px; color:#ef4444;">₱0.00</div>
+                        </div>
+                        <div style="flex: 1; min-width: 160px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 12px 14px;">
+                            <div style="font-size: 0.72em; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); font-weight: 600;">Income Receivable</div>
+                            <div style="font-size: 0.68em; color: var(--text-muted); opacity: 0.8; margin-top: 1px;">Total Receivable − (Gcash Exp. + Other Exp.)</div>
+                            <div id="analytics-cvse-income-receivable" style="font-size: 1.3em; font-weight: 700; margin-top: 4px; color:#818cf8;">₱0.00</div>
+                        </div>
+                    </div>
+                    <div style="height: 300px; position: relative;">
+                        <canvas id="analytics-cvse-chart"></canvas>
+                    </div>
+                </div>
+
                 <div class="charts-grid" style="margin-top: 20px;">
                     <div class="chart-card"><canvas id="analytics-category-chart"></canvas></div>
                     <div class="chart-card"><canvas id="analytics-payment-chart"></canvas></div>
@@ -3230,7 +3267,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=47"></script>
+    <script src="app.js?v=49"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

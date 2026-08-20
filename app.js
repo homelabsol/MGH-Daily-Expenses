@@ -803,6 +803,69 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // "Duplicate" button on the Manual Quotation Records list -- copies an existing
+    // record's Customer Name/Company Name/Mobile#/Address/Items/Discount into the
+    // same creation form used by "Edit", but DELIBERATELY leaves #mq-row-index,
+    // #mq-quotation-number and #mq-original-encoded-by BLANK. That's the whole
+    // trick: the submit handler already branches on whether #mq-row-index is
+    // populated, and an empty value makes it take the normal "saveManualQuotation"
+    // CREATE path automatically -- no new backend action, no new submit-handler
+    // branching needed. This mints a brand-new QT-XXXXX number and records the
+    // CURRENT logged-in user as Encoded By (not the original record's), same as
+    // any other fresh quotation. Per the user's explicit request, the Date field
+    // defaults to TODAY (not the original record's date) so duplicating doesn't
+    // silently backdate a new quotation.
+    function mqDuplicateRecordIntoForm(row) {
+        hideAllContainers();
+        const container = document.getElementById('manual-quotation-container');
+        if (container) container.classList.remove('hidden');
+
+        // Deliberately blank -- see comment above. This is what makes the submit
+        // handler save as a NEW record instead of updating the original.
+        const rowIndexEl = document.getElementById('mq-row-index');
+        if (rowIndexEl) rowIndexEl.value = '';
+        const quotationNumberEl = document.getElementById('mq-quotation-number');
+        if (quotationNumberEl) quotationNumberEl.value = '';
+        const origEncodedByEl = document.getElementById('mq-original-encoded-by');
+        if (origEncodedByEl) origEncodedByEl.value = '';
+
+        const dateEl = document.getElementById('mq-date');
+        if (dateEl) dateEl.valueAsDate = new Date();
+        const customerNameEl = document.getElementById('mq-customer-name');
+        if (customerNameEl) customerNameEl.value = row[2] || '';
+        const companyNameEl = document.getElementById('mq-company-name');
+        if (companyNameEl) companyNameEl.value = row[3] || '';
+        const mobileEl = document.getElementById('mq-mobile');
+        if (mobileEl) mobileEl.value = row[4] || '';
+        const addressEl = document.getElementById('mq-address');
+        if (addressEl) addressEl.value = row[5] || '';
+
+        let items = [];
+        try { items = JSON.parse(row[6] || '[]'); } catch (e) { items = []; }
+        const tbody = document.getElementById('mq-items-body');
+        if (tbody) tbody.innerHTML = '';
+        if (items.length > 0) {
+            items.forEach(it => mqAddItemRow(it));
+        } else {
+            mqAddItemRow(null);
+        }
+
+        const discountEl = document.getElementById('mq-discount');
+        if (discountEl) discountEl.value = parseFloat(row[9]) || 0;
+        mqRecompute();
+
+        const statusMsg = document.getElementById('mq-status-message');
+        if (statusMsg) statusMsg.classList.add('hidden');
+
+        const headingEl = document.getElementById('mq-form-heading');
+        if (headingEl) headingEl.textContent = 'Manual Quotation (Duplicated from ' + (row[0] || 'previous record') + ')';
+        const submitBtn = document.getElementById('mq-submit-btn');
+        if (submitBtn) {
+            const btnText = submitBtn.querySelector('.btn-text');
+            if (btnText) btnText.textContent = 'Save Quotation';
+        }
+    }
+
     const menuManualQuotationBtn = document.getElementById('menu-manual-quotation-btn');
     if (menuManualQuotationBtn) {
         menuManualQuotationBtn.addEventListener('click', () => {
@@ -856,6 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="padding: 8px 10px; white-space: nowrap;">
                         <button type="button" class="btn-mq-print-row" data-mq-row-index="${idx}" style="background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Print</button>
                         <button type="button" class="btn-mq-edit-row" data-mq-row-index="${idx}" style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-edit"></i> Edit</button>
+                        <button type="button" class="btn-mq-duplicate-row" data-mq-row-index="${idx}" style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-copy"></i> Duplicate</button>
                     </td>
                 </tr>
             `;
@@ -1154,6 +1218,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const idx = parseInt(editBtn.getAttribute('data-mq-row-index'), 10);
                 const row = currentMqListRenderedRows[idx];
                 if (row) mqLoadRecordIntoForm(row);
+                return;
+            }
+            // "Duplicate" button pre-fills the same creation form (like Edit) but
+            // leaves the row-index/quotation-number/original-encoded-by fields
+            // blank, so submitting saves a brand-new record instead of updating
+            // this one -- see mqDuplicateRecordIntoForm for the full explanation.
+            const duplicateBtn = e.target.closest('.btn-mq-duplicate-row');
+            if (duplicateBtn) {
+                const idx = parseInt(duplicateBtn.getAttribute('data-mq-row-index'), 10);
+                const row = currentMqListRenderedRows[idx];
+                if (row) mqDuplicateRecordIntoForm(row);
             }
         });
     }
@@ -6505,12 +6580,19 @@ document.addEventListener('DOMContentLoaded', () => {
             spinner.classList.remove('hidden');
 
             try {
-                const [cashRes, gcashRes, recvRes, cohRes, surveyRes] = await Promise.all([
+                const [cashRes, gcashRes, recvRes, cohRes, surveyRes, dcbRes, otherExpRes] = await Promise.all([
                     fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Cash Expense', startDate, endDate, branch }) }).then(r => r.json()),
                     fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Gcash Expense', startDate, endDate, branch }) }).then(r => r.json()),
                     fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Gcash Receivable', startDate, endDate, branch }) }).then(r => r.json()),
                     fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Cash on Hand', startDate, endDate, branch }) }).then(r => r.json()),
-                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Daily Survey', startDate, endDate, branch }) }).then(r => r.json())
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Daily Survey', startDate, endDate, branch }) }).then(r => r.json()),
+                    // Fix 36: "Daily Check and Balance" (per-day Cash/Gcash Expenses +
+                    // Gcash Receivable + Cash on Hand) and "Other Expenses" (periodic
+                    // cost entries) for the new "Collections vs Expenses Trend" chart --
+                    // both use the SAME generic getExpenseRecords action + the same
+                    // startDate/endDate/branch as everything else above.
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Daily Check and Balance', startDate, endDate, branch }) }).then(r => r.json()),
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Other Expenses', startDate, endDate, branch }) }).then(r => r.json())
                 ]);
 
                 if (cashRes.status === 'success' && gcashRes.status === 'success' && recvRes.status === 'success' && cohRes.status === 'success' && surveyRes.status === 'success') {
@@ -6550,6 +6632,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     renderAnalyticsDashboard(combinedExpenses, combinedIncome, surveyData);
+
+                    // Fix 36: rendered independently of the block above -- a
+                    // failure fetching Daily Check and Balance/Other Expenses
+                    // shouldn't block the rest of the (already-working) dashboard.
+                    if (dcbRes.status === 'success' && otherExpRes.status === 'success') {
+                        let dcbData = dcbRes.data || [];
+                        let otherExpData = otherExpRes.data || [];
+                        renderCollectionsExpensesTrend(dcbData, otherExpData);
+                    } else {
+                        console.error('Error fetching Daily Check and Balance / Other Expenses data.', dcbRes, otherExpRes);
+                    }
                 } else {
                     alert('Error fetching analytics data.');
                 }
@@ -6755,6 +6848,91 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 tbody.appendChild(tr);
             }
+        }
+    }
+
+    // Fix 36: "Collections vs Expenses Trend" -- a SEPARATE chart below the
+    // existing "Expenses vs Customer Traffic Trend" one (per the user's
+    // explicit placement choice), with 2 lines:
+    //   Collections = Gcash Receivable (Daily Check and Balance col E, idx4)
+    //                 + Cash on Hand (col F, idx5)
+    //   Expenses    = Cash Expenses (col C, idx2) + Gcash Expenses (col D, idx3)
+    //                 from Daily Check and Balance, PLUS each Other Expenses
+    //                 row's cost columns (Internet+Rent+Electricity+Water+
+    //                 Pondo+Food+Salary, idx3-9) summed and plotted on that
+    //                 row's Start Date (idx0) -- approved over prorating across
+    //                 the period.
+    // Plus 3 derived totals: Total Receivable, Total Expenses, and Income
+    // Receivable = Total Receivable - (Gcash Expenses ONLY + Other Expenses) --
+    // Cash Expenses is deliberately excluded from that subtraction per the
+    // user's explicit reasoning (it's already netted out of Cash on Hand, so
+    // subtracting it again would double-count it).
+    function renderCollectionsExpensesTrend(dcbRows, otherExpRows) {
+        const collectionsByDate = {};
+        const expensesByDate = {};
+        let totalGcashExpensesOnly = 0;
+
+        dcbRows.forEach(row => {
+            const dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+            if (!dateStr) return;
+            const cashExpense = parseFloat(row[2]) || 0;
+            const gcashExpense = parseFloat(row[3]) || 0;
+            const gcashReceivable = parseFloat(row[4]) || 0;
+            const cashOnHand = parseFloat(row[5]) || 0;
+
+            collectionsByDate[dateStr] = (collectionsByDate[dateStr] || 0) + gcashReceivable + cashOnHand;
+            expensesByDate[dateStr] = (expensesByDate[dateStr] || 0) + cashExpense + gcashExpense;
+            totalGcashExpensesOnly += gcashExpense;
+        });
+
+        let totalOtherExpensesOnly = 0;
+        otherExpRows.forEach(row => {
+            const startDateStr = (row[0] || '').toString().split(/[T ]/)[0];
+            if (!startDateStr) return;
+            const rowTotal = [3, 4, 5, 6, 7, 8, 9].reduce((sum, idx) => sum + (parseFloat(row[idx]) || 0), 0);
+            expensesByDate[startDateStr] = (expensesByDate[startDateStr] || 0) + rowTotal;
+            totalOtherExpensesOnly += rowTotal;
+        });
+
+        const allDates = Array.from(new Set([...Object.keys(collectionsByDate), ...Object.keys(expensesByDate)])).sort();
+        const collectionsLine = allDates.map(d => collectionsByDate[d] || 0);
+        const expensesLine = allDates.map(d => expensesByDate[d] || 0);
+
+        const totalReceivable = collectionsLine.reduce((a, b) => a + b, 0);
+        const totalExpensesCombined = expensesLine.reduce((a, b) => a + b, 0);
+        const incomeReceivable = totalReceivable - (totalGcashExpensesOnly + totalOtherExpensesOnly);
+
+        const elReceivable = document.getElementById('analytics-cvse-total-receivable');
+        const elExpenses = document.getElementById('analytics-cvse-total-expenses');
+        const elIncomeReceivable = document.getElementById('analytics-cvse-income-receivable');
+        if (elReceivable) elReceivable.textContent = `₱${formatCurrency(totalReceivable)}`;
+        if (elExpenses) elExpenses.textContent = `₱${formatCurrency(totalExpensesCombined)}`;
+        if (elIncomeReceivable) elIncomeReceivable.textContent = `₱${formatCurrency(incomeReceivable)}`;
+
+        if (chartInstances['analytics-cvse-chart']) chartInstances['analytics-cvse-chart'].destroy();
+        const ctxCvse = document.getElementById('analytics-cvse-chart');
+        if (ctxCvse) {
+            chartInstances['analytics-cvse-chart'] = new Chart(ctxCvse, {
+                type: 'line',
+                data: {
+                    labels: allDates,
+                    datasets: [
+                        { label: 'Collections (Gcash Receivable + Cash on Hand)', data: collectionsLine, borderColor: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', tension: 0.3, fill: true, pointRadius: 3 },
+                        { label: 'Expenses (Cash+Gcash Exp. + Other Expenses)', data: expensesLine, borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.12)', tension: 0.3, fill: true, pointRadius: 3 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#e2e8f0' } }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                        y: { ticks: { color: '#94a3b8', callback: val => '₱' + val.toLocaleString() }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                    }
+                }
+            });
         }
     }
 
