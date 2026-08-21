@@ -2514,10 +2514,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // (Overall Status, not Build Status), so a build can be "Completed" (finished
     // building, passes the filter above) while its Overall Status is still Pending
     // (still shows here) -- it only disappears once BOTH are true.
+    // Fix 41: on top of the two unconditional excludes above, also let the user
+    // narrow the list by Customer Name (free-text, case-insensitive substring
+    // against column B / row[1]) and by Delivery Status (exact match against
+    // column U / row[20], same 3 values used by the "Modified" modal's dropdown:
+    // Pending, Walk-in, Delivered), plus pick the Date sort direction -- all
+    // re-applied client-side against currentDeliveriesListRecords so switching
+    // any of them doesn't require a fresh server round-trip.
     function applyDeliveriesListFilter() {
-        const filtered = currentDeliveriesListRecords
+        const customerFilterEl = document.getElementById('deliveries-list-customer-filter');
+        const statusFilterEl = document.getElementById('deliveries-list-status-filter');
+        const sortEl = document.getElementById('deliveries-list-sort-date');
+
+        const customerQuery = ((customerFilterEl && customerFilterEl.value) || '').trim().toLowerCase();
+        const statusFilter = (statusFilterEl && statusFilterEl.value) || 'All';
+        const sortDir = (sortEl && sortEl.value) || 'desc';
+
+        let filtered = currentDeliveriesListRecords
             .filter(row => (row[18] || '').toString().toLowerCase().includes('complet'))
             .filter(row => (row[21] || '').toString().trim().toLowerCase() !== 'completed');
+
+        if (customerQuery) {
+            filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(customerQuery));
+        }
+        if (statusFilter !== 'All') {
+            filtered = filtered.filter(row => (row[20] || 'Pending').toString().trim() === statusFilter);
+        }
+
+        filtered = filtered.slice().sort((a, b) => {
+            const dateA = new Date((a[0] || '').toString().split(/[T ]/)[0]);
+            const dateB = new Date((b[0] || '').toString().split(/[T ]/)[0]);
+            const diff = dateA.getTime() - dateB.getTime();
+            return sortDir === 'asc' ? diff : -diff;
+        });
+
         renderDeliveriesListTable(filtered);
     }
 
@@ -2598,6 +2628,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnLoadDeliveriesList = document.getElementById('btn-load-deliveries-list');
     if (btnLoadDeliveriesList) {
         btnLoadDeliveriesList.addEventListener('click', loadDeliveriesListRecords);
+    }
+
+    // Fix 41: Customer Name / Delivery Status / Sort by Date all re-filter and
+    // re-sort the already-loaded records in memory (applyDeliveriesListFilter),
+    // same "no reload needed" convention as the existing Build Status filter.
+    const deliveriesListCustomerFilter = document.getElementById('deliveries-list-customer-filter');
+    if (deliveriesListCustomerFilter) {
+        deliveriesListCustomerFilter.addEventListener('input', applyDeliveriesListFilter);
+    }
+    const deliveriesListStatusFilter = document.getElementById('deliveries-list-status-filter');
+    if (deliveriesListStatusFilter) {
+        deliveriesListStatusFilter.addEventListener('change', applyDeliveriesListFilter);
+    }
+    const deliveriesListSortDate = document.getElementById('deliveries-list-sort-date');
+    if (deliveriesListSortDate) {
+        deliveriesListSortDate.addEventListener('change', applyDeliveriesListFilter);
     }
 
     // ======= Deliveries "Modified" Update Modal =======
