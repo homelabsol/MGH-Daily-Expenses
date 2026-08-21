@@ -735,37 +735,56 @@ document.addEventListener('DOMContentLoaded', () => {
         if (form) form.reset();
         const dateEl = document.getElementById('dpi-date');
         if (dateEl) dateEl.valueAsDate = new Date();
-        const countedByEl = document.getElementById('dpi-counted-by');
-        if (countedByEl) countedByEl.value = sessionStorage.getItem('loggedInUser') || '';
         const tbody = document.getElementById('dpi-items-body');
         if (tbody) tbody.innerHTML = '';
         dpiAddItemRow(null);
         dpiRecompute();
-        const approvedByEl = document.getElementById('dpi-approved-by');
-        if (approvedByEl) approvedByEl.value = '';
+        const countedByEl = document.getElementById('dpi-counted-by');
+        if (countedByEl) countedByEl.value = '';
         const statusMsg = document.getElementById('dpi-status-message');
         if (statusMsg) statusMsg.classList.add('hidden');
+        dpiUpdateApprovedByFromSession();
     }
 
-    async function dpiLoadApprovers() {
-        const approvedByEl = document.getElementById('dpi-approved-by');
-        if (!approvedByEl) return;
+    async function dpiLoadRmaAdmins() {
+        const countedByEl = document.getElementById('dpi-counted-by');
+        if (!countedByEl) return;
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify({ action: 'getManagerOwnerApprovers' })
+                body: JSON.stringify({ action: 'getRmaAdminAccounts' })
             });
             const result = await response.json();
             if (result.status === 'success' && Array.isArray(result.data)) {
-                const prevValue = approvedByEl.value;
-                approvedByEl.innerHTML = '<option value="">-- Select Manager or Owner --</option>' +
+                const prevValue = countedByEl.value;
+                countedByEl.innerHTML = '<option value="">-- Select RMA Admin --</option>' +
                     result.data.map(name => `<option value="${name}">${name}</option>`).join('');
-                approvedByEl.value = prevValue;
+                countedByEl.value = prevValue;
             }
         } catch (err) {
-            console.error('Error loading Manager/Owner approvers.', err);
+            console.error('Error loading RMA Admin accounts.', err);
         }
+    }
+
+    // Approved By is no longer a free pick from a list -- it's auto-filled with
+    // whoever is CURRENTLY logged in, and ONLY if that session's role is
+    // Manager or Owner. This binds "who approved this count" to who is
+    // actually, provably logged in right now (the side-by-side verifier),
+    // rather than trusting a dropdown selection that could name someone who
+    // isn't really there. If the logged-in role isn't Manager/Owner, the field
+    // stays blank, a notice explains why, and Save is disabled outright.
+    function dpiUpdateApprovedByFromSession() {
+        const approvedByEl = document.getElementById('dpi-approved-by');
+        const noticeEl = document.getElementById('dpi-not-authorized-notice');
+        const submitBtn = document.getElementById('dpi-submit-btn');
+        const role = sessionStorage.getItem('userRole') || '';
+        const isManagerOrOwner = (role === 'Manager' || role === 'Owner');
+        if (approvedByEl) {
+            approvedByEl.value = isManagerOrOwner ? (sessionStorage.getItem('loggedInUser') || '') : '';
+        }
+        if (noticeEl) noticeEl.classList.toggle('hidden', isManagerOrOwner);
+        if (submitBtn) submitBtn.disabled = !isManagerOrOwner;
     }
 
     const menuMarvsPcPartsInventoryBtn = document.getElementById('menu-marvspc-parts-inventory-btn');
@@ -775,7 +794,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const container = document.getElementById('daily-parts-inventory-container');
             if (container) container.classList.remove('hidden');
             dpiResetForm();
-            dpiLoadApprovers();
+            dpiLoadRmaAdmins();
         });
     }
 
@@ -796,9 +815,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const btnText = submitBtn ? submitBtn.querySelector('.btn-text') : null;
             const spinner = submitBtn ? submitBtn.querySelector('.spinner') : null;
 
+            // Defense-in-depth: the Save button is already disabled in the DOM
+            // for anyone not logged in as Manager/Owner (see
+            // dpiUpdateApprovedByFromSession), but re-check here too in case a
+            // role change happened in the same tab without a full page reload.
+            const currentRole = sessionStorage.getItem('userRole') || '';
+            if (currentRole !== 'Manager' && currentRole !== 'Owner') {
+                if (statusMsg) showMessage(statusMsg, 'Kailangan naka-login bilang Manager o Owner para maka-save ng Daily Parts Inventory.', 'error');
+                return;
+            }
+
             const date = document.getElementById('dpi-date').value;
             const branch = document.getElementById('dpi-branch').value;
-            const countedBy = sessionStorage.getItem('loggedInUser') || '';
+            const countedBy = document.getElementById('dpi-counted-by').value;
             const approvedBy = document.getElementById('dpi-approved-by').value;
 
             const items = [];
@@ -817,8 +846,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (statusMsg) showMessage(statusMsg, 'Add at least one item with a description and qty greater than 0.', 'error');
                 return;
             }
+            if (!countedBy) {
+                if (statusMsg) showMessage(statusMsg, 'Select who Counted By (RMA Admin) before saving.', 'error');
+                return;
+            }
             if (!approvedBy) {
-                if (statusMsg) showMessage(statusMsg, 'Select an Approved By (Manager or Owner) before saving.', 'error');
+                if (statusMsg) showMessage(statusMsg, 'Approved By could not be determined -- please log in again as a Manager or Owner.', 'error');
                 return;
             }
 
@@ -838,7 +871,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
                 if (result.status === 'success') {
                     dpiResetForm();
-                    dpiLoadApprovers();
+                    dpiLoadRmaAdmins();
                     if (statusMsg) showMessage(statusMsg, 'Daily parts count saved successfully!', 'success');
                 } else {
                     if (statusMsg) showMessage(statusMsg, result.message || 'Error saving daily parts count.', 'error');
@@ -849,7 +882,11 @@ document.addEventListener('DOMContentLoaded', () => {
             } finally {
                 if (btnText) btnText.classList.remove('hidden');
                 if (spinner) spinner.classList.add('hidden');
-                if (submitBtn) submitBtn.disabled = false;
+                // Re-derive disabled state from the current session role rather
+                // than unconditionally re-enabling -- keeps the button correctly
+                // disabled for a non-Manager/Owner session even after this
+                // (blocked) submit attempt.
+                dpiUpdateApprovedByFromSession();
             }
         });
     }

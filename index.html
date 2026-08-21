@@ -761,8 +761,10 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="dpi-counted-by">Counted By</label>
-                        <input type="text" id="dpi-counted-by" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;">
+                        <label for="dpi-counted-by">Counted By <span style="color: var(--text-muted); font-weight: 400;">(RMA Admin)</span></label>
+                        <select id="dpi-counted-by">
+                            <option value="">-- Select RMA Admin --</option>
+                        </select>
                     </div>
                 </div>
 
@@ -795,10 +797,9 @@
                 </div>
 
                 <div class="form-group" style="margin-top: 16px;">
-                    <label for="dpi-approved-by">Approved By <span style="color: var(--text-muted); font-weight: 400;">(Manager or Owner -- physically verified this count)</span></label>
-                    <select id="dpi-approved-by">
-                        <option value="">-- Select Manager or Owner --</option>
-                    </select>
+                    <label for="dpi-approved-by">Approved By <span style="color: var(--text-muted); font-weight: 400;">(auto-filled -- must be logged in as Manager or Owner)</span></label>
+                    <input type="text" id="dpi-approved-by" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;">
+                    <div id="dpi-not-authorized-notice" class="hidden" style="color: #ef4444; font-size: 0.82em; margin-top: 6px;"><i class="fas fa-lock"></i> Naka-login ka bilang hindi Manager/Owner -- hindi ka puwedeng mag-save ng Daily Parts Inventory. Kailangan Manager o Owner ang naka-login para maka-approve at ma-save ito.</div>
                 </div>
 
                 <button type="submit" class="submit-btn" id="dpi-submit-btn" style="margin-top: 16px;">
@@ -3414,7 +3415,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=50"></script>
+    <script src="app.js?v=51"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
