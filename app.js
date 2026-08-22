@@ -3748,6 +3748,234 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Fix 43: main menu's "Warranty Records" now opens the new intermediate
+    // container that holds "MGH Warranty" (menuWarrantyBtn, wired above) as a
+    // tile inside it.
+    const menuWarrantyRecordsBtn = document.getElementById('menu-warranty-records-btn');
+    if (menuWarrantyRecordsBtn) {
+        menuWarrantyRecordsBtn.addEventListener('click', () => {
+            hideAllContainers();
+            document.getElementById('warranty-records-menu-container').classList.remove('hidden');
+        });
+    }
+
+    // Fix 45: "MarvsPCStufz Warranty" now opens its own new form container.
+    const menuMarvsPcWarrantyBtn = document.getElementById('menu-marvspc-warranty-btn');
+    if (menuMarvsPcWarrantyBtn) {
+        menuMarvsPcWarrantyBtn.addEventListener('click', () => {
+            hideAllContainers();
+            document.getElementById('marvspc-warranty-form-container').classList.remove('hidden');
+        });
+    }
+
+    // Fix 46: "Warranty Record" opens the real data-entry form and saves to a
+    // new "MarvsPCStufz Warranty" sheet tab (created on first save via
+    // getOrCreateSheet, same convention as every other sheet-backed feature in
+    // this app). Sales Invoice# is mandatory per the user's explicit
+    // instruction -- checked here AND re-checked server-side (defense in
+    // depth, same pattern as Daily Parts Inventory's role checks).
+    const btnMarvsPcWarrantyRecord = document.getElementById('btn-marvspc-warranty-record');
+    if (btnMarvsPcWarrantyRecord) {
+        btnMarvsPcWarrantyRecord.addEventListener('click', () => {
+            hideAllContainers();
+            document.getElementById('marvspc-warranty-record-form-container').classList.remove('hidden');
+            mwrResetForm();
+        });
+    }
+
+    function mwrResetForm() {
+        const form = document.getElementById('marvspc-warranty-record-form');
+        if (form) form.reset();
+        const dateEl = document.getElementById('mwr-warranty-date');
+        if (dateEl) dateEl.valueAsDate = new Date();
+        const statusMsg = document.getElementById('mwr-status-message');
+        if (statusMsg) statusMsg.classList.add('hidden');
+    }
+
+    const marvsPcWarrantyRecordForm = document.getElementById('marvspc-warranty-record-form');
+    if (marvsPcWarrantyRecordForm) {
+        marvsPcWarrantyRecordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const statusMsg = document.getElementById('mwr-status-message');
+            const submitBtn = document.getElementById('mwr-submit-btn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+
+            const salesInvoiceNumber = document.getElementById('mwr-sales-invoice').value.trim();
+            if (!salesInvoiceNumber) {
+                showMessage(statusMsg, 'Sales Invoice# is required.', 'error');
+                return;
+            }
+
+            const payload = {
+                action: 'saveMarvsPcWarranty',
+                warrantyDate: document.getElementById('mwr-warranty-date').value,
+                salesInvoiceNumber: salesInvoiceNumber,
+                datePurchased: document.getElementById('mwr-date-purchased').value,
+                customerName: document.getElementById('mwr-customer-name').value,
+                mobileNumber: document.getElementById('mwr-mobile-number').value,
+                itemDescription: document.getElementById('mwr-item-description').value,
+                issue: document.getElementById('mwr-issue').value,
+                technician: document.getElementById('mwr-technician').value,
+                technicianAssessment: document.getElementById('mwr-technician-assessment').value
+            };
+
+            submitBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    mwrResetForm();
+                    showMessage(statusMsg, result.message || 'Warranty Record saved successfully!', 'success');
+                } else {
+                    showMessage(statusMsg, result.message || 'Error saving Warranty Record.', 'error');
+                }
+            } catch (error) {
+                console.error('Error saving MarvsPCStufz Warranty record:', error);
+                showMessage(statusMsg, 'Network error. Please try again.', 'error');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    // ======= MarvsPCStufz Warranty Record List (Fix 47) =======
+    // Reuses getExpenseRecords for the date-range read (same "reuse, don't
+    // rebuild" convention as Deliveries List/Daily Parts Inventory) --
+    // sheetName "MarvsPCStufz Warranty" has no special-case entry in that
+    // backend action, so it falls through to the default dateIndex=0/
+    // branchIndex=-1, which is exactly right (column A is Warranty Date,
+    // there's no Branch column). Sales Invoice# filtering happens client-side
+    // against the already-loaded records, same pattern as the Deliveries
+    // list's Customer Name filter (Fix 41) -- no reload needed when it changes.
+    let currentMwrListRecords = [];
+
+    function renderMwrListTable(rows) {
+        const tbody = document.getElementById('mwr-list-table-body');
+        if (!tbody) return;
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = rows.map(row => `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 8px 10px;">${row[0] || ''}</td>
+                <td style="padding: 8px 10px;">${row[1] || ''}</td>
+                <td style="padding: 8px 10px;">${row[2] || ''}</td>
+                <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                <td style="padding: 8px 10px;">${row[4] || ''}</td>
+                <td style="padding: 8px 10px;">${row[5] || ''}</td>
+                <td style="padding: 8px 10px;">${row[6] || ''}</td>
+                <td style="padding: 8px 10px;">${row[7] || ''}</td>
+                <td style="padding: 8px 10px;">${row[8] || ''}</td>
+            </tr>
+        `).join('');
+    }
+
+    function applyMwrListFilter() {
+        const invoiceFilterEl = document.getElementById('mwr-list-invoice-filter');
+        const invoiceQuery = ((invoiceFilterEl && invoiceFilterEl.value) || '').trim().toLowerCase();
+        let filtered = currentMwrListRecords;
+        if (invoiceQuery) {
+            filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(invoiceQuery));
+        }
+        renderMwrListTable(filtered);
+    }
+
+    async function loadMwrListRecords() {
+        const tbody = document.getElementById('mwr-list-table-body');
+        const btnLoad = document.getElementById('btn-load-mwr-list');
+        const btnText = btnLoad.querySelector('.btn-text');
+        const spinner = btnLoad.querySelector('.spinner');
+
+        const startDate = document.getElementById('mwr-list-start-date').value;
+        const endDate = document.getElementById('mwr-list-end-date').value;
+
+        btnLoad.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'MarvsPCStufz Warranty',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: 'All',
+                    noCache: true
+                })
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                currentMwrListRecords = result.data || [];
+                applyMwrListFilter();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error loading MarvsPCStufz Warranty records:', error);
+            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        } finally {
+            btnLoad.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    const btnMwrViewRecords = document.getElementById('btn-mwr-view-records');
+    if (btnMwrViewRecords) {
+        btnMwrViewRecords.addEventListener('click', () => {
+            hideAllContainers();
+            document.getElementById('marvspc-warranty-record-list-container').classList.remove('hidden');
+
+            // Default to last 30 days, same convention as every other
+            // sheet-backed list page (gotcha #8).
+            const startDateEl = document.getElementById('mwr-list-start-date');
+            const endDateEl = document.getElementById('mwr-list-end-date');
+            if (startDateEl && !startDateEl.value) {
+                const today = new Date();
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(today.getDate() - 30);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                startDateEl.value = fmt(thirtyDaysAgo);
+                if (endDateEl && !endDateEl.value) endDateEl.value = fmt(today);
+            }
+
+            loadMwrListRecords();
+        });
+    }
+
+    const btnLoadMwrList = document.getElementById('btn-load-mwr-list');
+    if (btnLoadMwrList) {
+        btnLoadMwrList.addEventListener('click', loadMwrListRecords);
+    }
+
+    const mwrListInvoiceFilter = document.getElementById('mwr-list-invoice-filter');
+    if (mwrListInvoiceFilter) {
+        mwrListInvoiceFilter.addEventListener('input', applyMwrListFilter);
+    }
+
     const menuPurchasedBtn = document.getElementById('menu-purchased-btn');
     if (menuPurchasedBtn) {
         menuPurchasedBtn.addEventListener('click', () => {
