@@ -4629,9 +4629,20 @@ document.addEventListener('DOMContentLoaded', () => {
         // text the user reported. word-break/overflow-wrap force a break
         // even mid-word so every cell wraps within its own column.
         const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+        // Fix 65: whole-row font color on THIS list (Item Replacement Records
+        // only -- explicitly NOT the Warranty Records list) is now driven by
+        // Supplier Status + Warranty Status instead of Item Status: green
+        // only when Supplier Status is one of the "fully resolved" values AND
+        // Warranty Status is "Completed" -- red otherwise, meaning something
+        // is still pending. This replaces the old Item-Status-based rule for
+        // this list specifically, per the user's explicit instruction.
+        const IR_SUPPLIER_STATUS_DONE_VALUES = ['Item Replaced', 'Void', 'Out of Warranty', 'Credit Memo', 'Replaced New Parts'];
         tbody.innerHTML = rows.map((row, idx) => {
             const itemStatus = row[12] || '';
-            const rowTextColor = itemStatus === 'Confirmed: To be forwarded to supplier' ? '#f8fafc' : '#ef4444';
+            const supplierStatus = row[18] || '';
+            const warrantyStatus = row[22] || '';
+            const isFullyResolved = IR_SUPPLIER_STATUS_DONE_VALUES.includes(supplierStatus) && warrantyStatus === 'Completed';
+            const rowTextColor = isFullyResolved ? '#22c55e' : '#ef4444';
             const justificationUrl = row[15] || '';
             return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowTextColor};">
@@ -8069,6 +8080,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- DETAILED ANALYTICS MODULE ---
+
+    // Fix 67: computes the immediately-preceding period of the SAME length
+    // (in days, inclusive) as [startDateStr, endDateStr] -- e.g. selecting
+    // Aug 18-24 (7 days) compares against Aug 11-17 (the 7 days right before
+    // it), so the "Foot Traffic vs Sales Trend" comparison below is always
+    // apples-to-apples regardless of what date range the user picked.
+    function computePreviousPeriod(startDateStr, endDateStr) {
+        const msPerDay = 24 * 60 * 60 * 1000;
+        const start = new Date(startDateStr + 'T00:00:00');
+        const end = new Date(endDateStr + 'T00:00:00');
+        const periodDays = Math.max(1, Math.round((end - start) / msPerDay) + 1);
+        const prevEnd = new Date(start.getTime() - msPerDay);
+        const prevStart = new Date(prevEnd.getTime() - (periodDays - 1) * msPerDay);
+        const fmt = d => d.toISOString().split('T')[0];
+        return { prevStart: fmt(prevStart), prevEnd: fmt(prevEnd) };
+    }
+
     const btnGenerateAnalytics = document.getElementById('btn-generate-analytics');
     if (btnGenerateAnalytics) {
         btnGenerateAnalytics.addEventListener('click', async () => {
@@ -8088,8 +8116,12 @@ document.addEventListener('DOMContentLoaded', () => {
             btnText.classList.add('hidden');
             spinner.classList.remove('hidden');
 
+            // Fix 67: the immediately-preceding period of the same length,
+            // used by the "Foot Traffic vs Sales Trend" card below.
+            const { prevStart, prevEnd } = computePreviousPeriod(startDate, endDate);
+
             try {
-                const [cashRes, gcashRes, recvRes, cohRes, surveyRes, dcbRes, otherExpRes] = await Promise.all([
+                const [cashRes, gcashRes, recvRes, cohRes, surveyRes, dcbRes, otherExpRes, surveyPrevRes, recvPrevRes, cohPrevRes] = await Promise.all([
                     fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Cash Expense', startDate, endDate, branch }) }).then(r => r.json()),
                     fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Gcash Expense', startDate, endDate, branch }) }).then(r => r.json()),
                     fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Gcash Receivable', startDate, endDate, branch }) }).then(r => r.json()),
@@ -8101,7 +8133,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     // both use the SAME generic getExpenseRecords action + the same
                     // startDate/endDate/branch as everything else above.
                     fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Daily Check and Balance', startDate, endDate, branch }) }).then(r => r.json()),
-                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Other Expenses', startDate, endDate, branch }) }).then(r => r.json())
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Other Expenses', startDate, endDate, branch }) }).then(r => r.json()),
+                    // Fix 67: SAME 3 data sources as the current-period Foot
+                    // Traffic / Sales figures above (Daily Survey, Gcash
+                    // Receivable, Cash on Hand), just re-fetched for the
+                    // previous-period date range so the two totals can be
+                    // compared apples-to-apples.
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Daily Survey', startDate: prevStart, endDate: prevEnd, branch }) }).then(r => r.json()),
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Gcash Receivable', startDate: prevStart, endDate: prevEnd, branch }) }).then(r => r.json()),
+                    fetch(SCRIPT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'getReportData', reportType: 'Cash on Hand', startDate: prevStart, endDate: prevEnd, branch }) }).then(r => r.json())
                 ]);
 
                 if (cashRes.status === 'success' && gcashRes.status === 'success' && recvRes.status === 'success' && cohRes.status === 'success' && surveyRes.status === 'success') {
@@ -8141,6 +8181,46 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     renderAnalyticsDashboard(combinedExpenses, combinedIncome, surveyData);
+
+                    // Fix 67: "Foot Traffic vs Sales Trend" -- compares the
+                    // selected period's totals against the immediately-
+                    // preceding period of the SAME length, for both foot
+                    // traffic (Daily Survey) and income (Gcash Receivable +
+                    // Cash on Hand), so staff can see at a glance whether
+                    // traffic and sales moved in the same direction. Rendered
+                    // independently -- a failure fetching the previous
+                    // period's data shouldn't block the rest of the (already-
+                    // working) dashboard, same defensive pattern as Fix 36
+                    // below.
+                    if (surveyPrevRes.status === 'success' && recvPrevRes.status === 'success' && cohPrevRes.status === 'success') {
+                        const sumSurveyTraffic = (rows, br) => {
+                            let filtered = rows || [];
+                            if (br && br !== 'All') filtered = filtered.filter(row => row[1] === br);
+                            return filtered.reduce((sum, row) => {
+                                const d = row[0] ? new Date(row[0]) : null;
+                                if (!d || isNaN(d)) return sum;
+                                return sum + (parseInt(row[3]) || 0);
+                            }, 0);
+                        };
+                        const sumIncome = (recvRows, cohRows) => {
+                            const combined = [
+                                ...normalizeExpenseRows(recvRows || [], 1, 0, 6, 2, 4),
+                                ...normalizeExpenseRows(cohRows || [], 1, 0, 2, -1, -1)
+                            ];
+                            return combined.reduce((sum, row) => row.date ? sum + row.amount : sum, 0);
+                        };
+
+                        const currentTrafficTotal = sumSurveyTraffic(surveyRes.data, branch);
+                        const prevTrafficTotal = sumSurveyTraffic(surveyPrevRes.data, branch);
+                        const currentIncomeTotal = sumIncome(recvRes.data, cohRes.data);
+                        const prevIncomeTotal = sumIncome(recvPrevRes.data, cohPrevRes.data);
+
+                        renderTrafficSalesTrend(currentTrafficTotal, prevTrafficTotal, currentIncomeTotal, prevIncomeTotal, startDate, endDate, prevStart, prevEnd);
+                    } else {
+                        console.error('Error fetching previous-period data for Foot Traffic vs Sales Trend.', surveyPrevRes, recvPrevRes, cohPrevRes);
+                        const tstCard = document.getElementById('analytics-tst-card');
+                        if (tstCard) tstCard.style.display = 'none';
+                    }
 
                     // Fix 36: rendered independently of the block above -- a
                     // failure fetching Daily Check and Balance/Other Expenses
@@ -8356,6 +8436,69 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="padding: 12px; text-align: right; color: #3b82f6;">${data.traffic.toLocaleString()}</td>
                 `;
                 tbody.appendChild(tr);
+            }
+        }
+    }
+
+    // Fix 67: renders the "Foot Traffic vs Sales Trend" comparison card --
+    // shows this period's Foot Traffic + Income totals against the
+    // immediately-preceding period of the same length, with a % change badge
+    // for each, plus a short plain-language insight sentence on whether the
+    // two moved in the same direction (the whole point of the user's
+    // request: "kapag tumaas ang traffic, tumaas din ba ang sales?"). A
+    // previous-period total of 0 is shown as "New" rather than a divide-by-
+    // zero % (there's no meaningful percentage to compute from a zero base).
+    function renderTrafficSalesTrend(currentTraffic, prevTraffic, currentIncome, prevIncome, startDate, endDate, prevStart, prevEnd) {
+        const tstCard = document.getElementById('analytics-tst-card');
+        if (tstCard) tstCard.style.display = '';
+
+        const periodLabel = document.getElementById('analytics-tst-period-label');
+        if (periodLabel) {
+            periodLabel.textContent = `Comparing ${startDate} to ${endDate} vs. the immediately preceding period, ${prevStart} to ${prevEnd} (parehong bilang ng araw).`;
+        }
+
+        function formatChangeBadge(current, previous) {
+            if (previous === 0) {
+                if (current === 0) return { text: 'No data', color: 'var(--text-muted)', dir: 0 };
+                return { text: '▲ New', color: '#10b981', dir: 1 };
+            }
+            const pct = ((current - previous) / previous) * 100;
+            const arrow = pct > 0 ? '▲' : (pct < 0 ? '▼' : '▬');
+            const color = pct > 0 ? '#10b981' : (pct < 0 ? '#ef4444' : 'var(--text-muted)');
+            return { text: `${arrow} ${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`, color, dir: pct > 0 ? 1 : (pct < 0 ? -1 : 0) };
+        }
+
+        const trafficBadge = formatChangeBadge(currentTraffic, prevTraffic);
+        const incomeBadge = formatChangeBadge(currentIncome, prevIncome);
+
+        const elTrafficCurrent = document.getElementById('analytics-tst-traffic-current');
+        const elTrafficPrevious = document.getElementById('analytics-tst-traffic-previous');
+        const elTrafficChange = document.getElementById('analytics-tst-traffic-change');
+        if (elTrafficCurrent) elTrafficCurrent.textContent = currentTraffic.toLocaleString();
+        if (elTrafficPrevious) elTrafficPrevious.textContent = prevTraffic.toLocaleString();
+        if (elTrafficChange) { elTrafficChange.textContent = trafficBadge.text; elTrafficChange.style.color = trafficBadge.color; }
+
+        const elIncomeCurrent = document.getElementById('analytics-tst-income-current');
+        const elIncomePrevious = document.getElementById('analytics-tst-income-previous');
+        const elIncomeChange = document.getElementById('analytics-tst-income-change');
+        if (elIncomeCurrent) elIncomeCurrent.textContent = `₱${formatCurrency(currentIncome)}`;
+        if (elIncomePrevious) elIncomePrevious.textContent = `₱${formatCurrency(prevIncome)}`;
+        if (elIncomeChange) { elIncomeChange.textContent = incomeBadge.text; elIncomeChange.style.color = incomeBadge.color; }
+
+        const insightEl = document.getElementById('analytics-tst-insight');
+        if (insightEl) {
+            if (trafficBadge.text === 'No data' || incomeBadge.text === 'No data') {
+                insightEl.textContent = 'Walang sapat na datos sa naunang period para makagawa ng comparison.';
+            } else if (trafficBadge.dir === incomeBadge.dir) {
+                if (trafficBadge.dir > 0) {
+                    insightEl.textContent = '✅ Magkasabay na tumaas ang foot traffic at sales sa period na ito -- tugma sa inaasahan na mas maraming pasok, mas maraming benta.';
+                } else if (trafficBadge.dir < 0) {
+                    insightEl.textContent = '⚠️ Magkasabay na bumaba ang foot traffic at sales sa period na ito.';
+                } else {
+                    insightEl.textContent = 'Halos walang pagbabago ang foot traffic at sales sa period na ito.';
+                }
+            } else {
+                insightEl.textContent = '⚠️ Magkaiba ang direksyon ng foot traffic at sales sa period na ito -- baka may ibang factor (pricing, promo, average spend per customer) na nakaka-apekto sa sales aside sa dami ng pasok.';
             }
         }
     }
