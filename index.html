@@ -9,10 +9,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css?v=2">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- SheetJS for Excel parsing -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Fix 48: html2pdf.bundle.min.js, chart.js, and xlsx.full.min.js used to be
+         loaded here as plain blocking <script> tags -- meaning every page open,
+         even the login screen, waited on all three heavy libraries before the
+         browser could paint anything. They're now loaded lazily in the
+         background right after a successful login instead (see
+         loadHeavyLibsInBackground() / showApp() in app.js), so they no longer
+         block the initial page open. -->
 </head>
 <body>
     <div class="background-blobs">
@@ -670,6 +673,45 @@
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Item Description Modal (MarvsPCStufz Warranty Record's "Item Description" catalog) -->
+    <div id="description-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:20000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:420px; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-file-alt" style="margin-right:8px; color:#22d3ee;"></i>Add Item Description</h3>
+                <button id="close-description-modal" style="background:none; border:none; color:#94a3b8; font-size:1.2em; cursor:pointer; padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="description-form">
+                <div style="margin-bottom:18px;">
+                    <label style="display:block; font-size:0.8em; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Item Description</label>
+                    <input type="text" id="description-name-input" placeholder="e.g. Logitech G102 Mouse" style="width:100%; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#f1f5f9; font-size:0.95em; box-sizing:border-box;" required>
+                </div>
+                <div id="description-modal-message" style="display:none; padding:8px 12px; border-radius:6px; font-size:0.85em; margin-bottom:12px;"></div>
+                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                    <button type="button" id="cancel-description-modal" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#94a3b8; border-radius:6px; padding:8px 18px; font-size:0.85em; cursor:pointer;">Cancel</button>
+                    <button type="submit" id="btn-save-description" style="background:#3b82f6; border:none; color:#fff; border-radius:6px; padding:8px 18px; font-size:0.85em; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="fas fa-save"></i> Save Item Description
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Item Description Picker Modal (search/browse the full catalog, easier than
+         scrolling a native <select> once there are hundreds/thousands of entries) -->
+    <div id="mwr-description-picker-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:20000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:24px; width:100%; max-width:480px; max-height:80vh; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px; display:flex; flex-direction:column;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-shrink:0;">
+                <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-search" style="margin-right:8px; color:#22d3ee;"></i>Select Item Description</h3>
+                <button id="close-mwr-description-picker" style="background:none; border:none; color:#94a3b8; font-size:1.2em; cursor:pointer; padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <input type="text" id="mwr-description-picker-search" placeholder="Type to search..." style="width:100%; padding:10px 12px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); border-radius:8px; color:#f1f5f9; font-size:0.95em; box-sizing:border-box; margin-bottom:12px; flex-shrink:0;">
+            <div id="mwr-description-picker-list" style="overflow-y:auto; flex:1; min-height:120px; border:1px solid rgba(255,255,255,0.08); border-radius:8px;"></div>
+            <div style="display:flex; justify-content:flex-end; margin-top:14px; flex-shrink:0;">
+                <button type="button" id="cancel-mwr-description-picker" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#94a3b8; border-radius:6px; padding:8px 18px; font-size:0.85em; cursor:pointer;">Close</button>
+            </div>
         </div>
     </div>
 
@@ -2897,6 +2939,10 @@
             <button type="button" class="menu-action-btn" id="btn-marvspc-warranty-record">
                 Warranty Record
             </button>
+
+            <button type="button" class="menu-action-btn" id="btn-marvspc-item-replacement" style="margin-top: 10px;">
+                Item Replacement
+            </button>
         </main>
     </div>
 
@@ -2908,8 +2954,10 @@
         </header>
 
         <main class="glass-panel" style="margin-top: 20px;">
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
-                <button type="button" id="btn-mwr-view-records" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-list-alt"></i> View Records</button>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px;">
+                <button type="button" id="btn-mwr-category" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 7px 4px; font-size: 0.78em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;"><i class="fas fa-tags"></i> Item Category</button>
+                <button type="button" id="btn-mwr-description" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 7px 4px; font-size: 0.78em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;"><i class="fas fa-file-alt"></i> Item Description</button>
+                <button type="button" id="btn-mwr-view-records" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 7px 4px; font-size: 0.78em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box;"><i class="fas fa-list-alt"></i> View Records</button>
             </div>
             <form id="marvspc-warranty-record-form">
                 <div class="form-row">
@@ -2940,7 +2988,26 @@
 
                 <div class="form-group">
                     <label for="mwr-item-description">Item Description</label>
-                    <input type="text" id="mwr-item-description" placeholder="e.g. Logitech G102 Mouse">
+                    <div style="display: flex; gap: 6px; align-items: stretch;">
+                        <select id="mwr-item-description" style="flex: 1; min-width: 0;">
+                            <option value="" disabled selected>Select Item Description</option>
+                        </select>
+                        <button type="button" id="btn-mwr-description-picker" title="Browse & search full list" style="flex: 0 0 auto; width: 38px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="mwr-item-category">Item Category</label>
+                    <select id="mwr-item-category">
+                        <option value="" disabled selected>Select Category</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="mwr-serial-number">Serial Number</label>
+                    <input type="text" id="mwr-serial-number" placeholder="Serial number (if applicable)">
                 </div>
 
                 <div class="form-group">
@@ -2959,11 +3026,27 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="mwr-technician-assessment">Technician Assessment</label>
-                    <select id="mwr-technician-assessment">
-                        <option value="" disabled selected>Select Assessment</option>
-                        <option value="Defective need to replace">Defective need to replace</option>
-                        <option value="No issue need to return to customer">No issue need to return to customer</option>
+                    <label for="mwr-received-by-store">Received by Store</label>
+                    <select id="mwr-received-by-store">
+                        <option value="" disabled selected>Select Store</option>
+                        <option value="QC Branch">QC Branch</option>
+                        <option value="Marikina Branch">Marikina Branch</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="mwr-received-by-employee">Received by Employee</label>
+                    <input type="text" id="mwr-received-by-employee" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+
+                <div class="form-group">
+                    <label for="mwr-item-status">Item Status</label>
+                    <select id="mwr-item-status">
+                        <option value="" disabled selected>Select Status</option>
+                        <option value="Confirmed: To be forwarded to supplier">Confirmed: To be forwarded to supplier</option>
+                        <option value="Expired">Expired</option>
+                        <option value="Void">Void</option>
+                        <option value="Pending Testing">Pending Testing</option>
                     </select>
                 </div>
 
@@ -2985,26 +3068,34 @@
 
         <main class="glass-panel" style="margin-top: 20px;">
             <div class="form-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
-                <div class="form-group" style="flex: 1; min-width: 140px;">
+                <div class="form-group" style="flex: 1 1 130px; max-width: 190px; min-width: 0; margin-bottom: 0;">
                     <label for="mwr-list-start-date">Date From</label>
-                    <input type="date" id="mwr-list-start-date">
+                    <input type="date" id="mwr-list-start-date" style="padding: 8px 6px; font-size: 0.85em; width: 100%;">
                 </div>
-                <div class="form-group" style="flex: 1; min-width: 140px;">
+                <div class="form-group" style="flex: 1 1 130px; max-width: 190px; min-width: 0; margin-bottom: 0;">
                     <label for="mwr-list-end-date">Date To</label>
-                    <input type="date" id="mwr-list-end-date">
+                    <input type="date" id="mwr-list-end-date" style="padding: 8px 6px; font-size: 0.85em; width: 100%;">
                 </div>
-                <div class="form-group" style="flex: 1; min-width: 160px;">
+                <div class="form-group" style="flex: 1 1 140px; max-width: 220px; min-width: 0; margin-bottom: 0;">
                     <label for="mwr-list-invoice-filter">Sales Invoice#</label>
-                    <input type="text" id="mwr-list-invoice-filter" placeholder="Search invoice#...">
+                    <input type="text" id="mwr-list-invoice-filter" placeholder="Search invoice#..." style="padding: 8px 10px; font-size: 0.85em; width: 100%;">
                 </div>
-                <button type="button" id="btn-load-mwr-list" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 10px 18px;">
+                <div class="form-group" style="flex: 1 1 140px; max-width: 220px; min-width: 0; margin-bottom: 0;">
+                    <label for="mwr-list-name-filter">Customer Name</label>
+                    <input type="text" id="mwr-list-name-filter" placeholder="Search name..." style="padding: 8px 10px; font-size: 0.85em; width: 100%;">
+                </div>
+                <div class="form-group" style="flex: 1 1 140px; max-width: 220px; min-width: 0; margin-bottom: 0;">
+                    <label for="mwr-list-category-filter">Item Category</label>
+                    <input type="text" id="mwr-list-category-filter" placeholder="Search category..." style="padding: 8px 10px; font-size: 0.85em; width: 100%;">
+                </div>
+                <button type="button" id="btn-load-mwr-list" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 8px 16px; font-size: 0.85em;">
                     <span class="btn-text"><i class="fas fa-search"></i> Load</span>
                     <div class="spinner hidden"></div>
                 </button>
             </div>
 
             <div style="overflow-x: auto; margin-top: 20px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1150px; table-layout: fixed;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1730px; table-layout: fixed;">
                     <colgroup>
                         <col style="width: 110px;">
                         <col style="width: 130px;">
@@ -3012,9 +3103,12 @@
                         <col style="width: 150px;">
                         <col style="width: 120px;">
                         <col style="width: 170px;">
-                        <col style="width: 220px;">
-                        <col style="width: 100px;">
-                        <col style="width: 200px;">
+                        <col style="width: 130px;">
+                        <col style="width: 130px;">
+                        <col style="width: 250px;">
+                        <col style="width: 110px;">
+                        <col style="width: 160px;">
+                        <col style="width: 150px;">
                     </colgroup>
                     <thead>
                         <tr style="border-bottom: 1px solid var(--glass-border);">
@@ -3024,16 +3118,407 @@
                             <th style="padding: 10px; text-align: left;">Customer Name</th>
                             <th style="padding: 10px; text-align: left;">Mobile Number</th>
                             <th style="padding: 10px; text-align: left;">Item Description</th>
+                            <th style="padding: 10px; text-align: left;">Item Category</th>
+                            <th style="padding: 10px; text-align: left;">Serial Number</th>
                             <th style="padding: 10px; text-align: left;">Issue/Problem Encountered</th>
                             <th style="padding: 10px; text-align: left;">Technician</th>
-                            <th style="padding: 10px; text-align: left;">Technician Assessment</th>
+                            <th style="padding: 10px; text-align: left;">Item Status</th>
+                            <th style="padding: 10px; text-align: left;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="mwr-list-table-body">
-                        <tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
+                        <tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
                     </tbody>
                 </table>
             </div>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Warranty Record - Modify Container -->
+    <div class="container hidden" id="marvspc-warranty-record-modify-container" style="max-width: 1000px;">
+        <header>
+            <h1>Modify Warranty Record</h1>
+            <button class="back-btn" data-target="marvspc-warranty-record-list-container"><i class="fas fa-arrow-left"></i> Back</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <input type="hidden" id="mwr-modify-row-index">
+
+            <h3 style="margin-top: 0; color: var(--text-muted); font-size: 0.95em; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Record Details (read-only)</h3>
+            <div class="form-row" style="flex-wrap: wrap; gap: 14px;">
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-warranty-date">Warranty Date</label>
+                    <input type="text" id="mwr-modify-warranty-date" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-sales-invoice">Sales Invoice#</label>
+                    <input type="text" id="mwr-modify-sales-invoice" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-date-purchased">Date of Purchased</label>
+                    <input type="text" id="mwr-modify-date-purchased" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-customer-name">Customer Name</label>
+                    <input type="text" id="mwr-modify-customer-name" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-mobile-number">Mobile Number</label>
+                    <input type="text" id="mwr-modify-mobile-number" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-item-description">Item Description</label>
+                    <input type="text" id="mwr-modify-item-description" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-item-category">Item Category</label>
+                    <input type="text" id="mwr-modify-item-category" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-serial-number">Serial Number</label>
+                    <input type="text" id="mwr-modify-serial-number" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-issue">Issue/Problem Encountered</label>
+                    <input type="text" id="mwr-modify-issue" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-technician">Technician</label>
+                    <input type="text" id="mwr-modify-technician" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-received-by-store">Received by Store</label>
+                    <input type="text" id="mwr-modify-received-by-store" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-received-by-employee">Received by Employee</label>
+                    <input type="text" id="mwr-modify-received-by-employee" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-item-status">Item Status</label>
+                    <input type="text" id="mwr-modify-item-status" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+            </div>
+
+            <h3 style="color: var(--text-muted); font-size: 0.95em; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; margin-top: 24px;">Supplier / Return Processing</h3>
+            <div class="form-row" style="flex-wrap: wrap; gap: 14px;">
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-date-forwarded">Date Forwarded to Supplier</label>
+                    <input type="date" id="mwr-modify-date-forwarded">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-supplier-name">Supplier Name</label>
+                    <select id="mwr-modify-supplier-name">
+                        <option value="" disabled selected>Select Supplier</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-date-return">Return to Store</label>
+                    <input type="date" id="mwr-modify-date-return">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-date-updated">Date Updated</label>
+                    <input type="text" id="mwr-modify-date-updated" disabled placeholder="Auto-set kapag na-save" style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="mwr-modify-supplier-status">Supplier Status</label>
+                    <select id="mwr-modify-supplier-status">
+                        <option value="" disabled selected>Select Status</option>
+                        <option value="Void">Void</option>
+                        <option value="For Return">For Return</option>
+                        <option value="For Replacement">For Replacement</option>
+                        <option value="Item Replaced">Item Replaced</option>
+                        <option value="For Repair">For Repair</option>
+                        <option value="Awaiting Stock">Awaiting Stock</option>
+                        <option value="For Refund">For Refund</option>
+                        <option value="Return as is">Return as is</option>
+                        <option value="Out of Warranty">Out of Warranty</option>
+                        <option value="Credit Memo">Credit Memo</option>
+                        <option value="Replaced New Parts">Replaced New Parts</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1 1 260px;">
+                    <label for="mwr-modify-justification-file">Justification of Pickup</label>
+                    <input type="file" id="mwr-modify-justification-file" accept="image/*">
+                    <a id="mwr-modify-justification-current" href="#" target="_blank" class="hidden" style="display: block; margin-top: 6px; font-size: 0.85em;">View current image</a>
+                </div>
+            </div>
+
+            <button type="button" class="submit-btn" id="mwr-modify-save-btn" style="margin-top: 20px;">
+                <span class="btn-text">Save Changes</span>
+                <div class="spinner hidden"></div>
+            </button>
+            <div id="mwr-modify-status-message" class="status-message hidden"></div>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Item Replacement List Container (Fix 57): the "Item
+         Replacement" button opens this list DIRECTLY (no separate entry
+         form -- removed per the user's explicit simplification request).
+         Shows EVERY column from the "MarvsPCStufz Warranty" sheet (all 19,
+         A-S), ending with a Modify-only action column restricted to RMA
+         Admin/Manager/Owner (no Print here, per the user's exact
+         instructions this time). -->
+    <div class="container hidden" id="marvspc-item-replacement-list-container" style="max-width: 1250px;">
+        <header>
+            <h1>MarvsPCStufz Item Replacement Records</h1>
+            <button class="back-btn" data-target="marvspc-warranty-form-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
+                <div class="form-group" style="flex: 1 1 130px; max-width: 190px; min-width: 0; margin-bottom: 0;">
+                    <label for="ir-list-start-date">Date From</label>
+                    <input type="date" id="ir-list-start-date" style="padding: 8px 6px; font-size: 0.85em; width: 100%;">
+                </div>
+                <div class="form-group" style="flex: 1 1 130px; max-width: 190px; min-width: 0; margin-bottom: 0;">
+                    <label for="ir-list-end-date">Date To</label>
+                    <input type="date" id="ir-list-end-date" style="padding: 8px 6px; font-size: 0.85em; width: 100%;">
+                </div>
+                <div class="form-group" style="flex: 1 1 140px; max-width: 220px; min-width: 0; margin-bottom: 0;">
+                    <label for="ir-list-invoice-filter">Sales Invoice#</label>
+                    <input type="text" id="ir-list-invoice-filter" placeholder="Search invoice#..." style="padding: 8px 10px; font-size: 0.85em; width: 100%;">
+                </div>
+                <div class="form-group" style="flex: 1 1 140px; max-width: 220px; min-width: 0; margin-bottom: 0;">
+                    <label for="ir-list-name-filter">Customer Name</label>
+                    <input type="text" id="ir-list-name-filter" placeholder="Search name..." style="padding: 8px 10px; font-size: 0.85em; width: 100%;">
+                </div>
+                <div class="form-group" style="flex: 1 1 140px; max-width: 220px; min-width: 0; margin-bottom: 0;">
+                    <label for="ir-list-category-filter">Item Category</label>
+                    <input type="text" id="ir-list-category-filter" placeholder="Search category..." style="padding: 8px 10px; font-size: 0.85em; width: 100%;">
+                </div>
+                <button type="button" id="btn-load-ir-list" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 8px 16px; font-size: 0.85em;">
+                    <span class="btn-text"><i class="fas fa-search"></i> Load</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div style="overflow-x: auto; margin-top: 20px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 3300px; table-layout: fixed;">
+                    <colgroup>
+                        <col style="width: 100px;">
+                        <col style="width: 120px;">
+                        <col style="width: 110px;">
+                        <col style="width: 140px;">
+                        <col style="width: 110px;">
+                        <col style="width: 160px;">
+                        <col style="width: 110px;">
+                        <col style="width: 110px;">
+                        <col style="width: 200px;">
+                        <col style="width: 100px;">
+                        <col style="width: 120px;">
+                        <col style="width: 130px;">
+                        <col style="width: 160px;">
+                        <col style="width: 140px;">
+                        <col style="width: 130px;">
+                        <col style="width: 130px;">
+                        <col style="width: 130px;">
+                        <col style="width: 110px;">
+                        <col style="width: 140px;">
+                        <col style="width: 130px;">
+                        <col style="width: 160px;">
+                        <col style="width: 130px;">
+                        <col style="width: 130px;">
+                        <col style="width: 200px;">
+                        <col style="width: 110px;">
+                    </colgroup>
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--glass-border);">
+                            <th style="padding: 10px; text-align: left;">Warranty Date</th>
+                            <th style="padding: 10px; text-align: left;">Sales Invoice#</th>
+                            <th style="padding: 10px; text-align: left;">Date of Purchased</th>
+                            <th style="padding: 10px; text-align: left;">Customer Name</th>
+                            <th style="padding: 10px; text-align: left;">Mobile Number</th>
+                            <th style="padding: 10px; text-align: left;">Item Description</th>
+                            <th style="padding: 10px; text-align: left;">Item Category</th>
+                            <th style="padding: 10px; text-align: left;">Serial Number</th>
+                            <th style="padding: 10px; text-align: left;">Issue/Problem Encountered</th>
+                            <th style="padding: 10px; text-align: left;">Technician</th>
+                            <th style="padding: 10px; text-align: left;">Received by Store</th>
+                            <th style="padding: 10px; text-align: left;">Received by Employee</th>
+                            <th style="padding: 10px; text-align: left;">Item Status</th>
+                            <th style="padding: 10px; text-align: left;">Date Forwarded to Supplier</th>
+                            <th style="padding: 10px; text-align: left;">Supplier Name</th>
+                            <th style="padding: 10px; text-align: left;">Justification of Pickup</th>
+                            <th style="padding: 10px; text-align: left;">Return to Store</th>
+                            <th style="padding: 10px; text-align: left;">Date Updated</th>
+                            <th style="padding: 10px; text-align: left;">Supplier Status</th>
+                            <th style="padding: 10px; text-align: left;">Date Return (Customer)</th>
+                            <th style="padding: 10px; text-align: left;">Item Status (Customer Return)</th>
+                            <th style="padding: 10px; text-align: left;">RMA In-charge</th>
+                            <th style="padding: 10px; text-align: left;">Warranty Status</th>
+                            <th style="padding: 10px; text-align: left;">Remarks</th>
+                            <th style="padding: 10px; text-align: left;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ir-list-table-body">
+                        <tr><td colspan="25" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- MarvsPCStufz Item Replacement - Modify Container: same structure as
+         the Warranty Record Modify form, per the user's explicit choice. -->
+    <div class="container hidden" id="marvspc-item-replacement-modify-container" style="max-width: 1000px;">
+        <header>
+            <h1>Modify Item Replacement Record</h1>
+            <button class="back-btn" data-target="marvspc-item-replacement-list-container"><i class="fas fa-arrow-left"></i> Back</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <input type="hidden" id="ir-modify-row-index">
+
+            <h3 style="margin-top: 0; color: var(--text-muted); font-size: 0.95em; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px;">Record Details (read-only)</h3>
+            <div class="form-row" style="flex-wrap: wrap; gap: 14px;">
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-warranty-date">Warranty Date</label>
+                    <input type="text" id="ir-modify-warranty-date" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-sales-invoice">Sales Invoice#</label>
+                    <input type="text" id="ir-modify-sales-invoice" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-date-purchased">Date of Purchased</label>
+                    <input type="text" id="ir-modify-date-purchased" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-customer-name">Customer Name</label>
+                    <input type="text" id="ir-modify-customer-name" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-mobile-number">Mobile Number</label>
+                    <input type="text" id="ir-modify-mobile-number" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-item-description">Item Description</label>
+                    <input type="text" id="ir-modify-item-description" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-item-category">Item Category</label>
+                    <input type="text" id="ir-modify-item-category" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-serial-number">Serial Number</label>
+                    <input type="text" id="ir-modify-serial-number" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-issue">Issue/Problem Encountered</label>
+                    <input type="text" id="ir-modify-issue" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-technician">Technician</label>
+                    <input type="text" id="ir-modify-technician" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-received-by-store">Received by Store</label>
+                    <input type="text" id="ir-modify-received-by-store" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-received-by-employee">Received by Employee</label>
+                    <input type="text" id="ir-modify-received-by-employee" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-item-status">Item Status</label>
+                    <input type="text" id="ir-modify-item-status" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+            </div>
+
+            <!-- Fix 60: this whole section is READ-ONLY / LOCKED on the Item
+                 Replacement Modify form -- Supplier / Return Processing is
+                 managed exclusively from the Warranty Record Modify form.
+                 Shown here for reference only, same as "Record Details"
+                 above. -->
+            <h3 style="color: var(--text-muted); font-size: 0.95em; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; margin-top: 24px;">Supplier / Return Processing</h3>
+            <div class="form-row" style="flex-wrap: wrap; gap: 14px;">
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-date-forwarded">Date Forwarded to Supplier</label>
+                    <input type="date" id="ir-modify-date-forwarded" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-supplier-name">Supplier Name</label>
+                    <select id="ir-modify-supplier-name" disabled style="opacity: 0.7; cursor: not-allowed;">
+                        <option value="" disabled selected>Select Supplier</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-date-return">Return to Store</label>
+                    <input type="date" id="ir-modify-date-return" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-date-updated">Date Updated</label>
+                    <input type="text" id="ir-modify-date-updated" disabled placeholder="Auto-set kapag na-save" style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-supplier-status">Supplier Status</label>
+                    <select id="ir-modify-supplier-status" disabled style="opacity: 0.7; cursor: not-allowed;">
+                        <option value="" disabled selected>Select Status</option>
+                        <option value="Void">Void</option>
+                        <option value="For Return">For Return</option>
+                        <option value="For Replacement">For Replacement</option>
+                        <option value="Item Replaced">Item Replaced</option>
+                        <option value="For Repair">For Repair</option>
+                        <option value="Awaiting Stock">Awaiting Stock</option>
+                        <option value="For Refund">For Refund</option>
+                        <option value="Return as is">Return as is</option>
+                        <option value="Out of Warranty">Out of Warranty</option>
+                        <option value="Credit Memo">Credit Memo</option>
+                        <option value="Replaced New Parts">Replaced New Parts</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1 1 260px;">
+                    <label for="ir-modify-justification-file">Justification of Pickup</label>
+                    <input type="file" id="ir-modify-justification-file" accept="image/*" disabled style="opacity: 0.7; cursor: not-allowed;">
+                    <a id="ir-modify-justification-current" href="#" target="_blank" class="hidden" style="display: block; margin-top: 6px; font-size: 0.85em;">View current image</a>
+                </div>
+            </div>
+
+            <h3 style="color: var(--text-muted); font-size: 0.95em; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; margin-top: 24px;">Customer Return Processing</h3>
+            <div class="form-row" style="flex-wrap: wrap; gap: 14px;">
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-customer-date-return">Date Return</label>
+                    <input type="date" id="ir-modify-customer-date-return">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-customer-return-status">Item Status</label>
+                    <select id="ir-modify-customer-return-status">
+                        <option value="" disabled selected>Select Status</option>
+                        <option value="Delivered by Zaldy">Delivered by Zaldy</option>
+                        <option value="Delivered by Mark">Delivered by Mark</option>
+                        <option value="Delivered by Egay">Delivered by Egay</option>
+                        <option value="Pickup by lalamove">Pickup by lalamove</option>
+                        <option value="customer arranged">customer arranged</option>
+                        <option value="pickup by customer">pickup by customer</option>
+                        <option value="dispatched to Marikina and picked up by customer">dispatched to Marikina and picked up by customer</option>
+                        <option value="pickup by LBC">pickup by LBC</option>
+                        <option value="-">-</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-rma-incharge">RMA In-charge</label>
+                    <input type="text" id="ir-modify-rma-incharge" disabled style="opacity: 0.7; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="flex: 1 1 200px;">
+                    <label for="ir-modify-warranty-status">Warranty Status</label>
+                    <select id="ir-modify-warranty-status">
+                        <option value="" disabled selected>Select Status</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Pending">Pending</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1 1 100%;">
+                    <label for="ir-modify-remarks">Remarks</label>
+                    <textarea id="ir-modify-remarks" rows="3" placeholder="Additional remarks"></textarea>
+                </div>
+            </div>
+
+            <button type="button" class="submit-btn" id="ir-modify-save-btn" style="margin-top: 20px;">
+                <span class="btn-text">Save Changes</span>
+                <div class="spinner hidden"></div>
+            </button>
+            <div id="ir-modify-status-message" class="status-message hidden"></div>
         </main>
     </div>
 
@@ -3619,7 +4104,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=57"></script>
+    <script src="app.js?v=73"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

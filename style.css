@@ -57,11 +57,19 @@ body {
 }
 
 .blob {
+    /* Fix 49: this used to be filter: blur(80px) animating every 20s, forever,
+       on every single screen -- an 80px blur is a heavy GPU cost to begin
+       with, and re-computing it continuously (the animation changes
+       translate/scale every frame) kept that cost running the whole time the
+       tab was open, even with the app just sitting idle. Cut the blur radius
+       roughly in half and slowed the animation down (20s -> 45s) so the
+       browser recalculates it far less often -- same soft floating-shapes
+       look, much lower ongoing GPU load. */
     position: absolute;
     border-radius: 50%;
-    filter: blur(80px);
+    filter: blur(40px);
     opacity: 0.5;
-    animation: float 20s infinite ease-in-out;
+    animation: float 45s infinite ease-in-out;
 }
 
 .blob-1 {

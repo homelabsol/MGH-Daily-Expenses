@@ -78,6 +78,44 @@ function showConfirm(title, message, onConfirm) {
 }
 
 
+// Fix 48: html2pdf.bundle.min.js, chart.js, and xlsx.full.min.js are large
+// third-party libraries (PDF export, charts, Excel import/export) that used to
+// load as plain blocking <script> tags in index.html's <head> -- meaning every
+// single page open, even the login screen before anyone logs in, had to
+// download and execute all three before the browser could even paint the
+// login form, whether or not that session ever touches Report/Print/Excel
+// that day. They're now loaded lazily via non-blocking dynamic <script>
+// injection, kicked off from showApp() right after a successful login
+// (covers both a fresh login and an auto-resumed session) -- so the login
+// screen itself is never held up by them, and by the time a user has clicked
+// into any Report/Print/Excel-import feature (always at least one more menu
+// step away), the library has very likely already finished loading quietly in
+// the background. Every existing usage of the `Chart`, `html2pdf`, and `XLSX`
+// globals elsewhere in this file is UNCHANGED -- loadHeavyLib() skips
+// re-injecting a script if the global already exists (e.g. a test's stub set
+// via addInitScript, or a previous call already resolved).
+const HEAVY_LIB_URLS = {
+    html2pdf: 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+    Chart: 'https://cdn.jsdelivr.net/npm/chart.js',
+    XLSX: 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+};
+const _heavyLibLoadPromises = {};
+function loadHeavyLib(globalName) {
+    if (window[globalName]) return Promise.resolve();
+    if (_heavyLibLoadPromises[globalName]) return _heavyLibLoadPromises[globalName];
+    _heavyLibLoadPromises[globalName] = new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = HEAVY_LIB_URLS[globalName];
+        script.onload = () => resolve();
+        script.onerror = () => resolve(); // don't block forever if the CDN is unreachable
+        document.head.appendChild(script);
+    });
+    return _heavyLibLoadPromises[globalName];
+}
+function loadHeavyLibsInBackground() {
+    Object.keys(HEAVY_LIB_URLS).forEach(loadHeavyLib);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const cashForm = document.getElementById('cash-expense-form');
     const cashSubmitBtn = document.getElementById('cash-submit-btn');
@@ -153,6 +191,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.hideAllContainers = hideAllContainers;
 
     function showApp(name) {
+        loadHeavyLibsInBackground();
         hideAllContainers();
         mainMenuContainer.classList.remove('hidden');
         welcomeMessage.textContent = `Welcome, ${name}`;
@@ -3780,6 +3819,41 @@ document.addEventListener('DOMContentLoaded', () => {
             hideAllContainers();
             document.getElementById('marvspc-warranty-record-form-container').classList.remove('hidden');
             mwrResetForm();
+            mwrLoadItemCategories();
+            mwrLoadItemDescriptions();
+        });
+    }
+
+    // Fix 57: "Item Replacement" opens the list view DIRECTLY -- no separate
+    // entry form (removed per the user's explicit simplification request).
+    // Shows every record from the SAME "MarvsPCStufz Warranty" sheet, all
+    // columns, ending with a Modify-only action (see loadIrListRecords /
+    // renderIrListTable further below).
+    const btnMarvsPcItemReplacement = document.getElementById('btn-marvspc-item-replacement');
+    if (btnMarvsPcItemReplacement) {
+        btnMarvsPcItemReplacement.addEventListener('click', () => {
+            hideAllContainers();
+            document.getElementById('marvspc-item-replacement-list-container').classList.remove('hidden');
+
+            // Default to last 30 days, same convention as every other
+            // sheet-backed list page (gotcha #8).
+            const startDateEl = document.getElementById('ir-list-start-date');
+            const endDateEl = document.getElementById('ir-list-end-date');
+            if (startDateEl && !startDateEl.value) {
+                const today = new Date();
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(today.getDate() - 30);
+                const fmt = (dt) => {
+                    const y = dt.getFullYear();
+                    const m = String(dt.getMonth() + 1).padStart(2, '0');
+                    const d = String(dt.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d}`;
+                };
+                startDateEl.value = fmt(thirtyDaysAgo);
+                if (endDateEl && !endDateEl.value) endDateEl.value = fmt(today);
+            }
+
+            loadIrListRecords();
         });
     }
 
@@ -3790,6 +3864,212 @@ document.addEventListener('DOMContentLoaded', () => {
         if (dateEl) dateEl.valueAsDate = new Date();
         const statusMsg = document.getElementById('mwr-status-message');
         if (statusMsg) statusMsg.classList.add('hidden');
+        // "Received by Employee" is disabled/not editable -- always re-filled
+        // from whoever is currently logged in, every time the form is reset
+        // (form.reset() alone can't do this since the field has no HTML
+        // default value to reset back to).
+        const receivedByEmployeeEl = document.getElementById('mwr-received-by-employee');
+        if (receivedByEmployeeEl) receivedByEmployeeEl.value = sessionStorage.getItem('loggedInUser') || '';
+    }
+
+    // Populates the Item Category dropdown on the Warranty Record form,
+    // reusing the existing getItemCategories backend action (same one the
+    // Purchased Order form's loadCategoryDropdown() already uses) -- no new
+    // backend action needed for the category list itself.
+    async function mwrLoadItemCategories(selectId) {
+        const sel = document.getElementById(selectId || 'mwr-item-category');
+        if (!sel) return;
+        sel.innerHTML = '<option value="" disabled selected>Loading...</option>';
+        try {
+            const res = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getItemCategories' })
+            });
+            const data = await res.json();
+            sel.innerHTML = '<option value="" disabled selected>Select Category</option>';
+            if (data.status === 'success' && data.data && data.data.length > 0) {
+                data.data.forEach(cat => {
+                    const opt = document.createElement('option');
+                    opt.value = cat;
+                    opt.textContent = cat;
+                    sel.appendChild(opt);
+                });
+            } else if (data.status === 'error') {
+                sel.innerHTML = `<option value="" disabled selected>Error: ${data.message}</option>`;
+            } else {
+                sel.innerHTML = '<option value="" disabled selected>No categories found</option>';
+            }
+        } catch (e) {
+            sel.innerHTML = '<option value="" disabled selected>Failed to load</option>';
+        }
+    }
+
+    // Populates the Item Description dropdown on the Warranty Record form,
+    // via the new getItemDescriptions backend action (a small dedicated
+    // "Item Description" catalog, same shape as the Item Category one --
+    // saveItemDescription/getItemDescriptions, single-column sheet). Also
+    // caches the full list in currentMwrItemDescriptions so the search/browse
+    // picker modal (below) can filter it instantly, client-side, without a
+    // second fetch -- this list can grow into the thousands, so scrolling a
+    // native <select> to find one entry isn't practical.
+    let currentMwrItemDescriptions = [];
+
+    async function mwrLoadItemDescriptions(selectId) {
+        const sel = document.getElementById(selectId || 'mwr-item-description');
+        if (!sel) return;
+        sel.innerHTML = '<option value="" disabled selected>Loading...</option>';
+        try {
+            const res = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getItemDescriptions' })
+            });
+            const data = await res.json();
+            sel.innerHTML = '<option value="" disabled selected>Select Item Description</option>';
+            if (data.status === 'success' && data.data && data.data.length > 0) {
+                if (!selectId || selectId === 'mwr-item-description') currentMwrItemDescriptions = data.data;
+                data.data.forEach(desc => {
+                    const opt = document.createElement('option');
+                    opt.value = desc;
+                    opt.textContent = desc;
+                    sel.appendChild(opt);
+                });
+            } else if (data.status === 'error') {
+                currentMwrItemDescriptions = [];
+                sel.innerHTML = `<option value="" disabled selected>Error: ${data.message}</option>`;
+            } else {
+                currentMwrItemDescriptions = [];
+                sel.innerHTML = '<option value="" disabled selected>No item descriptions found</option>';
+            }
+        } catch (e) {
+            currentMwrItemDescriptions = [];
+            sel.innerHTML = '<option value="" disabled selected>Failed to load</option>';
+        }
+    }
+
+    // ======= Item Description Picker Modal (search/browse the full list) =======
+    function renderMwrDescriptionPickerList(items) {
+        const listEl = document.getElementById('mwr-description-picker-list');
+        if (!listEl) return;
+        if (!items || items.length === 0) {
+            listEl.innerHTML = '<div style="padding: 16px; text-align: center; color: #94a3b8; font-size: 0.85em;">No matching item descriptions.</div>';
+            return;
+        }
+        listEl.innerHTML = items.map(desc => `
+            <div class="mwr-description-picker-row" data-value="${desc.replace(/"/g, '&quot;')}" style="padding: 10px 14px; cursor: pointer; color: #e2e8f0; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.06);">${desc}</div>
+        `).join('');
+    }
+
+    const mwrDescriptionPickerModal = document.getElementById('mwr-description-picker-modal');
+
+    const btnMwrDescriptionPicker = document.getElementById('btn-mwr-description-picker');
+    if (btnMwrDescriptionPicker) {
+        btnMwrDescriptionPicker.addEventListener('click', () => {
+            const searchInput = document.getElementById('mwr-description-picker-search');
+            if (searchInput) searchInput.value = '';
+            renderMwrDescriptionPickerList(currentMwrItemDescriptions);
+            if (mwrDescriptionPickerModal) mwrDescriptionPickerModal.style.display = 'flex';
+        });
+    }
+
+    document.getElementById('close-mwr-description-picker')?.addEventListener('click', () => { mwrDescriptionPickerModal.style.display = 'none'; });
+    document.getElementById('cancel-mwr-description-picker')?.addEventListener('click', () => { mwrDescriptionPickerModal.style.display = 'none'; });
+
+    const mwrDescriptionPickerSearch = document.getElementById('mwr-description-picker-search');
+    if (mwrDescriptionPickerSearch) {
+        mwrDescriptionPickerSearch.addEventListener('input', () => {
+            const query = mwrDescriptionPickerSearch.value.trim().toLowerCase();
+            const filtered = query
+                ? currentMwrItemDescriptions.filter(desc => desc.toLowerCase().includes(query))
+                : currentMwrItemDescriptions;
+            renderMwrDescriptionPickerList(filtered);
+        });
+    }
+
+    const mwrDescriptionPickerList = document.getElementById('mwr-description-picker-list');
+    if (mwrDescriptionPickerList) {
+        mwrDescriptionPickerList.addEventListener('click', (e) => {
+            const row = e.target.closest('.mwr-description-picker-row');
+            if (!row) return;
+            const sel = document.getElementById('mwr-item-description');
+            if (sel) sel.value = row.getAttribute('data-value');
+            mwrDescriptionPickerModal.style.display = 'none';
+        });
+    }
+
+    // "Item Category" / "Item Description" catalog-management buttons on the
+    // Warranty Record form (beside View Records) -- reuse the shared
+    // category-modal (same catalog as Purchased Order's Category button) and
+    // a new dedicated description-modal.
+    const btnMwrCategory = document.getElementById('btn-mwr-category');
+    if (btnMwrCategory) {
+        btnMwrCategory.addEventListener('click', () => {
+            document.getElementById('category-name-input').value = '';
+            const msg = document.getElementById('category-modal-message');
+            if (msg) msg.style.display = 'none';
+            const modal = document.getElementById('category-modal');
+            if (modal) modal.style.display = 'flex';
+        });
+    }
+
+    const btnMwrDescription = document.getElementById('btn-mwr-description');
+    if (btnMwrDescription) {
+        btnMwrDescription.addEventListener('click', () => {
+            document.getElementById('description-name-input').value = '';
+            const msg = document.getElementById('description-modal-message');
+            if (msg) msg.style.display = 'none';
+            const modal = document.getElementById('description-modal');
+            if (modal) modal.style.display = 'flex';
+        });
+    }
+
+    const descriptionModal = document.getElementById('description-modal');
+    document.getElementById('close-description-modal')?.addEventListener('click', () => { descriptionModal.style.display = 'none'; });
+    document.getElementById('cancel-description-modal')?.addEventListener('click', () => { descriptionModal.style.display = 'none'; });
+
+    const descriptionForm = document.getElementById('description-form');
+    if (descriptionForm) {
+        descriptionForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const descriptionText = document.getElementById('description-name-input').value.trim();
+            if (!descriptionText) return;
+            const btn = document.getElementById('btn-save-description');
+            const msg = document.getElementById('description-modal-message');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'saveItemDescription', descriptionText: descriptionText, encodedBy: sessionStorage.getItem('loggedInUser') })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    msg.textContent = 'Item Description saved successfully!';
+                    msg.style.display = 'block';
+                    msg.style.background = 'rgba(16,185,129,0.15)';
+                    msg.style.color = '#10b981';
+                    msg.style.border = '1px solid rgba(16,185,129,0.3)';
+                    document.getElementById('description-name-input').value = '';
+                    setTimeout(() => { descriptionModal.style.display = 'none'; mwrLoadItemDescriptions(); }, 1200);
+                } else {
+                    msg.textContent = 'Error: ' + (result.message || 'Failed to save.');
+                    msg.style.display = 'block';
+                    msg.style.background = 'rgba(239,68,68,0.15)';
+                    msg.style.color = '#ef4444';
+                    msg.style.border = '1px solid rgba(239,68,68,0.3)';
+                }
+            } catch (err) {
+                msg.textContent = 'Network error. Please try again.';
+                msg.style.display = 'block';
+                msg.style.background = 'rgba(239,68,68,0.15)';
+                msg.style.color = '#ef4444';
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save"></i> Save Item Description';
+            }
+        });
     }
 
     const marvsPcWarrantyRecordForm = document.getElementById('marvspc-warranty-record-form');
@@ -3816,9 +4096,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 customerName: document.getElementById('mwr-customer-name').value,
                 mobileNumber: document.getElementById('mwr-mobile-number').value,
                 itemDescription: document.getElementById('mwr-item-description').value,
+                itemCategory: document.getElementById('mwr-item-category').value,
+                serialNumber: document.getElementById('mwr-serial-number').value,
                 issue: document.getElementById('mwr-issue').value,
                 technician: document.getElementById('mwr-technician').value,
-                technicianAssessment: document.getElementById('mwr-technician-assessment').value
+                receivedByStore: document.getElementById('mwr-received-by-store').value,
+                receivedByEmployee: document.getElementById('mwr-received-by-employee').value,
+                itemStatus: document.getElementById('mwr-item-status').value
             };
 
             submitBtn.disabled = true;
@@ -3861,15 +4145,39 @@ document.addEventListener('DOMContentLoaded', () => {
     // list's Customer Name filter (Fix 41) -- no reload needed when it changes.
     let currentMwrListRecords = [];
 
+    // Holds whatever rows are currently rendered in the View Records table
+    // (post-filter), in the same order as the on-screen rows -- so the
+    // "Modify" button's click handler (delegated, wired once below) can look
+    // up the FULL raw row (all 19 sheet columns A-S + the trailing physical
+    // rowIndex Apps Script appends) purely by its rendered position, without
+    // a second network round-trip.
+    let currentMwrRenderedRows = [];
+
     function renderMwrListTable(rows) {
         const tbody = document.getElementById('mwr-list-table-body');
         if (!tbody) return;
+        currentMwrRenderedRows = rows || [];
         if (!rows || rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
             return;
         }
-        tbody.innerHTML = rows.map(row => `
-            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+        // "Modify" -- only visible to RMA Admin, Manager, and Owner roles,
+        // same 3-role set already used elsewhere for restricted actions (e.g.
+        // the Purchased Items access check). Opens the Modify form pre-filled
+        // from this exact row (see the delegated click handler below).
+        // "Print" -- visible to every role, no restriction, per the user's
+        // explicit request.
+        const canModifyMwr = ['RMA Admin', 'Manager', 'Owner'].includes(sessionStorage.getItem('userRole'));
+        // Fix 55: the whole row's text turns red unless Item Status is
+        // exactly "Confirmed: To be forwarded to supplier" (white/default in
+        // that one case) -- a quick visual flag for anything that still
+        // needs attention. The Modify/Print buttons keep their own explicit
+        // colors (set inline below) so they're unaffected either way.
+        tbody.innerHTML = rows.map((row, idx) => {
+            const itemStatus = row[12] || '';
+            const rowTextColor = itemStatus === 'Confirmed: To be forwarded to supplier' ? '#f8fafc' : '#ef4444';
+            return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowTextColor};">
                 <td style="padding: 8px 10px;">${row[0] || ''}</td>
                 <td style="padding: 8px 10px;">${row[1] || ''}</td>
                 <td style="padding: 8px 10px;">${row[2] || ''}</td>
@@ -3879,16 +4187,319 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td style="padding: 8px 10px;">${row[6] || ''}</td>
                 <td style="padding: 8px 10px;">${row[7] || ''}</td>
                 <td style="padding: 8px 10px;">${row[8] || ''}</td>
+                <td style="padding: 8px 10px;">${row[9] || ''}</td>
+                <td style="padding: 8px 10px;">${itemStatus}</td>
+                <td style="padding: 8px 10px; white-space: nowrap;">${canModifyMwr ? `<button type="button" class="mwr-modify-btn" data-mwr-render-idx="${idx}" style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Modify</button>` : ''}
+                <button type="button" class="mwr-print-btn" data-mwr-render-idx="${idx}" style="background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-print"></i> Print</button></td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
+    }
+
+    // ======= MarvsPCStufz Warranty Record - Modify (Fix 53) =======
+    // Raw row layout returned by getExpenseRecords for "MarvsPCStufz
+    // Warranty" (0-indexed, matches the sheet's physical A-S columns 1:1,
+    // plus the trailing physical rowIndex Apps Script always appends):
+    //   0 Warranty Date, 1 Sales Invoice#, 2 Date of Purchased, 3 Customer
+    //   Name, 4 Mobile Number, 5 Item Description, 6 Item Category, 7 Serial
+    //   Number, 8 Issue/Problem Encountered, 9 Technician, 10 Received by
+    //   Store, 11 Received by Employee, 12 Item Status, 13 Date Forwarded to
+    //   Supplier, 14 Supplier Name, 15 Justification of pickup (Drive URL),
+    //   16 Date Return of item, 17 Date Updated, 18 Supplier Status,
+    //   [last] physical sheet rowIndex.
+    function mwrOpenModifyForm(row) {
+        document.getElementById('mwr-modify-warranty-date').value = row[0] || '';
+        document.getElementById('mwr-modify-sales-invoice').value = row[1] || '';
+        document.getElementById('mwr-modify-date-purchased').value = row[2] || '';
+        document.getElementById('mwr-modify-customer-name').value = row[3] || '';
+        document.getElementById('mwr-modify-mobile-number').value = row[4] || '';
+        document.getElementById('mwr-modify-item-description').value = row[5] || '';
+        document.getElementById('mwr-modify-item-category').value = row[6] || '';
+        document.getElementById('mwr-modify-serial-number').value = row[7] || '';
+        document.getElementById('mwr-modify-issue').value = row[8] || '';
+        document.getElementById('mwr-modify-technician').value = row[9] || '';
+        document.getElementById('mwr-modify-received-by-store').value = row[10] || '';
+        document.getElementById('mwr-modify-received-by-employee').value = row[11] || '';
+        document.getElementById('mwr-modify-item-status').value = row[12] || '';
+
+        document.getElementById('mwr-modify-date-forwarded').value = row[13] || '';
+        document.getElementById('mwr-modify-date-return').value = row[16] || '';
+        document.getElementById('mwr-modify-supplier-status').value = row[18] || '';
+        document.getElementById('mwr-modify-date-updated').value = row[17] || '';
+
+        const currentJustificationUrl = row[15] || '';
+        const justificationLink = document.getElementById('mwr-modify-justification-current');
+        if (currentJustificationUrl) {
+            justificationLink.href = currentJustificationUrl;
+            justificationLink.classList.remove('hidden');
+        } else {
+            justificationLink.classList.add('hidden');
+        }
+        document.getElementById('mwr-modify-justification-file').value = '';
+        mwrModifyCurrentJustificationUrl = currentJustificationUrl;
+
+        // rowIndex is always the LAST element of the row array (defensive --
+        // doesn't hardcode a column count that could drift).
+        document.getElementById('mwr-modify-row-index').value = row[row.length - 1] || '';
+
+        const supplierNameSel = document.getElementById('mwr-modify-supplier-name');
+        const desiredSupplier = row[14] || '';
+        const applySupplierValue = () => {
+            if (desiredSupplier && [...supplierNameSel.options].some(o => o.value === desiredSupplier)) {
+                supplierNameSel.value = desiredSupplier;
+            }
+        };
+        mwrLoadModifySuppliers().then(applySupplierValue);
+
+        document.getElementById('mwr-modify-status-message').classList.add('hidden');
+        hideAllContainers();
+        document.getElementById('marvspc-warranty-record-modify-container').classList.remove('hidden');
+    }
+
+    let mwrModifyCurrentJustificationUrl = '';
+
+    async function mwrLoadModifySuppliers(selectId) {
+        const sel = document.getElementById(selectId || 'mwr-modify-supplier-name');
+        if (!sel) return;
+        sel.innerHTML = '<option value="" disabled selected>Loading...</option>';
+        try {
+            const res = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getItemSuppliers' })
+            });
+            const data = await res.json();
+            sel.innerHTML = '<option value="" disabled selected>Select Supplier</option>';
+            if (data.status === 'success' && data.data && data.data.length > 0) {
+                data.data.forEach(sup => {
+                    const opt = document.createElement('option');
+                    opt.value = sup;
+                    opt.textContent = sup;
+                    sel.appendChild(opt);
+                });
+            } else {
+                sel.innerHTML = '<option value="" disabled selected>No suppliers found</option>';
+            }
+        } catch (e) {
+            sel.innerHTML = '<option value="" disabled selected>Failed to load</option>';
+        }
+    }
+
+    const mwrListTableBody = document.getElementById('mwr-list-table-body');
+    if (mwrListTableBody) {
+        mwrListTableBody.addEventListener('click', (e) => {
+            const modifyBtn = e.target.closest('.mwr-modify-btn');
+            if (modifyBtn) {
+                const idx = parseInt(modifyBtn.dataset.mwrRenderIdx, 10);
+                const row = currentMwrRenderedRows[idx];
+                if (row) mwrOpenModifyForm(row);
+                return;
+            }
+            const printBtn = e.target.closest('.mwr-print-btn');
+            if (printBtn) {
+                const idx = parseInt(printBtn.dataset.mwrRenderIdx, 10);
+                const row = currentMwrRenderedRows[idx];
+                if (row) printMwrRecord(row, printBtn);
+            }
+        });
+    }
+
+    // Prints a single MarvsPCStufz Warranty Record -- available to every
+    // role, no restriction (unlike "Modify"), per the user's explicit
+    // request. Same html2pdf "build hidden HTML -> render to PDF -> open in
+    // a new tab" convention as printManualQuotationRecord/
+    // generateDeliveryReceiptPdf above, reusing the same MGH_BRAND-style
+    // MarvsPCStufz branding block (MQ_BRAND).
+    function printMwrRecord(row, btnEl) {
+        const originalHtml = btnEl.innerHTML;
+        btnEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        btnEl.disabled = true;
+
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+            newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Warranty Record PDF...</h3>');
+        } else {
+            alert('Popup blocked! Please allow popups for this site to view the PDF.');
+        }
+
+        function restoreBtn() {
+            btnEl.innerHTML = originalHtml;
+            btnEl.disabled = false;
+        }
+
+        try {
+            const fields = [
+                ['Warranty Date', row[0]], ['Sales Invoice#', row[1]], ['Date of Purchased', row[2]],
+                ['Customer Name', row[3]], ['Mobile Number', row[4]], ['Item Description', row[5]],
+                ['Item Category', row[6]], ['Serial Number', row[7]], ['Issue/Problem Encountered', row[8]],
+                ['Technician', row[9]], ['Received by Store', row[10]], ['Received by Employee', row[11]],
+                ['Item Status', row[12]], ['Date Forwarded to Supplier', row[13]], ['Supplier Name', row[14]],
+                ['Date Return of Item', row[16]], ['Date Updated', row[17]], ['Supplier Status', row[18]]
+            ];
+            const justificationUrl = row[15] || '';
+
+            let fieldsRowsHtml = '';
+            fields.forEach(([label, value]) => {
+                fieldsRowsHtml += `
+                    <tr>
+                        <td style="padding:8px 10px; font-size:12px; color:#6b7280; border-bottom:1px solid #f0f1f3; width:38%;">${label}</td>
+                        <td style="padding:8px 10px; font-size:13px; color:#1f2937; border-bottom:1px solid #f0f1f3;">${value || '-'}</td>
+                    </tr>
+                `;
+            });
+
+            const htmlString = `
+                <div id="mwr-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
+                    <table style="width:100%; border-collapse:collapse; border-bottom:3px solid #4f46e5; padding-bottom:16px; margin-bottom:20px;">
+                        <tr>
+                            <td style="vertical-align:top; padding-bottom:16px;">
+                                <table style="border-collapse:collapse;"><tr>
+                                    <td style="width:46px; height:46px; background:#4f46e5; border-radius:10px; text-align:center; vertical-align:middle; color:#fff; font-size:22px; font-weight:700;">M</td>
+                                    <td style="padding-left:12px; vertical-align:middle;">
+                                        <div style="font-size:20px; font-weight:800; color:#1f2937; line-height:1.15;">${MQ_BRAND.name}</div>
+                                        <div style="font-size:11.5px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
+                                        <div style="font-size:11.5px; color:#6b7280; margin-top:5px;">📍 ${MQ_BRAND.address} &nbsp;|&nbsp; 📞 ${MQ_BRAND.phone}</div>
+                                    </td>
+                                </tr></table>
+                            </td>
+                            <td style="vertical-align:top; text-align:right; padding-bottom:16px;">
+                                <div style="font-size:22px; font-weight:800; color:#4f46e5; letter-spacing:1px;">WARRANTY RECORD</div>
+                                <div style="font-size:14px; font-weight:700; color:#1f2937; margin-top:4px;">${row[1] || ''}</div>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
+                        ${fieldsRowsHtml}
+                    </table>
+                    ${justificationUrl ? `<p style="font-size:12px; color:#6b7280;">Justification of Pickup: <a href="${justificationUrl}">${justificationUrl}</a></p>` : ''}
+                </div>
+            `;
+
+            const hiddenDiv = document.createElement('div');
+            hiddenDiv.innerHTML = htmlString;
+            hiddenDiv.style.position = 'absolute';
+            hiddenDiv.style.top = '-9999px';
+            hiddenDiv.style.left = '-9999px';
+            hiddenDiv.style.width = '800px';
+            document.body.appendChild(hiddenDiv);
+
+            const element = hiddenDiv.querySelector('#mwr-print-wrapper');
+            const opt = {
+                margin: 0.3,
+                filename: `Warranty_Record_${(row[1] || 'Record').toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+            };
+
+            html2pdf().set(opt).from(element).output('bloburl').then(function (pdfUrl) {
+                if (newTab) newTab.location.href = pdfUrl;
+                document.body.removeChild(hiddenDiv);
+                restoreBtn();
+            }).catch(function (error) {
+                console.error('Warranty Record PDF generation error:', error);
+                if (newTab) newTab.close();
+                alert('Error generating Warranty Record PDF.');
+                document.body.removeChild(hiddenDiv);
+                restoreBtn();
+            });
+        } catch (err) {
+            console.error(err);
+            if (newTab) newTab.close();
+            alert('Error generating Warranty Record PDF.');
+            restoreBtn();
+        }
+    }
+
+    const mwrModifySaveBtn = document.getElementById('mwr-modify-save-btn');
+    if (mwrModifySaveBtn) {
+        mwrModifySaveBtn.addEventListener('click', async () => {
+            const statusMsg = document.getElementById('mwr-modify-status-message');
+            const btnText = mwrModifySaveBtn.querySelector('.btn-text');
+            const spinner = mwrModifySaveBtn.querySelector('.spinner');
+
+            const rowIndex = document.getElementById('mwr-modify-row-index').value;
+            const payload = {
+                action: 'updateMwrSupplierDetails',
+                rowIndex: rowIndex,
+                dateForwarded: document.getElementById('mwr-modify-date-forwarded').value,
+                supplierName: document.getElementById('mwr-modify-supplier-name').value,
+                dateReturnOfItem: document.getElementById('mwr-modify-date-return').value,
+                supplierStatus: document.getElementById('mwr-modify-supplier-status').value,
+                justificationOfPickup: mwrModifyCurrentJustificationUrl,
+                encodedBy: sessionStorage.getItem('loggedInUser')
+            };
+
+            const fileInput = document.getElementById('mwr-modify-justification-file');
+            const file = fileInput.files && fileInput.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) {
+                    showMessage(statusMsg, 'File is too large. Please upload an image smaller than 5MB.', 'error');
+                    return;
+                }
+                payload.justificationFileData = await fileToBase64(file);
+                payload.justificationFileName = file.name;
+                payload.justificationMimeType = file.type;
+            }
+
+            mwrModifySaveBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMsg.classList.add('hidden');
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(statusMsg, result.message || 'Warranty Record updated successfully!', 'success');
+                    if (result.dateUpdated) {
+                        document.getElementById('mwr-modify-date-updated').value = result.dateUpdated;
+                    }
+                    // Fix 59: once saved, clear the editable Supplier / Return
+                    // Processing boxes back to blank -- it's already written to
+                    // the sheet, so there's no reason to keep showing the
+                    // just-submitted values on screen. Read-only/auto-computed
+                    // fields (Record Details, Date Updated) are left as-is.
+                    document.getElementById('mwr-modify-date-forwarded').value = '';
+                    document.getElementById('mwr-modify-supplier-name').value = '';
+                    document.getElementById('mwr-modify-date-return').value = '';
+                    document.getElementById('mwr-modify-supplier-status').value = '';
+                    document.getElementById('mwr-modify-justification-file').value = '';
+                } else {
+                    showMessage(statusMsg, result.message || 'Failed to update record.', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating MarvsPCStufz Warranty supplier details:', error);
+                showMessage(statusMsg, 'Network error. Please try again.', 'error');
+            } finally {
+                mwrModifySaveBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
     }
 
     function applyMwrListFilter() {
         const invoiceFilterEl = document.getElementById('mwr-list-invoice-filter');
         const invoiceQuery = ((invoiceFilterEl && invoiceFilterEl.value) || '').trim().toLowerCase();
+        const nameFilterEl = document.getElementById('mwr-list-name-filter');
+        const nameQuery = ((nameFilterEl && nameFilterEl.value) || '').trim().toLowerCase();
+        const categoryFilterEl = document.getElementById('mwr-list-category-filter');
+        const categoryQuery = ((categoryFilterEl && categoryFilterEl.value) || '').trim().toLowerCase();
         let filtered = currentMwrListRecords;
         if (invoiceQuery) {
             filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(invoiceQuery));
+        }
+        if (nameQuery) {
+            filtered = filtered.filter(row => (row[3] || '').toString().toLowerCase().includes(nameQuery));
+        }
+        if (categoryQuery) {
+            filtered = filtered.filter(row => (row[6] || '').toString().toLowerCase().includes(categoryQuery));
         }
         renderMwrListTable(filtered);
     }
@@ -3905,7 +4516,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnLoad.disabled = true;
         btnText.classList.add('hidden');
         spinner.classList.remove('hidden');
-        tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 
         try {
             const response = await fetch(SCRIPT_URL, {
@@ -3926,11 +4537,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentMwrListRecords = result.data || [];
                 applyMwrListFilter();
             } else {
-                tbody.innerHTML = `<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="12" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
             }
         } catch (error) {
             console.error('Error loading MarvsPCStufz Warranty records:', error);
-            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
         } finally {
             btnLoad.disabled = false;
             btnText.classList.remove('hidden');
@@ -3974,6 +4585,311 @@ document.addEventListener('DOMContentLoaded', () => {
     const mwrListInvoiceFilter = document.getElementById('mwr-list-invoice-filter');
     if (mwrListInvoiceFilter) {
         mwrListInvoiceFilter.addEventListener('input', applyMwrListFilter);
+    }
+
+    const mwrListNameFilter = document.getElementById('mwr-list-name-filter');
+    if (mwrListNameFilter) {
+        mwrListNameFilter.addEventListener('input', applyMwrListFilter);
+    }
+
+    const mwrListCategoryFilter = document.getElementById('mwr-list-category-filter');
+    if (mwrListCategoryFilter) {
+        mwrListCategoryFilter.addEventListener('input', applyMwrListFilter);
+    }
+
+    // ======= MarvsPCStufz Item Replacement List / Modify (Fix 57) =======
+    // Same "MarvsPCStufz Warranty" sheet/actions as the Warranty Record list
+    // above (row layout identical, see the comment on mwrOpenModifyForm),
+    // but shows EVERY column (all 19, A-S) and ends with a Modify-only
+    // action (no Print here) restricted to RMA Admin/Manager/Owner, per the
+    // user's explicit simplification request.
+    let currentIrListRecords = [];
+    let currentIrRenderedRows = [];
+
+    function renderIrListTable(rows) {
+        const tbody = document.getElementById('ir-list-table-body');
+        if (!tbody) return;
+        currentIrRenderedRows = rows || [];
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="25" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            return;
+        }
+        const canModifyIr = ['RMA Admin', 'Manager', 'Owner'].includes(sessionStorage.getItem('userRole'));
+        tbody.innerHTML = rows.map((row, idx) => {
+            const itemStatus = row[12] || '';
+            const rowTextColor = itemStatus === 'Confirmed: To be forwarded to supplier' ? '#f8fafc' : '#ef4444';
+            const justificationUrl = row[15] || '';
+            return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowTextColor};">
+                <td style="padding: 8px 10px;">${row[0] || ''}</td>
+                <td style="padding: 8px 10px;">${row[1] || ''}</td>
+                <td style="padding: 8px 10px;">${row[2] || ''}</td>
+                <td style="padding: 8px 10px;">${row[3] || ''}</td>
+                <td style="padding: 8px 10px;">${row[4] || ''}</td>
+                <td style="padding: 8px 10px;">${row[5] || ''}</td>
+                <td style="padding: 8px 10px;">${row[6] || ''}</td>
+                <td style="padding: 8px 10px;">${row[7] || ''}</td>
+                <td style="padding: 8px 10px;">${row[8] || ''}</td>
+                <td style="padding: 8px 10px;">${row[9] || ''}</td>
+                <td style="padding: 8px 10px;">${row[10] || ''}</td>
+                <td style="padding: 8px 10px;">${row[11] || ''}</td>
+                <td style="padding: 8px 10px;">${itemStatus}</td>
+                <td style="padding: 8px 10px;">${row[13] || ''}</td>
+                <td style="padding: 8px 10px;">${row[14] || ''}</td>
+                <td style="padding: 8px 10px;">${justificationUrl ? `<a href="${justificationUrl}" target="_blank" style="color: inherit; text-decoration: underline;">View</a>` : ''}</td>
+                <td style="padding: 8px 10px;">${row[16] || ''}</td>
+                <td style="padding: 8px 10px;">${row[17] || ''}</td>
+                <td style="padding: 8px 10px;">${row[18] || ''}</td>
+                <td style="padding: 8px 10px;">${row[19] || ''}</td>
+                <td style="padding: 8px 10px;">${row[20] || ''}</td>
+                <td style="padding: 8px 10px;">${row[21] || ''}</td>
+                <td style="padding: 8px 10px;">${row[22] || ''}</td>
+                <td style="padding: 8px 10px;">${row[23] || ''}</td>
+                <td style="padding: 8px 10px; white-space: nowrap;">${canModifyIr ? `<button type="button" class="ir-modify-btn" data-ir-render-idx="${idx}" style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Modify</button>` : ''}</td>
+            </tr>
+        `;
+        }).join('');
+    }
+
+    function irOpenModifyForm(row) {
+        document.getElementById('ir-modify-warranty-date').value = row[0] || '';
+        document.getElementById('ir-modify-sales-invoice').value = row[1] || '';
+        document.getElementById('ir-modify-date-purchased').value = row[2] || '';
+        document.getElementById('ir-modify-customer-name').value = row[3] || '';
+        document.getElementById('ir-modify-mobile-number').value = row[4] || '';
+        document.getElementById('ir-modify-item-description').value = row[5] || '';
+        document.getElementById('ir-modify-item-category').value = row[6] || '';
+        document.getElementById('ir-modify-serial-number').value = row[7] || '';
+        document.getElementById('ir-modify-issue').value = row[8] || '';
+        document.getElementById('ir-modify-technician').value = row[9] || '';
+        document.getElementById('ir-modify-received-by-store').value = row[10] || '';
+        document.getElementById('ir-modify-received-by-employee').value = row[11] || '';
+        document.getElementById('ir-modify-item-status').value = row[12] || '';
+
+        document.getElementById('ir-modify-date-forwarded').value = row[13] || '';
+        document.getElementById('ir-modify-date-return').value = row[16] || '';
+        document.getElementById('ir-modify-supplier-status').value = row[18] || '';
+        document.getElementById('ir-modify-date-updated').value = row[17] || '';
+
+        // "Customer Return Processing" section (columns T-X / indices 19-23).
+        // "RMA In-charge" always reflects whoever is CURRENTLY logged in and
+        // opening this Modify form (not whatever was saved before), same
+        // auto-fill-on-open convention as "Received by Employee" above.
+        document.getElementById('ir-modify-customer-date-return').value = row[19] || '';
+        document.getElementById('ir-modify-customer-return-status').value = row[20] || '';
+        document.getElementById('ir-modify-rma-incharge').value = sessionStorage.getItem('loggedInUser') || '';
+        document.getElementById('ir-modify-warranty-status').value = row[22] || '';
+        document.getElementById('ir-modify-remarks').value = row[23] || '';
+
+        const currentJustificationUrl = row[15] || '';
+        const justificationLink = document.getElementById('ir-modify-justification-current');
+        if (currentJustificationUrl) {
+            justificationLink.href = currentJustificationUrl;
+            justificationLink.classList.remove('hidden');
+        } else {
+            justificationLink.classList.add('hidden');
+        }
+        document.getElementById('ir-modify-justification-file').value = '';
+        irModifyCurrentJustificationUrl = currentJustificationUrl;
+
+        document.getElementById('ir-modify-row-index').value = row[row.length - 1] || '';
+
+        const supplierNameSel = document.getElementById('ir-modify-supplier-name');
+        const desiredSupplier = row[14] || '';
+        const applySupplierValue = () => {
+            if (desiredSupplier && [...supplierNameSel.options].some(o => o.value === desiredSupplier)) {
+                supplierNameSel.value = desiredSupplier;
+            }
+        };
+        mwrLoadModifySuppliers('ir-modify-supplier-name').then(applySupplierValue);
+
+        document.getElementById('ir-modify-status-message').classList.add('hidden');
+        hideAllContainers();
+        document.getElementById('marvspc-item-replacement-modify-container').classList.remove('hidden');
+    }
+
+    let irModifyCurrentJustificationUrl = '';
+
+    const irListTableBody = document.getElementById('ir-list-table-body');
+    if (irListTableBody) {
+        irListTableBody.addEventListener('click', (e) => {
+            const modifyBtn = e.target.closest('.ir-modify-btn');
+            if (modifyBtn) {
+                const idx = parseInt(modifyBtn.dataset.irRenderIdx, 10);
+                const row = currentIrRenderedRows[idx];
+                if (row) irOpenModifyForm(row);
+            }
+        });
+    }
+
+    const irModifySaveBtn = document.getElementById('ir-modify-save-btn');
+    if (irModifySaveBtn) {
+        irModifySaveBtn.addEventListener('click', async () => {
+            const statusMsg = document.getElementById('ir-modify-status-message');
+            const btnText = irModifySaveBtn.querySelector('.btn-text');
+            const spinner = irModifySaveBtn.querySelector('.spinner');
+
+            const rowIndex = document.getElementById('ir-modify-row-index').value;
+            const payload = {
+                action: 'updateMwrSupplierDetails',
+                rowIndex: rowIndex,
+                dateForwarded: document.getElementById('ir-modify-date-forwarded').value,
+                supplierName: document.getElementById('ir-modify-supplier-name').value,
+                dateReturnOfItem: document.getElementById('ir-modify-date-return').value,
+                supplierStatus: document.getElementById('ir-modify-supplier-status').value,
+                justificationOfPickup: irModifyCurrentJustificationUrl,
+                customerDateReturn: document.getElementById('ir-modify-customer-date-return').value,
+                customerReturnStatus: document.getElementById('ir-modify-customer-return-status').value,
+                rmaInCharge: document.getElementById('ir-modify-rma-incharge').value,
+                warrantyStatus: document.getElementById('ir-modify-warranty-status').value,
+                remarks: document.getElementById('ir-modify-remarks').value,
+                encodedBy: sessionStorage.getItem('loggedInUser')
+            };
+
+            const fileInput = document.getElementById('ir-modify-justification-file');
+            const file = fileInput.files && fileInput.files[0];
+            if (file) {
+                if (file.size > 5 * 1024 * 1024) {
+                    showMessage(statusMsg, 'File is too large. Please upload an image smaller than 5MB.', 'error');
+                    return;
+                }
+                payload.justificationFileData = await fileToBase64(file);
+                payload.justificationFileName = file.name;
+                payload.justificationMimeType = file.type;
+            }
+
+            irModifySaveBtn.disabled = true;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            statusMsg.classList.add('hidden');
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(statusMsg, result.message || 'Item Replacement record updated successfully!', 'success');
+                    if (result.dateUpdated) {
+                        document.getElementById('ir-modify-date-updated').value = result.dateUpdated;
+                    }
+                    // Fix 60: "Supplier / Return Processing" is now a LOCKED,
+                    // read-only reference section on this form (it's managed
+                    // exclusively from the Warranty Record Modify form) -- so
+                    // it's no longer cleared here (there's nothing the user
+                    // just typed into it to clear; clearing it would just wipe
+                    // the accurate display, and since the backend still writes
+                    // back whatever these fields currently hold, blanking them
+                    // would also erase the real N-S data in the sheet on the
+                    // next save). Fix 59: once saved, clear the editable
+                    // Customer Return Processing boxes back to blank -- it's
+                    // already written to the sheet, so there's no reason to
+                    // keep showing the just-submitted values on screen.
+                    // Read-only/auto-computed fields (Record Details, Date
+                    // Updated, RMA In-charge) are left as-is.
+                    document.getElementById('ir-modify-customer-date-return').value = '';
+                    document.getElementById('ir-modify-customer-return-status').value = '';
+                    document.getElementById('ir-modify-warranty-status').value = '';
+                    document.getElementById('ir-modify-remarks').value = '';
+                } else {
+                    showMessage(statusMsg, result.message || 'Failed to update record.', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating MarvsPCStufz Item Replacement supplier details:', error);
+                showMessage(statusMsg, 'Network error. Please try again.', 'error');
+            } finally {
+                irModifySaveBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    function applyIrListFilter() {
+        const invoiceFilterEl = document.getElementById('ir-list-invoice-filter');
+        const invoiceQuery = ((invoiceFilterEl && invoiceFilterEl.value) || '').trim().toLowerCase();
+        const nameFilterEl = document.getElementById('ir-list-name-filter');
+        const nameQuery = ((nameFilterEl && nameFilterEl.value) || '').trim().toLowerCase();
+        const categoryFilterEl = document.getElementById('ir-list-category-filter');
+        const categoryQuery = ((categoryFilterEl && categoryFilterEl.value) || '').trim().toLowerCase();
+        let filtered = currentIrListRecords;
+        if (invoiceQuery) {
+            filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(invoiceQuery));
+        }
+        if (nameQuery) {
+            filtered = filtered.filter(row => (row[3] || '').toString().toLowerCase().includes(nameQuery));
+        }
+        if (categoryQuery) {
+            filtered = filtered.filter(row => (row[6] || '').toString().toLowerCase().includes(categoryQuery));
+        }
+        renderIrListTable(filtered);
+    }
+
+    async function loadIrListRecords() {
+        const tbody = document.getElementById('ir-list-table-body');
+        const btnLoad = document.getElementById('btn-load-ir-list');
+        const btnText = btnLoad.querySelector('.btn-text');
+        const spinner = btnLoad.querySelector('.spinner');
+
+        const startDate = document.getElementById('ir-list-start-date').value;
+        const endDate = document.getElementById('ir-list-end-date').value;
+
+        btnLoad.disabled = true;
+        btnText.classList.add('hidden');
+        spinner.classList.remove('hidden');
+        tbody.innerHTML = '<tr><td colspan="25" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'MarvsPCStufz Warranty',
+                    startDate: startDate,
+                    endDate: endDate,
+                    branch: 'All',
+                    noCache: true
+                })
+            });
+            const result = await response.json();
+
+            if (result.status === 'success') {
+                currentIrListRecords = result.data || [];
+                applyIrListFilter();
+            } else {
+                tbody.innerHTML = `<tr><td colspan="25" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+            }
+        } catch (error) {
+            console.error('Error loading MarvsPCStufz Item Replacement records:', error);
+            tbody.innerHTML = '<tr><td colspan="25" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        } finally {
+            btnLoad.disabled = false;
+            btnText.classList.remove('hidden');
+            spinner.classList.add('hidden');
+        }
+    }
+
+    const btnLoadIrList = document.getElementById('btn-load-ir-list');
+    if (btnLoadIrList) {
+        btnLoadIrList.addEventListener('click', loadIrListRecords);
+    }
+
+    const irListInvoiceFilter = document.getElementById('ir-list-invoice-filter');
+    if (irListInvoiceFilter) {
+        irListInvoiceFilter.addEventListener('input', applyIrListFilter);
+    }
+
+    const irListNameFilter = document.getElementById('ir-list-name-filter');
+    if (irListNameFilter) {
+        irListNameFilter.addEventListener('input', applyIrListFilter);
+    }
+
+    const irListCategoryFilter = document.getElementById('ir-list-category-filter');
+    if (irListCategoryFilter) {
+        irListCategoryFilter.addEventListener('input', applyIrListFilter);
     }
 
     const menuPurchasedBtn = document.getElementById('menu-purchased-btn');
@@ -4335,7 +5251,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     msg.style.color = '#10b981';
                     msg.style.border = '1px solid rgba(16,185,129,0.3)';
                     document.getElementById('category-name-input').value = '';
-                    setTimeout(() => { categoryModal.style.display = 'none'; loadCategoryDropdown(); }, 1200);
+                    setTimeout(() => { categoryModal.style.display = 'none'; loadCategoryDropdown(); mwrLoadItemCategories(); }, 1200);
                 } else {
                     msg.textContent = 'Error: ' + (result.message || 'Failed to save.');
                     msg.style.display = 'block';
