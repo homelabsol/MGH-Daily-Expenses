@@ -4173,22 +4173,29 @@ document.addEventListener('DOMContentLoaded', () => {
         // that one case) -- a quick visual flag for anything that still
         // needs attention. The Modify/Print buttons keep their own explicit
         // colors (set inline below) so they're unaffected either way.
+        // Fix 63: same as the Item Replacement list (Fix 61) -- long
+        // unbroken values (serial numbers, etc.) have no spaces for the
+        // browser to wrap at, so with fixed column widths they were
+        // overflowing straight into the next column instead of wrapping.
+        // word-break/overflow-wrap force a break even mid-word so every
+        // cell wraps within its own column.
+        const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
         tbody.innerHTML = rows.map((row, idx) => {
             const itemStatus = row[12] || '';
             const rowTextColor = itemStatus === 'Confirmed: To be forwarded to supplier' ? '#f8fafc' : '#ef4444';
             return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowTextColor};">
-                <td style="padding: 8px 10px;">${row[0] || ''}</td>
-                <td style="padding: 8px 10px;">${row[1] || ''}</td>
-                <td style="padding: 8px 10px;">${row[2] || ''}</td>
-                <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                <td style="padding: 8px 10px;">${row[4] || ''}</td>
-                <td style="padding: 8px 10px;">${row[5] || ''}</td>
-                <td style="padding: 8px 10px;">${row[6] || ''}</td>
-                <td style="padding: 8px 10px;">${row[7] || ''}</td>
-                <td style="padding: 8px 10px;">${row[8] || ''}</td>
-                <td style="padding: 8px 10px;">${row[9] || ''}</td>
-                <td style="padding: 8px 10px;">${itemStatus}</td>
+                <td style="${cellStyle}">${row[0] || ''}</td>
+                <td style="${cellStyle}">${row[1] || ''}</td>
+                <td style="${cellStyle}">${row[2] || ''}</td>
+                <td style="${cellStyle}">${row[3] || ''}</td>
+                <td style="${cellStyle}">${row[4] || ''}</td>
+                <td style="${cellStyle}">${row[5] || ''}</td>
+                <td style="${cellStyle}">${row[6] || ''}</td>
+                <td style="${cellStyle}">${row[7] || ''}</td>
+                <td style="${cellStyle}">${row[8] || ''}</td>
+                <td style="${cellStyle}">${row[9] || ''}</td>
+                <td style="${cellStyle}">${itemStatus}</td>
                 <td style="padding: 8px 10px; white-space: nowrap;">${canModifyMwr ? `<button type="button" class="mwr-modify-btn" data-mwr-render-idx="${idx}" style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Modify</button>` : ''}
                 <button type="button" class="mwr-print-btn" data-mwr-render-idx="${idx}" style="background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-print"></i> Print</button></td>
             </tr>
@@ -4615,36 +4622,43 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const canModifyIr = ['RMA Admin', 'Manager', 'Owner'].includes(sessionStorage.getItem('userRole'));
+        // Fix 61: long unbroken values (serial numbers, etc.) don't have
+        // spaces for the browser to wrap at, so with table-layout:fixed +
+        // fixed column widths they were overflowing straight into the next
+        // column instead of wrapping -- causing the misaligned/overlapping
+        // text the user reported. word-break/overflow-wrap force a break
+        // even mid-word so every cell wraps within its own column.
+        const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
         tbody.innerHTML = rows.map((row, idx) => {
             const itemStatus = row[12] || '';
             const rowTextColor = itemStatus === 'Confirmed: To be forwarded to supplier' ? '#f8fafc' : '#ef4444';
             const justificationUrl = row[15] || '';
             return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowTextColor};">
-                <td style="padding: 8px 10px;">${row[0] || ''}</td>
-                <td style="padding: 8px 10px;">${row[1] || ''}</td>
-                <td style="padding: 8px 10px;">${row[2] || ''}</td>
-                <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                <td style="padding: 8px 10px;">${row[4] || ''}</td>
-                <td style="padding: 8px 10px;">${row[5] || ''}</td>
-                <td style="padding: 8px 10px;">${row[6] || ''}</td>
-                <td style="padding: 8px 10px;">${row[7] || ''}</td>
-                <td style="padding: 8px 10px;">${row[8] || ''}</td>
-                <td style="padding: 8px 10px;">${row[9] || ''}</td>
-                <td style="padding: 8px 10px;">${row[10] || ''}</td>
-                <td style="padding: 8px 10px;">${row[11] || ''}</td>
-                <td style="padding: 8px 10px;">${itemStatus}</td>
-                <td style="padding: 8px 10px;">${row[13] || ''}</td>
-                <td style="padding: 8px 10px;">${row[14] || ''}</td>
-                <td style="padding: 8px 10px;">${justificationUrl ? `<a href="${justificationUrl}" target="_blank" style="color: inherit; text-decoration: underline;">View</a>` : ''}</td>
-                <td style="padding: 8px 10px;">${row[16] || ''}</td>
-                <td style="padding: 8px 10px;">${row[17] || ''}</td>
-                <td style="padding: 8px 10px;">${row[18] || ''}</td>
-                <td style="padding: 8px 10px;">${row[19] || ''}</td>
-                <td style="padding: 8px 10px;">${row[20] || ''}</td>
-                <td style="padding: 8px 10px;">${row[21] || ''}</td>
-                <td style="padding: 8px 10px;">${row[22] || ''}</td>
-                <td style="padding: 8px 10px;">${row[23] || ''}</td>
+                <td style="${cellStyle}">${row[0] || ''}</td>
+                <td style="${cellStyle}">${row[1] || ''}</td>
+                <td style="${cellStyle}">${row[2] || ''}</td>
+                <td style="${cellStyle}">${row[3] || ''}</td>
+                <td style="${cellStyle}">${row[4] || ''}</td>
+                <td style="${cellStyle}">${row[5] || ''}</td>
+                <td style="${cellStyle}">${row[6] || ''}</td>
+                <td style="${cellStyle}">${row[7] || ''}</td>
+                <td style="${cellStyle}">${row[8] || ''}</td>
+                <td style="${cellStyle}">${row[9] || ''}</td>
+                <td style="${cellStyle}">${row[10] || ''}</td>
+                <td style="${cellStyle}">${row[11] || ''}</td>
+                <td style="${cellStyle}">${itemStatus}</td>
+                <td style="${cellStyle}">${row[13] || ''}</td>
+                <td style="${cellStyle}">${row[14] || ''}</td>
+                <td style="${cellStyle}">${justificationUrl ? `<a href="${justificationUrl}" target="_blank" style="color: inherit; text-decoration: underline;">View</a>` : ''}</td>
+                <td style="${cellStyle}">${row[16] || ''}</td>
+                <td style="${cellStyle}">${row[17] || ''}</td>
+                <td style="${cellStyle}">${row[18] || ''}</td>
+                <td style="${cellStyle}">${row[19] || ''}</td>
+                <td style="${cellStyle}">${row[20] || ''}</td>
+                <td style="${cellStyle}">${row[21] || ''}</td>
+                <td style="${cellStyle}">${row[22] || ''}</td>
+                <td style="${cellStyle}">${row[23] || ''}</td>
                 <td style="padding: 8px 10px; white-space: nowrap;">${canModifyIr ? `<button type="button" class="ir-modify-btn" data-ir-render-idx="${idx}" style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Modify</button>` : ''}</td>
             </tr>
         `;
