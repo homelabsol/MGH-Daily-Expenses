@@ -169,6 +169,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const menuWarrantyBtn = document.getElementById('menu-warranty-btn');
     const backBtns = document.querySelectorAll('.back-btn');
 
+    // Fix 68: barcode/QR scanners act like a keyboard and send a real
+    // "Enter" keystroke right after typing the scanned value, to mimic
+    // pressing Enter after manual entry. Browsers submit a <form>
+    // automatically when Enter is pressed inside ANY of its text inputs (not
+    // just the one that was scanned) -- so scanning a Serial Number into one
+    // of these fields was silently submitting/saving the whole record before
+    // the rest of the form was even filled out (a real, reported bug:
+    // "kapag nag baril kami ng serial number gamit ang barcode reader...
+    // nag se save sya bigla"). This suppresses ONLY the Enter key's default
+    // browser action on these specific fields -- typing/scanning still fills
+    // the field normally, the record only saves when the actual Submit
+    // button is clicked. Applied to every LIVE (non-disabled) Serial
+    // Number-type field found across the app that sits inside a real
+    // save-triggering <form>: the Warranty Record form (originally
+    // reported), the Purchased Order form, the older Warranty form, and the
+    // Item Replacement form. Deliberately NOT applied to `edit-serial-filter`
+    // (the View & Edit modal's filter field) -- pressing Enter there triggers
+    // a read-only "Load Records" search, not a save, so there's no
+    // data-loss risk to guard against.
+    function preventEnterSubmit(inputEl) {
+        if (!inputEl) return;
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') e.preventDefault();
+        });
+    }
+    ['mwr-serial-number', 'purchased-serial', 'warranty-serial', 'repl-form-repl-serial'].forEach(id => {
+        preventEnterSubmit(document.getElementById(id));
+    });
+
     // Check if user is already logged in
     const sessionUser = sessionStorage.getItem('loggedInUser');
     if (sessionUser) {
@@ -956,18 +985,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
                 return;
             }
+            // Fix 69: same overlapping-text bug fixed on the Deliveries list
+            // (and previously Item Replacement/Fix 61, MarvsPCStufz
+            // Warranty/Fix 63) -- long unbroken values in a fixed-width
+            // table cell have no natural place to wrap, so they overflow
+            // into the next column instead. word-break/overflow-wrap force
+            // a break even mid-word so every cell wraps within its own
+            // column.
+            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
             tbody.innerHTML = rows.map(row => `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                    <td style="padding: 8px 10px;">${row[0] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[1] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[4] || 0}</td>
-                    <td style="padding: 8px 10px; color: #ef4444;">${row[5] || 0}</td>
-                    <td style="padding: 8px 10px; color: #f59e0b;">${row[6] || 0}</td>
-                    <td style="padding: 8px 10px; color: #10b981; font-weight: 600;">${row[7] || 0}</td>
-                    <td style="padding: 8px 10px;">${row[8] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[9] || ''}</td>
+                    <td style="${cellStyle}">${row[0] || ''}</td>
+                    <td style="${cellStyle}">${row[1] || ''}</td>
+                    <td style="${cellStyle}">${row[2] || ''}</td>
+                    <td style="${cellStyle}">${row[3] || ''}</td>
+                    <td style="${cellStyle}">${row[4] || 0}</td>
+                    <td style="${cellStyle} color: #ef4444;">${row[5] || 0}</td>
+                    <td style="${cellStyle} color: #f59e0b;">${row[6] || 0}</td>
+                    <td style="${cellStyle} color: #10b981; font-weight: 600;">${row[7] || 0}</td>
+                    <td style="${cellStyle}">${row[8] || ''}</td>
+                    <td style="${cellStyle}">${row[9] || ''}</td>
                 </tr>
             `).join('');
         } catch (err) {
@@ -1246,20 +1283,27 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
             return;
         }
+        // Fix 69: same overlapping-text bug fixed on the Deliveries list
+        // (and previously Item Replacement/Fix 61, MarvsPCStufz
+        // Warranty/Fix 63) -- long unbroken values in a fixed-width table
+        // cell have no natural place to wrap, so they overflow into the
+        // next column instead. word-break/overflow-wrap force a break even
+        // mid-word so every cell wraps within its own column.
+        const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
         tbody.innerHTML = rows.map((row, idx) => {
             const dateStr = (row[1] || '').toString().split(/[T ]/)[0];
             const totalQty = row[7] || 0;
             const totalAmount = parseFloat(row[10]) || 0;
             return `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                    <td style="padding: 8px 10px; font-weight: 600; color: var(--primary);">${row[0] || ''}</td>
-                    <td style="padding: 8px 10px;">${dateStr}</td>
-                    <td style="padding: 8px 10px; font-weight: 500;">${row[2] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
-                    <td style="padding: 8px 10px;">${totalQty}</td>
-                    <td style="padding: 8px 10px; font-weight: 600;">₱${formatCurrency(totalAmount)}</td>
-                    <td style="padding: 8px 10px;">${row[11] || ''}</td>
+                    <td style="${cellStyle} font-weight: 600; color: var(--primary);">${row[0] || ''}</td>
+                    <td style="${cellStyle}">${dateStr}</td>
+                    <td style="${cellStyle} font-weight: 500;">${row[2] || ''}</td>
+                    <td style="${cellStyle}">${row[3] || ''}</td>
+                    <td style="${cellStyle}">${row[4] || ''}</td>
+                    <td style="${cellStyle}">${totalQty}</td>
+                    <td style="${cellStyle} font-weight: 600;">₱${formatCurrency(totalAmount)}</td>
+                    <td style="${cellStyle}">${row[11] || ''}</td>
                     <td style="padding: 8px 10px; white-space: nowrap;">
                         <button type="button" class="btn-mq-print-row" data-mq-row-index="${idx}" style="background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Print</button>
                         <button type="button" class="btn-mq-edit-row" data-mq-row-index="${idx}" style="background: rgba(59,130,246,0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-edit"></i> Edit</button>
@@ -1376,22 +1420,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const dateFormatted = dateStr ? new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
 
-            let itemsRowsHtml = '';
-            items.forEach(it => {
-                const qty = parseFloat(it.qty) || 0;
-                const amount = parseFloat(it.amount) || 0;
-                itemsRowsHtml += `
-                    <tr>
-                        <td style="padding:9px 10px; font-size:13px; border-bottom:1px solid #f0f1f3; color:#1f2937;">${it.desc || ''}</td>
-                        <td style="padding:9px 10px; font-size:13px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">${qty}</td>
-                        <td style="padding:9px 10px; font-size:13px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(amount)}</td>
-                        <td style="padding:9px 10px; font-size:13px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(qty * amount)}</td>
-                    </tr>
-                `;
-            });
+            // Fix 70: the user wants the quotation itself to ALWAYS stay on
+            // exactly one printed page no matter how many parts are on it,
+            // with page 2 always being the Terms & Conditions (never pushed
+            // to page 3). The items table is the only part of page 1 whose
+            // height actually grows with the record -- everything else
+            // (header, customer info, totals, terms note, signatures,
+            // footer) is fixed regardless of item count. So instead of a
+            // single hardcoded row size, item rows are built through this
+            // function so they can be regenerated at a smaller font/padding
+            // if, after the first render, the real measured page-1 height
+            // (see the shrink-to-fit pass further below, after the hidden
+            // div is attached to the document) would overflow one page.
+            // Base sizes below (13px font, 9px/10px padding) match exactly
+            // what this table always used before Fix 70, so a normal-length
+            // quotation renders pixel-identical to before -- shrinking only
+            // ever kicks in once the items actually would have overflowed.
+            const MQ_ITEMS_BASE_FONT_PX = 13;
+            const MQ_ITEMS_BASE_PAD_V_PX = 9;
+            const MQ_ITEMS_BASE_PAD_H_PX = 10;
+            const MQ_ITEMS_MIN_SCALE = 0.6; // floor so shrunk text never becomes illegibly small
+
+            function buildMqItemsRowsHtml(fontPx, padVPx, padHPx) {
+                let html = '';
+                items.forEach(it => {
+                    const qty = parseFloat(it.qty) || 0;
+                    const amount = parseFloat(it.amount) || 0;
+                    html += `
+                        <tr>
+                            <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937;">${it.desc || ''}</td>
+                            <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">${qty}</td>
+                            <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(amount)}</td>
+                            <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(qty * amount)}</td>
+                        </tr>
+                    `;
+                });
+                return html;
+            }
+
+            const itemsRowsHtml = buildMqItemsRowsHtml(MQ_ITEMS_BASE_FONT_PX, MQ_ITEMS_BASE_PAD_V_PX, MQ_ITEMS_BASE_PAD_H_PX);
 
             const htmlString = `
                 <div id="mq-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
+                <div id="mq-page1">
                     <table style="width:100%; border-collapse:collapse; border-bottom:3px solid #4f46e5; padding-bottom:16px; margin-bottom:20px;">
                         <tr>
                             <td style="vertical-align:top; padding-bottom:16px;">
@@ -1430,7 +1501,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </tr>
                     </table>
 
-                    <table style="width:100%; border-collapse:collapse; margin-bottom:18px;">
+                    <table id="mq-items-table" style="width:100%; border-collapse:collapse; margin-bottom:18px;">
                         <thead>
                             <tr style="background:#f3f4f6;">
                                 <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:left; border-bottom:2px solid #e5e7eb;">Description</th>
@@ -1439,7 +1510,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Amount</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="mq-items-tbody">
                             ${itemsRowsHtml}
                         </tbody>
                     </table>
@@ -1480,28 +1551,107 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${MQ_BRAND.name} — this document is a quotation only and is not a final invoice or receipt.
                         </div>
                     </div>
+                </div>
 
                     ${mqWarrantyTermsHtml()}
                 </div>
             `;
+
+            // 0.4in margin combined with the page-break-before padding trick was
+            // confirmed in testing to occasionally trigger an extra, nearly-blank
+            // trailing page (a jsPDF/html2pdf page-height rounding interaction) --
+            // 0.3in tested cleanly across a 1-item, 4-item, and 10-item sample with
+            // no stray page.
+            const MQ_MARGIN_IN = 0.3;
+
+            // Fix 70 (v2): the first version of this shrink-to-fit pass measured
+            // against a made-up 800px-wide preview and an approximated page-height
+            // budget -- close enough for a small quotation to still "pass" its own
+            // check, but WRONG relative to what html2pdf actually does internally,
+            // which caused a real regression (reported by the user: a 10-item
+            // quotation came back with a big blank gap on page 1 and the totals/
+            // terms-note/signature block bumped whole to a separate page).
+            //
+            // html2pdf.js (dist/html2pdf.bundle.js, read directly from the
+            // library's own source to get this right instead of guessing again):
+            //   - clones the element into its own container sized to EXACTLY
+            //     `pageSize.inner.width` (the A4 page width minus left+right
+            //     margin) -- for our 0.3in margin + A4 + unit:'in' that is
+            //     floor((8.267777..in - 0.6in) * 96) = 736px, NOT 800px. A
+            //     narrower render width means long Description text wraps onto
+            //     MORE lines than an 800px preview would ever show, so the old
+            //     800px measurement under-counted the real height.
+            //   - its 'css' pagebreak mode computes page boundaries using
+            //     `pageSize.inner.px.height` = floor((11.692916..in - 0.6in) * 96)
+            //     = 1064px, and for every element with 'avoid' behavior (this
+            //     includes EVERY <tr> and our own '.mq-avoid-break', per the
+            //     `pagebreak.avoid` option below), if that element's own top/
+            //     bottom straddle a page boundary it is bumped WHOLLY onto the
+            //     next page (inserting a blank filler div first) -- there is no
+            //     partial "80% fits" case, so being just a few px over 1064 is
+            //     enough to shove the entire totals/terms-note/signature block
+            //     to a mostly-blank page, exactly what the user's screenshot
+            //     showed. The fix: measure against these SAME real numbers
+            //     (derived below from jsPDF's own 'a4' point size, the same way
+            //     html2pdf.js itself does it) instead of an assumed width/ratio.
+            const A4_WIDTH_IN = 595.28 / 72;   // jsPDF's built-in 'a4' page width, in inches (595.28pt / 72pt-per-in)
+            const A4_HEIGHT_IN = 841.89 / 72;  // jsPDF's built-in 'a4' page height, in inches
+            const mqInnerWidthIn = A4_WIDTH_IN - MQ_MARGIN_IN * 2;
+            const mqInnerHeightIn = A4_HEIGHT_IN - MQ_MARGIN_IN * 2;
+            // Matches html2pdf.js's own px conversion (src/utils.js toPx(), with
+            // k=72 for unit:'in'): Math.floor(val * k / 72 * 96) == Math.floor(val * 96).
+            const mqToHtml2pdfPx = (inches) => Math.floor(inches * 96);
+            const MQ_RENDER_WIDTH_PX = mqToHtml2pdfPx(mqInnerWidthIn); // 736 -- the REAL width html2pdf renders this element at
+            const MQ_PAGE_MAX_HEIGHT_PX = mqToHtml2pdfPx(mqInnerHeightIn); // 1064 -- the REAL one-page height budget
+            // Small fixed safety cushion (not a multiplier this time, since the
+            // numbers above are now the real ones, not an approximation) -- the
+            // per-<tr> 'avoid' rule still means landing exactly on the boundary
+            // is risky, so stay a comfortable margin under it.
+            const MQ_SAFETY_MARGIN_PX = 16;
 
             const hiddenDiv = document.createElement('div');
             hiddenDiv.innerHTML = htmlString;
             hiddenDiv.style.position = 'absolute';
             hiddenDiv.style.top = '-9999px';
             hiddenDiv.style.left = '-9999px';
-            hiddenDiv.style.width = '800px';
+            // Render the off-screen preview at the SAME width html2pdf will
+            // actually use (see above) so text wrapping -- and therefore every
+            // height measurement below -- matches the real PDF output exactly.
+            hiddenDiv.style.width = MQ_RENDER_WIDTH_PX + 'px';
             document.body.appendChild(hiddenDiv);
 
             const element = hiddenDiv.querySelector('#mq-print-wrapper');
+            const page1El = hiddenDiv.querySelector('#mq-page1');
+            const itemsTbodyEl = hiddenDiv.querySelector('#mq-items-tbody');
+            if (items.length > 0 && element && page1El && itemsTbodyEl) {
+                const budgetTotal = MQ_PAGE_MAX_HEIGHT_PX - MQ_SAFETY_MARGIN_PX;
+                let scale = 1;
+                for (let attempt = 0; attempt < 6; attempt++) {
+                    // #mq-print-wrapper's own CSS padding (40px top) sits above
+                    // #mq-page1 and eats into the same one-page budget -- measure
+                    // it directly (rather than assuming a number) so this stays
+                    // correct if that padding is ever changed later.
+                    const topOffset = page1El.getBoundingClientRect().top - element.getBoundingClientRect().top;
+                    const page1Height = page1El.getBoundingClientRect().height;
+                    const totalNeeded = topOffset + page1Height;
+                    if (totalNeeded <= budgetTotal) break; // fits already -- stop
+                    const itemsHeight = itemsTbodyEl.getBoundingClientRect().height;
+                    const chromeHeight = totalNeeded - itemsHeight; // everything else on page 1, fixed regardless of item count
+                    const budgetForItems = Math.max(1, budgetTotal - chromeHeight);
+                    const neededRatio = budgetForItems / itemsHeight;
+                    const newScale = Math.max(MQ_ITEMS_MIN_SCALE, scale * neededRatio * 0.97);
+                    if (newScale >= scale) break; // no more room to shrink further -- stop rather than loop pointlessly
+                    scale = newScale;
+                    itemsTbodyEl.innerHTML = buildMqItemsRowsHtml(
+                        Math.round(MQ_ITEMS_BASE_FONT_PX * scale * 10) / 10,
+                        Math.round(MQ_ITEMS_BASE_PAD_V_PX * scale * 10) / 10,
+                        Math.round(MQ_ITEMS_BASE_PAD_H_PX * scale * 10) / 10
+                    );
+                }
+            }
 
             const opt = {
-                // 0.4in margin combined with the page-break-before padding trick was
-                // confirmed in testing to occasionally trigger an extra, nearly-blank
-                // trailing page (a jsPDF/html2pdf page-height rounding interaction) --
-                // 0.3in tested cleanly across a 1-item, 4-item, and 10-item sample with
-                // no stray page.
-                margin: 0.3,
+                margin: MQ_MARGIN_IN,
                 filename: `Quotation_${(quotationNumber || 'Draft').toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
@@ -1841,20 +1991,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? `<button type="button" class="btn-build-progress" disabled title="Kailangan munang i-release ang parts bago ma-progress ang build" style="background: rgba(148,163,184,0.15); color: #64748b; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; padding: 4px 8px; cursor: not-allowed; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`
                 : `<button type="button" class="btn-build-progress" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-tasks"></i> Build Progress</button>`)
             : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
+        // Fix 69: same overlapping-text bug fixed on the Deliveries list
+        // (and previously Item Replacement/Fix 61, MarvsPCStufz
+        // Warranty/Fix 63) -- long unbroken values in a fixed-width table
+        // cell have no natural place to wrap, so they overflow into the
+        // next column instead. word-break/overflow-wrap force a break even
+        // mid-word so every cell wraps within its own column.
+        const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
         return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
-                <td style="padding: 8px 10px;">${dateStr}</td>
-                <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
-                <td style="padding: 8px 10px;">${row[2] || ''}</td>
-                <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                <td style="padding: 8px 10px;">${row[4] || ''}</td>
-                <td style="padding: 8px 10px;">${row[5] || ''}</td>
-                <td style="padding: 8px 10px;">${deliveryDateStr}</td>
-                <td style="padding: 8px 10px;">${row[15] || ''}</td>
-                <td style="padding: 8px 10px;">${row[17] || ''}</td>
-                <td style="padding: 8px 10px;">${buildStatus}</td>
-                <td style="padding: 8px 10px; font-weight: 600;">${partsReleasing}</td>
-                <td style="padding: 8px 10px;">${actionsCell}</td>
+                <td style="${cellStyle}">${dateStr}</td>
+                <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
+                <td style="${cellStyle}">${row[2] || ''}</td>
+                <td style="${cellStyle}">${row[3] || ''}</td>
+                <td style="${cellStyle}">${row[4] || ''}</td>
+                <td style="${cellStyle}">${row[5] || ''}</td>
+                <td style="${cellStyle}">${deliveryDateStr}</td>
+                <td style="${cellStyle}">${row[15] || ''}</td>
+                <td style="${cellStyle}">${row[17] || ''}</td>
+                <td style="${cellStyle}">${buildStatus}</td>
+                <td style="${cellStyle} font-weight: 600;">${partsReleasing}</td>
+                <td style="padding: 8px 10px; white-space: nowrap;">${actionsCell}</td>
             </tr>
         `;
     }
@@ -2053,20 +2210,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const buildStatus = row[18] || '-';
             const isOngoing = techBuilder && buildStatus.toString().toLowerCase().includes('ongoing');
             const rowStyle = isOngoing ? 'border-bottom: 1px solid rgba(255,255,255,0.05); color: #10b981;' : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
+            // Fix 69: same overlapping-text bug fixed on the Deliveries list
+            // (and previously Item Replacement/Fix 61, MarvsPCStufz
+            // Warranty/Fix 63) -- long unbroken values in a fixed-width
+            // table cell have no natural place to wrap, so they overflow
+            // into the next column instead. word-break/overflow-wrap force
+            // a break even mid-word so every cell wraps within its own
+            // column.
+            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
             return `
                 <tr style="${rowStyle}">
-                    <td style="padding: 8px 10px;">${dateStr}</td>
-                    <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[5] || ''}</td>
-                    <td style="padding: 8px 10px;">${deliveryDateStr}</td>
-                    <td style="padding: 8px 10px;">${techBuilder}</td>
-                    <td style="padding: 8px 10px;">${row[15] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[17] || ''}</td>
-                    <td style="padding: 8px 10px;">${buildStatus}</td>
-                    <td style="padding: 8px 10px;"><button type="button" class="btn-build-tracker-update" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Update</button></td>
+                    <td style="${cellStyle}">${dateStr}</td>
+                    <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
+                    <td style="${cellStyle}">${row[2] || ''}</td>
+                    <td style="${cellStyle}">${row[3] || ''}</td>
+                    <td style="${cellStyle}">${row[4] || ''}</td>
+                    <td style="${cellStyle}">${row[5] || ''}</td>
+                    <td style="${cellStyle}">${deliveryDateStr}</td>
+                    <td style="${cellStyle}">${techBuilder}</td>
+                    <td style="${cellStyle}">${row[15] || ''}</td>
+                    <td style="${cellStyle}">${row[17] || ''}</td>
+                    <td style="${cellStyle}">${buildStatus}</td>
+                    <td style="padding: 8px 10px; white-space: nowrap;"><button type="button" class="btn-build-tracker-update" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Update</button></td>
                 </tr>
             `;
         }).join('');
@@ -2338,19 +2503,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const buildStatus = row[18] || 'Pending';
             const isCompleted = buildStatus.toString().toLowerCase().includes('complet');
             const rowColor = isCompleted ? '#10b981' : (buildStatus.toString().toLowerCase().includes('ongoing') ? '#f59e0b' : 'inherit');
+            // Fix 69: same overlapping-text bug fixed on the Deliveries list
+            // (and previously Item Replacement/Fix 61, MarvsPCStufz
+            // Warranty/Fix 63) -- long unbroken values in a fixed-width
+            // table cell have no natural place to wrap, so they overflow
+            // into the next column instead. word-break/overflow-wrap force
+            // a break even mid-word so every cell wraps within its own
+            // column.
+            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
             return `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
-                    <td style="padding: 8px 10px;">${dateStr}</td>
-                    <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[5] || ''}</td>
-                    <td style="padding: 8px 10px;">${deliveryDateStr}</td>
-                    <td style="padding: 8px 10px;">${row[14] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[15] || ''}</td>
-                    <td style="padding: 8px 10px;">${buildStatus}</td>
-                    <td style="padding: 8px 10px;">${row[20] || ''}</td>
+                    <td style="${cellStyle}">${dateStr}</td>
+                    <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
+                    <td style="${cellStyle}">${row[2] || ''}</td>
+                    <td style="${cellStyle}">${row[3] || ''}</td>
+                    <td style="${cellStyle}">${row[4] || ''}</td>
+                    <td style="${cellStyle}">${row[5] || ''}</td>
+                    <td style="${cellStyle}">${deliveryDateStr}</td>
+                    <td style="${cellStyle}">${row[14] || ''}</td>
+                    <td style="${cellStyle}">${row[15] || ''}</td>
+                    <td style="${cellStyle}">${buildStatus}</td>
+                    <td style="${cellStyle}">${row[20] || ''}</td>
                 </tr>
             `;
         }).join('');
@@ -2512,25 +2685,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 deliveryStatus.toLowerCase() === 'pending' ||
                 overallStatus.toLowerCase() === 'pending';
             const rowStyle = `border-bottom: 1px solid rgba(255,255,255,0.05);${anyStillPending ? ' color: #ef4444;' : ''}`;
+            // Fix 69: same overlapping-text bug already fixed for the Item
+            // Replacement list (Fix 61) and the MarvsPCStufz Warranty list
+            // (Fix 63) -- long unbroken values (a Mobile# with no spaces,
+            // e.g. two numbers joined with "/", or a long Address/Free
+            // Shipping Justification note) have no natural place for the
+            // browser to wrap, so with this table's fixed column widths
+            // (table-layout: fixed + explicit <col> widths in index.html)
+            // they were overflowing straight past their own cell and
+            // rendering on top of the next column's text instead of
+            // wrapping within their own column. word-break/overflow-wrap
+            // force a break even mid-word so every cell wraps within its
+            // own column. The Actions cell deliberately keeps its own
+            // `white-space: nowrap` instead, same as the other two lists,
+            // so the Modified/Print buttons don't awkwardly wrap.
+            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
             return `
                 <tr style="${rowStyle}">
-                    <td style="padding: 8px 10px;">${dateStr}</td>
-                    <td style="padding: 8px 10px; font-weight: 500;">${row[1] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[2] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[3] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[4] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[5] || ''}</td>
-                    <td style="padding: 8px 10px;">${deliveryDateStr}</td>
-                    <td style="padding: 8px 10px;">${row[7] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[8] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[9] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[11] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[15] || ''}</td>
-                    <td style="padding: 8px 10px;">${row[18] || ''}</td>
-                    <td style="padding: 8px 10px;">${paymentCompletion}</td>
-                    <td style="padding: 8px 10px;">${deliveryStatus}</td>
-                    <td style="padding: 8px 10px;">${overallStatus}</td>
-                    <td style="padding: 8px 10px;">${actionsCell}</td>
+                    <td style="${cellStyle}">${dateStr}</td>
+                    <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
+                    <td style="${cellStyle}">${row[2] || ''}</td>
+                    <td style="${cellStyle}">${row[3] || ''}</td>
+                    <td style="${cellStyle}">${row[4] || ''}</td>
+                    <td style="${cellStyle}">${row[5] || ''}</td>
+                    <td style="${cellStyle}">${deliveryDateStr}</td>
+                    <td style="${cellStyle}">${row[7] || ''}</td>
+                    <td style="${cellStyle}">${row[8] || ''}</td>
+                    <td style="${cellStyle}">${row[9] || ''}</td>
+                    <td style="${cellStyle}">${row[11] || ''}</td>
+                    <td style="${cellStyle}">${row[15] || ''}</td>
+                    <td style="${cellStyle}">${row[18] || ''}</td>
+                    <td style="${cellStyle}">${paymentCompletion}</td>
+                    <td style="${cellStyle}">${deliveryStatus}</td>
+                    <td style="${cellStyle}">${overallStatus}</td>
+                    <td style="padding: 8px 10px; white-space: nowrap;">${actionsCell}</td>
                 </tr>
             `;
         }).join('');
