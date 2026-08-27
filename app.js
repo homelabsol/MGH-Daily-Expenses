@@ -303,6 +303,25 @@ document.addEventListener('DOMContentLoaded', () => {
             menuManualQuotationBtnApp.style.display = isAllowedQuotationStore ? '' : 'none';
         }
 
+        // Hide/Show Holiday Pay based on Role (Fix 73, Payroll Phase 3) -- ONLY
+        // Owner or the new Payroll role should ever see this button. The user
+        // explicitly confirmed this new role gates ONLY Holiday Pay -- Employee
+        // Rates stays Owner/Manager, OT Approvals stays Supervisor/Manager/Owner,
+        // both unchanged by this.
+        const menuHolidayPayBtnApp = document.getElementById('menu-holiday-pay-btn');
+        if (menuHolidayPayBtnApp) {
+            const isAllowedHolidayPayRole = (role === 'Owner' || role === 'Payroll');
+            menuHolidayPayBtnApp.style.display = isAllowedHolidayPayRole ? '' : 'none';
+        }
+
+        // Hide/Show Payslip based on Role (Fix 74, Payroll Phase 4) -- same
+        // gate as Holiday Pay: Owner or Payroll only.
+        const menuPayslipBtnApp = document.getElementById('menu-payslip-btn');
+        if (menuPayslipBtnApp) {
+            const isAllowedPayslipRole = (role === 'Owner' || role === 'Payroll');
+            menuPayslipBtnApp.style.display = isAllowedPayslipRole ? '' : 'none';
+        }
+
         // Hide/Show Sheet Health Check based on Role (Fix 35) -- per the user's
         // explicit request, ONLY the Owner role should ever see this button;
         // everyone else (Manager, Supervisor, RMA Admin, Technician, etc.) must
@@ -6328,6 +6347,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Success! Show admin content
                     adminLoginSection.classList.add('hidden');
                     adminContent.classList.remove('hidden');
+                    // Fix 71: load the Employee Daily Rates table every time the Admin
+                    // Panel is (re-)entered, so it always reflects the latest rates/
+                    // roster rather than a stale render from a previous visit.
+                    loadEmployeeRates();
                 } else {
                     // Valid credentials, but not owner/manager
                     adminErrorMessage.textContent = 'Access Denied: Only Owner or Manager can access this section.';
@@ -8166,6 +8189,1142 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
             element.classList.add('hidden');
         }, 5000);
+    }
+
+    // Fix 71 (Payroll/Payslip project, Phase 1): per-employee Daily Rate --
+    // the base figure every later payroll phase (base pay, OT rate = Daily
+    // Rate ÷ 9 hours, holiday pay) will be computed from. Lives in the Admin
+    // Panel, right under Create Account, since that's already the only
+    // Owner/Manager-gated account-admin surface in the app (see the
+    // adminLoginForm role check above) -- no new top-level menu button
+    // needed, and it keeps "manage people" in one place.
+    const employeeRatesTableBody = document.getElementById('employee-rates-table-body');
+    const employeeRatesStatusMessage = document.getElementById('employee-rates-status-message');
+
+    async function loadEmployeeRates() {
+        if (!employeeRatesTableBody) return;
+        employeeRatesTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getEmployeeRates' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                employeeRatesTableBody.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load employees.'}</td></tr>`;
+                return;
+            }
+            const employees = result.data || [];
+            if (employees.length === 0) {
+                employeeRatesTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">No employee accounts found.</td></tr>';
+                return;
+            }
+            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+            employeeRatesTableBody.innerHTML = employees.map(emp => {
+                const safeName = (emp.name || '').toString();
+                const currentRate = (emp.dailyRate !== null && emp.dailyRate !== undefined && emp.dailyRate !== '') ? emp.dailyRate : '';
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <td style="${cellStyle} font-weight: 500;">${safeName}</td>
+                        <td style="${cellStyle}">${emp.role || ''}</td>
+                        <td style="${cellStyle}">${emp.store || ''}</td>
+                        <td style="${cellStyle}">
+                            <input type="number" class="er-daily-rate-input" data-name="${safeName.replace(/"/g, '&quot;')}" value="${currentRate}" min="0" step="0.01" placeholder="0.00" style="width: 110px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: inherit;">
+                        </td>
+                        <td style="padding: 8px 10px; white-space: nowrap;">
+                            <button type="button" class="btn-save-employee-rate" data-name="${safeName.replace(/"/g, '&quot;')}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-save"></i> Save</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading employee rates:', error);
+            employeeRatesTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        }
+    }
+
+    if (employeeRatesTableBody) {
+        employeeRatesTableBody.addEventListener('click', async (e) => {
+            const saveBtn = e.target.closest('.btn-save-employee-rate');
+            if (!saveBtn) return;
+            const name = saveBtn.getAttribute('data-name');
+            const row = saveBtn.closest('tr');
+            const input = row.querySelector('.er-daily-rate-input');
+            const rawValue = (input.value || '').toString().trim();
+            const dailyRate = parseFloat(rawValue);
+            if (rawValue === '' || isNaN(dailyRate) || dailyRate < 0) {
+                showMessage(employeeRatesStatusMessage, `Please enter a valid Daily Rate (0 or higher) for ${name}.`, 'error');
+                return;
+            }
+            const originalHtml = saveBtn.innerHTML;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'saveEmployeeRate',
+                        name: name,
+                        dailyRate: dailyRate,
+                        updatedBy: sessionStorage.getItem('loggedInUser') || ''
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(employeeRatesStatusMessage, `Daily Rate for ${name} saved.`, 'success');
+                } else {
+                    showMessage(employeeRatesStatusMessage, `Error saving rate for ${name}: ${result.message || 'Unknown error'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving employee rate:', error);
+                showMessage(employeeRatesStatusMessage, `Network error saving rate for ${name}. Please try again.`, 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    // Fix 72 (Payroll/Payslip project, Phase 2): OT Request -> Telegram
+    // notification -> in-app approval workflow. Any logged-in employee can
+    // file a request (Date/Branch/Reason only, before duty); the "Pending
+    // Approvals" section below is what's actually gated to Supervisor/
+    // Manager/Owner (the backend re-checks that role independently on every
+    // decideOtRequest call -- this client-side hide is a UX convenience,
+    // never the real security boundary). Standalone top-level menu item, own
+    // container -- not nested inside Attendance -- per the agreed design.
+    const menuOtRequestsBtn = document.getElementById('menu-ot-requests-btn');
+    const otRequestsContainer = document.getElementById('ot-requests-container');
+    const otRequestEmployeeInput = document.getElementById('ot-request-employee');
+    const otRequestDateInput = document.getElementById('ot-request-date');
+    const otRequestBranchInput = document.getElementById('ot-request-branch');
+    const otRequestReasonInput = document.getElementById('ot-request-reason');
+    const otRequestForm = document.getElementById('ot-request-form');
+    const otRequestStatusMessage = document.getElementById('ot-request-status-message');
+    const otPendingApprovalsSection = document.getElementById('ot-pending-approvals-section');
+    const otPendingApprovalsTableBody = document.getElementById('ot-pending-approvals-table-body');
+    const otPendingApprovalsStatusMessage = document.getElementById('ot-pending-approvals-status-message');
+    const btnOtRequestsRefresh = document.getElementById('btn-ot-requests-refresh');
+
+    function otIsApproverRole() {
+        const role = sessionStorage.getItem('userRole') || '';
+        return role === 'Supervisor' || role === 'Manager' || role === 'Owner';
+    }
+
+    function otEscapeHtml(str) {
+        return (str || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    async function loadPendingOtRequests() {
+        if (!otPendingApprovalsTableBody) return;
+        otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getPendingOtRequests' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                otPendingApprovalsTableBody.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${otEscapeHtml(result.message) || 'Failed to load requests.'}</td></tr>`;
+                return;
+            }
+            const requestsList = result.data || [];
+            if (requestsList.length === 0) {
+                otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">Walang pending OT request sa ngayon.</td></tr>';
+                return;
+            }
+            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+            otPendingApprovalsTableBody.innerHTML = requestsList.map(reqRow => {
+                const rowIndex = reqRow.rowIndex;
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);" data-row-index="${rowIndex}">
+                        <td style="${cellStyle}">${otEscapeHtml(reqRow.date)}</td>
+                        <td style="${cellStyle} font-weight: 500;">${otEscapeHtml(reqRow.employee)}</td>
+                        <td style="${cellStyle}">${otEscapeHtml(reqRow.branch)}</td>
+                        <td style="${cellStyle}">${otEscapeHtml(reqRow.reason)}</td>
+                        <td style="padding: 8px 10px; white-space: nowrap;">
+                            <button type="button" class="btn-ot-decide" data-row-index="${rowIndex}" data-decision="Approved" style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 4px;"><i class="fas fa-check"></i> Approve</button>
+                            <button type="button" class="btn-ot-decide" data-row-index="${rowIndex}" data-decision="Rejected" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-times"></i> Reject</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading pending OT requests:', error);
+            otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        }
+    }
+
+    if (menuOtRequestsBtn) {
+        menuOtRequestsBtn.addEventListener('click', () => {
+            hideAllContainers();
+            if (otRequestsContainer) otRequestsContainer.classList.remove('hidden');
+            if (otRequestEmployeeInput) otRequestEmployeeInput.value = sessionStorage.getItem('loggedInUser') || '';
+            if (otRequestDateInput) otRequestDateInput.value = todayDateStr();
+            if (otRequestBranchInput) otRequestBranchInput.value = sessionStorage.getItem('userStore') || '';
+            if (otRequestReasonInput) otRequestReasonInput.value = '';
+            const isApprover = otIsApproverRole();
+            if (otPendingApprovalsSection) otPendingApprovalsSection.classList.toggle('hidden', !isApprover);
+            if (isApprover) loadPendingOtRequests();
+        });
+    }
+
+    if (btnOtRequestsRefresh) {
+        btnOtRequestsRefresh.addEventListener('click', loadPendingOtRequests);
+    }
+
+    if (otRequestForm) {
+        otRequestForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('ot-request-submit-btn');
+            const btnText = submitBtn ? submitBtn.querySelector('.btn-text') : null;
+            const spinner = submitBtn ? submitBtn.querySelector('.spinner') : null;
+
+            const employee = sessionStorage.getItem('loggedInUser') || '';
+            const date = otRequestDateInput ? otRequestDateInput.value : '';
+            const branch = otRequestBranchInput ? otRequestBranchInput.value : '';
+            const reason = otRequestReasonInput ? otRequestReasonInput.value.trim() : '';
+
+            if (!employee) {
+                showMessage(otRequestStatusMessage, 'Kailangan naka-login para maka-file ng OT request.', 'error');
+                return;
+            }
+            if (!date) {
+                showMessage(otRequestStatusMessage, 'Piliin ang Date ng duty.', 'error');
+                return;
+            }
+            if (!branch) {
+                showMessage(otRequestStatusMessage, 'Piliin ang Branch.', 'error');
+                return;
+            }
+            if (!reason) {
+                showMessage(otRequestStatusMessage, 'Ilagay ang Reason para sa OT request.', 'error');
+                return;
+            }
+
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            if (submitBtn) submitBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'submitOtRequest', employee, date, branch, reason })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(otRequestStatusMessage, 'Naisumite na ang OT request mo. Aabisuhan ang mga approver sa Telegram.', 'success');
+                    if (otRequestReasonInput) otRequestReasonInput.value = '';
+                    if (otIsApproverRole()) loadPendingOtRequests();
+                } else {
+                    showMessage(otRequestStatusMessage, `Error: ${result.message || 'Hindi na-submit ang request.'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error submitting OT request:', error);
+                showMessage(otRequestStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        });
+    }
+
+    if (otPendingApprovalsTableBody) {
+        otPendingApprovalsTableBody.addEventListener('click', async (e) => {
+            const decideBtn = e.target.closest('.btn-ot-decide');
+            if (!decideBtn) return;
+            const rowIndex = decideBtn.getAttribute('data-row-index');
+            const decision = decideBtn.getAttribute('data-decision');
+            const decidedBy = sessionStorage.getItem('loggedInUser') || '';
+            const tr = decideBtn.closest('tr');
+            const rowBtns = tr ? tr.querySelectorAll('.btn-ot-decide') : [];
+            const originalHtml = decideBtn.innerHTML;
+            rowBtns.forEach(b => { b.disabled = true; });
+            decideBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'decideOtRequest', rowIndex, decision, decidedBy })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(otPendingApprovalsStatusMessage, decision === 'Approved' ? 'Na-approve na ang OT request.' : 'Na-reject ang OT request.', 'success');
+                    loadPendingOtRequests();
+                } else {
+                    showMessage(otPendingApprovalsStatusMessage, `Error: ${result.message || 'Hindi na-process ang decision.'}`, 'error');
+                    rowBtns.forEach(b => { b.disabled = false; });
+                    decideBtn.innerHTML = originalHtml;
+                }
+            } catch (error) {
+                console.error('Error deciding OT request:', error);
+                showMessage(otPendingApprovalsStatusMessage, 'Network error. Please try again.', 'error');
+                rowBtns.forEach(b => { b.disabled = false; });
+                decideBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+
+    // Fix 73 (Payroll/Payslip project, Phase 3): Holiday Pay marking. The
+    // "Holiday Pay" menu button itself is hidden unless the session's role is
+    // Owner or Payroll (see showApp()) -- this whole page only ever needs to be
+    // reachable by those two roles, so there's no separate "who can see the
+    // form vs who can see the list" split like OT Requests has. The backend
+    // still independently re-validates Marked By/Deleted By on every write.
+    const menuHolidayPayBtn = document.getElementById('menu-holiday-pay-btn');
+    const holidayPayContainer = document.getElementById('holiday-pay-container');
+    const hpForm = document.getElementById('hp-form');
+    const hpFormHeading = document.getElementById('hp-form-heading');
+    const hpEditRowIndexInput = document.getElementById('hp-edit-row-index');
+    const hpDateInput = document.getElementById('hp-date');
+    const hpTypeInput = document.getElementById('hp-type');
+    const hpNameInput = document.getElementById('hp-name');
+    const hpWorkedMultiplierInput = document.getElementById('hp-worked-multiplier');
+    const hpCancelEditBtn = document.getElementById('hp-cancel-edit-btn');
+    const hpStatusMessage = document.getElementById('hp-status-message');
+    const hpTableBody = document.getElementById('hp-table-body');
+    const btnHpRefresh = document.getElementById('btn-hp-refresh');
+
+    function hpResetForm() {
+        if (hpForm) hpForm.reset();
+        if (hpEditRowIndexInput) hpEditRowIndexInput.value = '';
+        if (hpFormHeading) hpFormHeading.textContent = 'Mag-mark ng Holiday';
+        if (hpCancelEditBtn) hpCancelEditBtn.classList.add('hidden');
+    }
+
+    async function loadHolidays() {
+        if (!hpTableBody) return;
+        hpTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getHolidays' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                hpTableBody.innerHTML = `<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load holidays.'}</td></tr>`;
+                return;
+            }
+            const holidays = result.data || [];
+            if (holidays.length === 0) {
+                hpTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">Wala pang naka-mark na holiday.</td></tr>';
+                return;
+            }
+            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+            hpTableBody.innerHTML = holidays.map(h => {
+                const safeName = (h.name || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const safeType = (h.type || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);" data-row-index="${h.rowIndex}">
+                        <td style="${cellStyle}">${h.date || ''}</td>
+                        <td style="${cellStyle} font-weight: 500;">${safeName}</td>
+                        <td style="${cellStyle}">${safeType}</td>
+                        <td style="${cellStyle}">${h.workedMultiplierPercent}%</td>
+                        <td style="${cellStyle}">${(h.markedBy || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>
+                        <td style="padding: 8px 10px; white-space: nowrap;">
+                            <button type="button" class="btn-hp-edit" data-row-index="${h.rowIndex}" data-date="${h.date || ''}" data-name="${safeName.replace(/"/g, '&quot;')}" data-type="${safeType.replace(/"/g, '&quot;')}" data-multiplier="${h.workedMultiplierPercent}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 4px;"><i class="fas fa-pen"></i> Edit</button>
+                            <button type="button" class="btn-hp-delete" data-row-index="${h.rowIndex}" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-trash"></i> Delete</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading holidays:', error);
+            hpTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        }
+    }
+
+    if (menuHolidayPayBtn) {
+        menuHolidayPayBtn.addEventListener('click', () => {
+            hideAllContainers();
+            if (holidayPayContainer) holidayPayContainer.classList.remove('hidden');
+            hpResetForm();
+            loadHolidays();
+        });
+    }
+
+    if (btnHpRefresh) {
+        btnHpRefresh.addEventListener('click', loadHolidays);
+    }
+
+    if (hpCancelEditBtn) {
+        hpCancelEditBtn.addEventListener('click', hpResetForm);
+    }
+
+    if (hpTableBody) {
+        hpTableBody.addEventListener('click', async (e) => {
+            const editBtn = e.target.closest('.btn-hp-edit');
+            if (editBtn) {
+                if (hpEditRowIndexInput) hpEditRowIndexInput.value = editBtn.getAttribute('data-row-index');
+                if (hpDateInput) hpDateInput.value = editBtn.getAttribute('data-date') || '';
+                if (hpNameInput) hpNameInput.value = editBtn.getAttribute('data-name') || '';
+                if (hpTypeInput) hpTypeInput.value = editBtn.getAttribute('data-type') || '';
+                if (hpWorkedMultiplierInput) hpWorkedMultiplierInput.value = editBtn.getAttribute('data-multiplier') || '';
+                if (hpFormHeading) hpFormHeading.textContent = 'I-edit ang Holiday';
+                if (hpCancelEditBtn) hpCancelEditBtn.classList.remove('hidden');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                return;
+            }
+            const deleteBtn = e.target.closest('.btn-hp-delete');
+            if (deleteBtn) {
+                if (!confirm('Sigurado ka bang tatanggalin ang holiday marking na ito?')) return;
+                const rowIndex = deleteBtn.getAttribute('data-row-index');
+                const originalHtml = deleteBtn.innerHTML;
+                deleteBtn.disabled = true;
+                deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                try {
+                    const response = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'deleteHoliday', rowIndex, deletedBy: sessionStorage.getItem('loggedInUser') || '' })
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        showMessage(hpStatusMessage, 'Holiday deleted.', 'success');
+                        loadHolidays();
+                    } else {
+                        showMessage(hpStatusMessage, `Error: ${result.message || 'Hindi na-delete.'}`, 'error');
+                        deleteBtn.disabled = false;
+                        deleteBtn.innerHTML = originalHtml;
+                    }
+                } catch (error) {
+                    console.error('Error deleting holiday:', error);
+                    showMessage(hpStatusMessage, 'Network error. Please try again.', 'error');
+                    deleteBtn.disabled = false;
+                    deleteBtn.innerHTML = originalHtml;
+                }
+            }
+        });
+    }
+
+    if (hpForm) {
+        hpForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('hp-submit-btn');
+            const btnText = submitBtn ? submitBtn.querySelector('.btn-text') : null;
+            const spinner = submitBtn ? submitBtn.querySelector('.spinner') : null;
+
+            const date = hpDateInput ? hpDateInput.value : '';
+            const type = hpTypeInput ? hpTypeInput.value : '';
+            const name = hpNameInput ? hpNameInput.value.trim() : '';
+            const rawMultiplier = hpWorkedMultiplierInput ? hpWorkedMultiplierInput.value.trim() : '';
+            const workedMultiplierPercent = parseFloat(rawMultiplier);
+
+            if (!date) {
+                showMessage(hpStatusMessage, 'Piliin ang Date.', 'error');
+                return;
+            }
+            if (!type) {
+                showMessage(hpStatusMessage, 'Piliin ang Type.', 'error');
+                return;
+            }
+            if (!name) {
+                showMessage(hpStatusMessage, 'Ilagay ang Holiday Name.', 'error');
+                return;
+            }
+            if (rawMultiplier === '' || isNaN(workedMultiplierPercent) || workedMultiplierPercent < 0) {
+                showMessage(hpStatusMessage, 'Ilagay ang isang valid na Worked Multiplier (%) -- 0 o mas mataas.', 'error');
+                return;
+            }
+
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            if (submitBtn) submitBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'saveHoliday',
+                        date, type, name, workedMultiplierPercent,
+                        markedBy: sessionStorage.getItem('loggedInUser') || ''
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(hpStatusMessage, `Holiday na "${name}" (${date}) na-save.`, 'success');
+                    hpResetForm();
+                    loadHolidays();
+                } else {
+                    showMessage(hpStatusMessage, `Error: ${result.message || 'Hindi na-save ang holiday.'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving holiday:', error);
+                showMessage(hpStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        });
+    }
+
+    // Fix 74 (Payroll/Payslip project, Phase 4): Weekly Payroll Computation +
+    // Payslip. The "Payslip" menu button is hidden unless the session's role
+    // is Owner or Payroll (see showApp()), same as Holiday Pay. Flow:
+    // pick Employee + Start/End Date -> "I-compute" (computePayslipPreview,
+    // read-only) shows a per-day breakdown + totals -> fill in the 5 manual
+    // deductions (recalculated live client-side into Net Pay as you type,
+    // purely for display) -> "I-save at I-print" (savePayslip) independently
+    // RECOMPUTES everything server-side (never trusts the client's preview
+    // numbers) before appending a new "Payroll Records" row and returning the
+    // final data, which is then rendered into a PDF via the same off-screen
+    // div + html2pdf -> bloburl -> pre-opened tab pattern already used by the
+    // Staff Report generator elsewhere in this file. Every save creates a
+    // brand-new record -- confirmed by the user -- so re-generating for the
+    // same employee+range (e.g. after a late OT Request approval) just adds
+    // another row rather than editing the earlier one; the Reprint button on
+    // each Payroll Records row rebuilds the same PDF straight from that row's
+    // saved per-day breakdown, with no extra network round trip.
+    const menuPayslipBtn = document.getElementById('menu-payslip-btn');
+    const payslipContainer = document.getElementById('payslip-container');
+    const payslipForm = document.getElementById('payslip-form');
+    const payslipEmployeeSelect = document.getElementById('payslip-employee');
+    const payslipStartDateInput = document.getElementById('payslip-start-date');
+    const payslipEndDateInput = document.getElementById('payslip-end-date');
+    const payslipStatusMessage = document.getElementById('payslip-status-message');
+    const payslipPreviewSection = document.getElementById('payslip-preview-section');
+    const payslipDaysTableBody = document.getElementById('payslip-days-table-body');
+    const payslipTotalBasePayEl = document.getElementById('payslip-total-base-pay');
+    const payslipTotalOtHoursEl = document.getElementById('payslip-total-ot-hours');
+    const payslipTotalOtPayEl = document.getElementById('payslip-total-ot-pay');
+    const payslipGrossPayEl = document.getElementById('payslip-gross-pay');
+    const payslipWithholdingTaxInput = document.getElementById('payslip-withholding-tax');
+    const payslipSssInput = document.getElementById('payslip-sss');
+    const payslipPhilhealthInput = document.getElementById('payslip-philhealth');
+    const payslipPagibigInput = document.getElementById('payslip-pagibig');
+    const payslipCashAdvanceInput = document.getElementById('payslip-cash-advance');
+    const payslipCommissionInput = document.getElementById('payslip-commission');
+    const payslipFoodAllowanceInput = document.getElementById('payslip-food-allowance');
+    const payslipCaBalanceHint = document.getElementById('payslip-ca-balance-hint');
+    const payslipNetPayEl = document.getElementById('payslip-net-pay');
+    const payslipSaveBtn = document.getElementById('payslip-save-btn');
+    const payslipRecordsTableBody = document.getElementById('payslip-records-table-body');
+    const btnPayslipRefresh = document.getElementById('btn-payslip-refresh');
+
+    // Fix 75 (Payslip follow-up): Commission (manual amount, added to Gross
+    // Pay) + real Cash Advance balance tracking (a per-employee running
+    // ledger in a new "Cash Advances" sheet, instead of the old
+    // purely-manual, memory-less Cash Advance field). See the matching
+    // comment block above getCashAdvanceLedgerRows() in google_apps_script.js
+    // for the full locked-in design.
+    const cashAdvanceBalancesTableBody = document.getElementById('cash-advance-balances-table-body');
+    const btnPayslipShowAddCa = document.getElementById('btn-payslip-show-add-ca');
+    const addCashAdvanceForm = document.getElementById('add-cash-advance-form');
+    const caEmployeeSelect = document.getElementById('ca-employee');
+    const caAmountInput = document.getElementById('ca-amount');
+    const caWeeklyInstallmentInput = document.getElementById('ca-weekly-installment');
+    const caNoteInput = document.getElementById('ca-note');
+    const caSaveBtn = document.getElementById('ca-save-btn');
+    const caStatusMessage = document.getElementById('ca-status-message');
+
+    let payslipCurrentPreview = null; // last computePayslipPreview() result, used to recompute Net Pay live and to gate Save
+    let payslipEmployeesWithRates = []; // cached from loadPayslipEmployees(), reused for the Add-Cash-Advance form's dropdown so it doesn't need its own network round trip
+
+    function payslipEscapeHtml(str) {
+        return (str || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function payslipFormatPeso(n) {
+        const num = Number(n) || 0;
+        return '₱' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function renderCaEmployeeOptions() {
+        if (!caEmployeeSelect) return;
+        const previousValue = caEmployeeSelect.value;
+        if (payslipEmployeesWithRates.length === 0) {
+            caEmployeeSelect.innerHTML = '<option value="" disabled selected>Walang employee na may Daily Rate</option>';
+            return;
+        }
+        caEmployeeSelect.innerHTML = '<option value="" disabled selected>Select Employee</option>' +
+            payslipEmployeesWithRates.map(emp => `<option value="${payslipEscapeHtml(emp.name)}">${payslipEscapeHtml(emp.name)}</option>`).join('');
+        if (previousValue && payslipEmployeesWithRates.some(emp => emp.name === previousValue)) {
+            caEmployeeSelect.value = previousValue;
+        }
+    }
+
+    async function loadPayslipEmployees() {
+        if (!payslipEmployeeSelect) return;
+        const previousValue = payslipEmployeeSelect.value;
+        payslipEmployeeSelect.innerHTML = '<option value="" disabled selected>Loading...</option>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getEmployeeRates' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                payslipEmployeeSelect.innerHTML = '<option value="" disabled selected>Error loading employees</option>';
+                return;
+            }
+            // Only employees who already have a Daily Rate set are selectable
+            // here -- confirmed by the user, since a payslip can't be computed
+            // without one (computePayslipPreview/savePayslip would just reject
+            // it server-side anyway, but filtering the dropdown avoids a
+            // guaranteed-to-fail attempt). The same list is reused for the
+            // Cash Advance "Add" form's employee dropdown (Fix 75).
+            const withRates = (result.data || []).filter(emp => emp.dailyRate !== '' && emp.dailyRate !== null && emp.dailyRate !== undefined && !isNaN(parseFloat(emp.dailyRate)));
+            payslipEmployeesWithRates = withRates;
+            renderCaEmployeeOptions();
+            if (withRates.length === 0) {
+                payslipEmployeeSelect.innerHTML = '<option value="" disabled selected>Walang employee na may Daily Rate</option>';
+                return;
+            }
+            payslipEmployeeSelect.innerHTML = '<option value="" disabled selected>Select Employee</option>' +
+                withRates.map(emp => `<option value="${payslipEscapeHtml(emp.name)}">${payslipEscapeHtml(emp.name)}</option>`).join('');
+            if (previousValue && withRates.some(emp => emp.name === previousValue)) {
+                payslipEmployeeSelect.value = previousValue;
+            }
+        } catch (error) {
+            console.error('Error loading payslip employees:', error);
+            payslipEmployeeSelect.innerHTML = '<option value="" disabled selected>Network error</option>';
+        }
+    }
+
+    async function loadCashAdvanceBalances() {
+        if (!cashAdvanceBalancesTableBody) return;
+        cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getCashAdvanceBalances' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                cashAdvanceBalancesTableBody.innerHTML = `<tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load.'}</td></tr>`;
+                return;
+            }
+            const balances = result.data || [];
+            // Stashed on the element itself so the Add-CA form's employee
+            // dropdown can prefill the existing Weekly Installment without a
+            // second network call.
+            cashAdvanceBalancesTableBody._balances = balances;
+            if (balances.length === 0) {
+                cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Walang natitirang Cash Advance balance.</td></tr>';
+                return;
+            }
+            cashAdvanceBalancesTableBody.innerHTML = balances.map((b) => `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 8px 10px;">${payslipEscapeHtml(b.employee)}</td>
+                    <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(b.balance)}</td>
+                    <td style="padding: 8px 10px;">${payslipFormatPeso(b.weeklyInstallment)}/week</td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Error loading cash advance balances:', error);
+            cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        }
+    }
+
+    if (btnPayslipShowAddCa) {
+        btnPayslipShowAddCa.addEventListener('click', () => {
+            if (!addCashAdvanceForm) return;
+            addCashAdvanceForm.classList.toggle('hidden');
+            if (!addCashAdvanceForm.classList.contains('hidden')) {
+                renderCaEmployeeOptions();
+            }
+        });
+    }
+
+    if (caEmployeeSelect) {
+        // Prefill the Weekly Installment with the employee's existing rate
+        // (if they already have one) -- so leaving it untouched keeps the
+        // deduction "the same as before", per the user's explicit request.
+        caEmployeeSelect.addEventListener('change', () => {
+            const balances = (cashAdvanceBalancesTableBody && cashAdvanceBalancesTableBody._balances) || [];
+            const existing = balances.find((b) => b.employee === caEmployeeSelect.value);
+            if (existing && caWeeklyInstallmentInput) {
+                caWeeklyInstallmentInput.value = existing.weeklyInstallment;
+            }
+        });
+    }
+
+    if (addCashAdvanceForm) {
+        addCashAdvanceForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const employee = caEmployeeSelect ? caEmployeeSelect.value : '';
+            const amount = parseFloat(caAmountInput.value);
+            const weeklyInstallment = parseFloat(caWeeklyInstallmentInput.value);
+            const note = caNoteInput ? caNoteInput.value.trim() : '';
+
+            if (!employee) { showMessage(caStatusMessage, 'Piliin ang Employee.', 'error'); return; }
+            if (isNaN(amount) || amount <= 0) { showMessage(caStatusMessage, 'Ang halaga ng Cash Advance ay dapat higit sa 0.', 'error'); return; }
+            if (isNaN(weeklyInstallment) || weeklyInstallment <= 0) { showMessage(caStatusMessage, 'Ang Weekly Installment ay dapat higit sa 0.', 'error'); return; }
+
+            const btnText = caSaveBtn ? caSaveBtn.querySelector('.btn-text') : null;
+            const spinner = caSaveBtn ? caSaveBtn.querySelector('.spinner') : null;
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            if (caSaveBtn) caSaveBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'addCashAdvance', employee, amount, weeklyInstallment, note,
+                        recordedBy: sessionStorage.getItem('loggedInUser') || ''
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(caStatusMessage, 'Na-save ang Cash Advance.', 'success');
+                    addCashAdvanceForm.reset();
+                    addCashAdvanceForm.classList.add('hidden');
+                    loadCashAdvanceBalances();
+                } else {
+                    showMessage(caStatusMessage, `Error: ${result.message || 'Hindi na-save ang Cash Advance.'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error adding cash advance:', error);
+                showMessage(caStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                if (caSaveBtn) caSaveBtn.disabled = false;
+            }
+        });
+    }
+
+    function payslipRecalculateNetPay() {
+        if (!payslipCurrentPreview || !payslipNetPayEl) return;
+        const commission = parseFloat(payslipCommissionInput ? payslipCommissionInput.value : 0) || 0;
+        const foodAllowance = parseFloat(payslipFoodAllowanceInput ? payslipFoodAllowanceInput.value : 0) || 0;
+        const wt = parseFloat(payslipWithholdingTaxInput.value) || 0;
+        const sss = parseFloat(payslipSssInput.value) || 0;
+        const ph = parseFloat(payslipPhilhealthInput.value) || 0;
+        const pi = parseFloat(payslipPagibigInput.value) || 0;
+        const ca = parseFloat(payslipCashAdvanceInput.value) || 0;
+        const grossWithExtras = payslipCurrentPreview.grossPay + commission + foodAllowance;
+        if (payslipGrossPayEl) payslipGrossPayEl.textContent = payslipFormatPeso(grossWithExtras);
+        const totalDeductions = wt + sss + ph + pi + ca;
+        const netPay = grossWithExtras - totalDeductions;
+        payslipNetPayEl.textContent = payslipFormatPeso(netPay);
+    }
+
+    [payslipWithholdingTaxInput, payslipSssInput, payslipPhilhealthInput, payslipPagibigInput, payslipCashAdvanceInput, payslipCommissionInput, payslipFoodAllowanceInput].forEach((input) => {
+        if (input) input.addEventListener('input', payslipRecalculateNetPay);
+    });
+
+    function payslipRenderPreview(data) {
+        payslipCurrentPreview = data;
+        if (payslipDaysTableBody) {
+            payslipDaysTableBody.innerHTML = (data.days || []).map((d) => {
+                const holidayLabel = d.isHoliday ? `${payslipEscapeHtml(d.holidayName)} (${d.workedMultiplierPercent}%)` : '-';
+                return `
+                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <td style="padding: 7px 9px;">${d.date}</td>
+                        <td style="padding: 7px 9px;">${d.hoursWorked}</td>
+                        <td style="padding: 7px 9px;">${holidayLabel}</td>
+                        <td style="padding: 7px 9px;">${d.otHours}</td>
+                        <td style="padding: 7px 9px;">${payslipFormatPeso(d.otPay)}</td>
+                        <td style="padding: 7px 9px;">${payslipFormatPeso(d.basePay)}</td>
+                        <td style="padding: 7px 9px; font-weight: 600;">${payslipFormatPeso(d.dayTotal)}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        if (payslipTotalBasePayEl) payslipTotalBasePayEl.textContent = payslipFormatPeso(data.totalBasePay);
+        if (payslipTotalOtHoursEl) payslipTotalOtHoursEl.textContent = data.totalOtHours;
+        if (payslipTotalOtPayEl) payslipTotalOtPayEl.textContent = payslipFormatPeso(data.totalOtPay);
+        // Fix 75: fresh compute always starts Commission at 0 (Marvin types it
+        // in per payslip), and auto-fills the Cash Advance field with the
+        // server-suggested, already-capped deduction -- editable, per the
+        // user's explicit "suggestion, pwede pa ring i-adjust" decision.
+        if (payslipCommissionInput) payslipCommissionInput.value = '0';
+        if (payslipFoodAllowanceInput) payslipFoodAllowanceInput.value = '0';
+        if (payslipCashAdvanceInput) {
+            const suggested = Number(data.suggestedCashAdvanceDeduction) || 0;
+            payslipCashAdvanceInput.value = suggested.toFixed(2);
+        }
+        if (payslipCaBalanceHint) {
+            const balance = Number(data.cashAdvanceBalance) || 0;
+            if (balance > 0) {
+                payslipCaBalanceHint.textContent = `Natitirang utang: ${payslipFormatPeso(balance)} (${payslipFormatPeso(data.cashAdvanceWeeklyInstallment)}/linggo) -- na-suggest na sa field sa itaas, pwede mo pang baguhin.`;
+                payslipCaBalanceHint.classList.remove('hidden');
+            } else {
+                payslipCaBalanceHint.textContent = '';
+                payslipCaBalanceHint.classList.add('hidden');
+            }
+        }
+        payslipRecalculateNetPay();
+        if (payslipPreviewSection) payslipPreviewSection.classList.remove('hidden');
+    }
+
+    if (menuPayslipBtn) {
+        menuPayslipBtn.addEventListener('click', () => {
+            hideAllContainers();
+            if (payslipContainer) payslipContainer.classList.remove('hidden');
+            if (payslipPreviewSection) payslipPreviewSection.classList.add('hidden');
+            if (addCashAdvanceForm) addCashAdvanceForm.classList.add('hidden');
+            payslipCurrentPreview = null;
+            loadPayslipEmployees();
+            loadPayrollRecords();
+            loadCashAdvanceBalances();
+        });
+    }
+
+    if (btnPayslipRefresh) {
+        btnPayslipRefresh.addEventListener('click', loadPayrollRecords);
+    }
+
+    if (payslipForm) {
+        payslipForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const employee = payslipEmployeeSelect ? payslipEmployeeSelect.value : '';
+            const startDate = payslipStartDateInput ? payslipStartDateInput.value : '';
+            const endDate = payslipEndDateInput ? payslipEndDateInput.value : '';
+
+            if (!employee) { showMessage(payslipStatusMessage, 'Piliin ang Employee.', 'error'); return; }
+            if (!startDate || !endDate) { showMessage(payslipStatusMessage, 'Piliin ang Start Date at End Date.', 'error'); return; }
+            if (startDate > endDate) { showMessage(payslipStatusMessage, 'Ang Start Date ay hindi dapat lampas sa End Date.', 'error'); return; }
+
+            const computeBtn = document.getElementById('payslip-compute-btn');
+            const btnText = computeBtn ? computeBtn.querySelector('.btn-text') : null;
+            const spinner = computeBtn ? computeBtn.querySelector('.spinner') : null;
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            if (computeBtn) computeBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'computePayslipPreview', employee, startDate, endDate })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    payslipRenderPreview(result.data);
+                    showMessage(payslipStatusMessage, 'Na-compute -- i-check ang preview sa ibaba.', 'success');
+                } else {
+                    showMessage(payslipStatusMessage, `Error: ${result.message || 'Hindi na-compute.'}`, 'error');
+                    if (payslipPreviewSection) payslipPreviewSection.classList.add('hidden');
+                    payslipCurrentPreview = null;
+                }
+            } catch (error) {
+                console.error('Error computing payslip preview:', error);
+                showMessage(payslipStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                if (computeBtn) computeBtn.disabled = false;
+            }
+        });
+    }
+
+    if (payslipSaveBtn) {
+        payslipSaveBtn.addEventListener('click', async () => {
+            if (!payslipCurrentPreview) return;
+            const employee = payslipEmployeeSelect ? payslipEmployeeSelect.value : '';
+            const startDate = payslipStartDateInput ? payslipStartDateInput.value : '';
+            const endDate = payslipEndDateInput ? payslipEndDateInput.value : '';
+            const withholdingTax = parseFloat(payslipWithholdingTaxInput.value);
+            const sss = parseFloat(payslipSssInput.value);
+            const philhealth = parseFloat(payslipPhilhealthInput.value);
+            const pagibig = parseFloat(payslipPagibigInput.value);
+            const cashAdvance = parseFloat(payslipCashAdvanceInput.value);
+            const commission = parseFloat(payslipCommissionInput ? payslipCommissionInput.value : 0);
+            const foodAllowance = parseFloat(payslipFoodAllowanceInput ? payslipFoodAllowanceInput.value : 0);
+
+            const deductionValues = [withholdingTax, sss, philhealth, pagibig, cashAdvance];
+            if (deductionValues.some((v) => isNaN(v) || v < 0)) {
+                showMessage(payslipStatusMessage, 'Lahat ng deduction fields ay dapat valid na numero (0 o mas mataas).', 'error');
+                return;
+            }
+            if (isNaN(commission) || commission < 0) {
+                showMessage(payslipStatusMessage, 'Ang Commission ay dapat valid na numero (0 o mas mataas).', 'error');
+                return;
+            }
+            if (isNaN(foodAllowance) || foodAllowance < 0) {
+                showMessage(payslipStatusMessage, 'Ang Food Allowance ay dapat valid na numero (0 o mas mataas).', 'error');
+                return;
+            }
+
+            const btnText = payslipSaveBtn.querySelector('.btn-text');
+            const spinner = payslipSaveBtn.querySelector('.spinner');
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            payslipSaveBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'savePayslip', employee, startDate, endDate,
+                        withholdingTax, sss, philhealth, pagibig, cashAdvance, commission, foodAllowance,
+                        generatedBy: sessionStorage.getItem('loggedInUser') || ''
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(payslipStatusMessage, 'Na-save ang payslip. Ginagawa ang PDF...', 'success');
+                    await generatePayslipPdf(result.data);
+                    loadPayrollRecords();
+                    loadCashAdvanceBalances(); // the CA deduction just recorded (if any) changes the running balance
+                } else {
+                    showMessage(payslipStatusMessage, `Error: ${result.message || 'Hindi na-save ang payslip.'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving payslip:', error);
+                showMessage(payslipStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                payslipSaveBtn.disabled = false;
+            }
+        });
+    }
+
+    async function loadPayrollRecords() {
+        if (!payslipRecordsTableBody) return;
+        payslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getPayrollRecords' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                payslipRecordsTableBody.innerHTML = `<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load.'}</td></tr>`;
+                return;
+            }
+            const records = result.data || [];
+            if (records.length === 0) {
+                payslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">Wala pang na-generate na payslip.</td></tr>';
+                return;
+            }
+            payslipRecordsTableBody.innerHTML = records.map((rec, idx) => `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.employee)}</td>
+                    <td style="padding: 8px 10px;">${rec.startDate} - ${rec.endDate}</td>
+                    <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(rec.netPay)}</td>
+                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.generatedBy)}</td>
+                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.timestamp)}</td>
+                    <td style="padding: 8px 10px;"><button type="button" class="btn-payslip-reprint" data-record-index="${idx}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Reprint</button></td>
+                </tr>
+            `).join('');
+            // Stashed on the element itself (not re-fetched) so Reprint can
+            // rebuild the PDF straight from the already-saved per-day
+            // breakdown, with no extra network round trip.
+            payslipRecordsTableBody._records = records;
+        } catch (error) {
+            console.error('Error loading payroll records:', error);
+            payslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        }
+    }
+
+    if (payslipRecordsTableBody) {
+        payslipRecordsTableBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-payslip-reprint');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-record-index'), 10);
+            const records = payslipRecordsTableBody._records || [];
+            const rec = records[idx];
+            if (!rec) return;
+            let days = [];
+            try { days = JSON.parse(rec.dailyBreakdown || '[]'); } catch (parseErr) { days = []; }
+            generatePayslipPdf({
+                employee: rec.employee, dailyRate: rec.dailyRate, startDate: rec.startDate, endDate: rec.endDate,
+                days, totalBasePay: rec.totalBasePay, totalOtHours: rec.totalOtHours, totalOtPay: rec.totalOtPay,
+                grossPay: rec.grossPay, withholdingTax: rec.withholdingTax, sss: rec.sss, philhealth: rec.philhealth,
+                pagibig: rec.pagibig, cashAdvance: rec.cashAdvance, totalDeductions: rec.totalDeductions,
+                netPay: rec.netPay, generatedBy: rec.generatedBy, timestamp: rec.timestamp,
+                commission: rec.commission, cashAdvanceRemainingBalance: rec.cashAdvanceRemainingBalance,
+                foodAllowance: rec.foodAllowance
+            });
+        });
+    }
+
+    async function generatePayslipPdf(data) {
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+            newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Payslip PDF, please wait...</h3>');
+        }
+
+        const rowsHtml = (data.days || []).map((d) => {
+            const holidayLabel = d.isHoliday ? `${payslipEscapeHtml(d.holidayName)} (${d.workedMultiplierPercent}%)` : '-';
+            return `
+                <tr>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.date}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.hoursWorked}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${holidayLabel}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.otHours}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">₱${Number(d.otPay).toFixed(2)}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">₱${Number(d.basePay).toFixed(2)}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px; font-weight:700;">₱${Number(d.dayTotal).toFixed(2)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        // Fix (post-Fix-74, reported by the user in production): the payslip
+        // PDF was coming out visually cut mid-row ("purol") right around the
+        // deductions section. Root cause -- confirmed against this file's own
+        // Manual Quotation PDF comments (search "MQ_RENDER_WIDTH_PX" above),
+        // which already document html2pdf's page-break quirks in detail --
+        // is that the deductions block used to sit inside a `display:flex`
+        // wrapper (`justify-content:flex-end`, to right-align it). CSS
+        // page-break-inside/"avoid" rules (which is what html2pdf's 'css'
+        // pagebreak mode injects) are well known to NOT reliably apply to
+        // flex children in many rendering engines, so our `avoid:'tr'` was
+        // silently ignored for that table -- a row could straddle the page
+        // boundary and get sliced in half instead of moving wholly to page 2.
+        // Fix: no flex ANYWHERE in this template now -- the header info line
+        // and the summary/deductions section are both built as plain
+        // `<table>` layouts (which page-break-inside/'avoid' DOES respect),
+        // and the whole trailing summary+footer block is additionally wrapped
+        // in one `.payslip-avoid-break` div so it either fits wholly or moves
+        // wholly to the next page, mirroring the exact `.mq-avoid-break`
+        // pattern Manual Quotation's PDF already uses successfully. Peso
+        // amounts now go through `payslipFormatPeso()` (comma-separated, e.g.
+        // "₱1,650.00") instead of a bare `.toFixed(2)`, matching the on-screen
+        // preview and looking less "purol"/plain on a real payslip. Also
+        // switched to the same margin/format combo (0.3in, 'a4') this app's
+        // Manual Quotation PDF already validated as not producing stray
+        // blank/truncated pages, rather than the untested 'letter'/0.4in this
+        // function originally used.
+        const htmlString = `
+            <div id="payslip-pdf-content-wrapper" style="font-family: Arial, sans-serif; padding: 20px; color: #1f2937;">
+                <div style="text-align:center; margin-bottom: 18px;">
+                    <div style="font-size:20px; font-weight:800; color:#1f2937;">${MQ_BRAND.name}</div>
+                    <div style="font-size:11.5px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
+                    <div style="font-size:11.5px; color:#6b7280; margin-top:5px;">📍 ${MQ_BRAND.address}</div>
+                    <div style="font-size:11.5px; color:#6b7280;">📞 ${MQ_BRAND.phone} &nbsp;|&nbsp; ✉️ ${MQ_BRAND.email}</div>
+                    <h2 style="margin: 14px 0 0; font-size: 16px; letter-spacing: 0.5px;">PAYSLIP</h2>
+                </div>
+                <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom: 14px; border-top:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb;">
+                    <tr>
+                        <td style="padding:8px 4px;"><strong>Employee:</strong> ${payslipEscapeHtml(data.employee)}</td>
+                        <td style="padding:8px 4px;"><strong>Cutoff:</strong> ${data.startDate} to ${data.endDate}</td>
+                        <td style="padding:8px 4px; text-align:right;"><strong>Daily Rate:</strong> ${payslipFormatPeso(data.dailyRate)}</td>
+                    </tr>
+                </table>
+                <table style="width:100%; border-collapse: collapse; margin-bottom: 18px;">
+                    <thead>
+                        <tr style="background:#f3f4f6;">
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Date</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Hours</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Holiday</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">OT Hrs</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">OT Pay</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Base Pay</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+                <div class="payslip-avoid-break">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                        <tr>
+                            <td style="width:50%; vertical-align:top; padding-right:18px;">
+                                <div style="font-size:10px; text-transform:uppercase; color:#6b7280; font-weight:700; margin-bottom:6px; letter-spacing:0.4px;">Pay Summary</div>
+                                <table style="width:100%; border-collapse:collapse;">
+                                    <tr><td style="padding:4px 0;">Total Base Pay</td><td style="padding:4px 0; text-align:right;">${payslipFormatPeso(data.totalBasePay)}</td></tr>
+                                    <tr><td style="padding:4px 0;">Total OT Pay (${data.totalOtHours} hrs)</td><td style="padding:4px 0; text-align:right;">${payslipFormatPeso(data.totalOtPay)}</td></tr>
+                                    <tr><td style="padding:4px 0;">Commission</td><td style="padding:4px 0; text-align:right;">${payslipFormatPeso(data.commission || 0)}</td></tr>
+                                    <tr><td style="padding:4px 0;">Food Allowance</td><td style="padding:4px 0; text-align:right;">${payslipFormatPeso(data.foodAllowance || 0)}</td></tr>
+                                    <tr style="border-top:1px solid #e5e7eb;"><td style="padding:6px 0; font-weight:700;">Gross Pay</td><td style="padding:6px 0; text-align:right; font-weight:700;">${payslipFormatPeso(data.grossPay)}</td></tr>
+                                </table>
+                            </td>
+                            <td style="width:50%; vertical-align:top; padding-left:18px; border-left:1px solid #e5e7eb;">
+                                <div style="font-size:10px; text-transform:uppercase; color:#6b7280; font-weight:700; margin-bottom:6px; letter-spacing:0.4px;">Deductions</div>
+                                <table style="width:100%; border-collapse:collapse;">
+                                    <tr><td style="padding:4px 0; color:#b91c1c;">Withholding Tax</td><td style="padding:4px 0; text-align:right; color:#b91c1c;">-${payslipFormatPeso(data.withholdingTax)}</td></tr>
+                                    <tr><td style="padding:4px 0; color:#b91c1c;">SSS</td><td style="padding:4px 0; text-align:right; color:#b91c1c;">-${payslipFormatPeso(data.sss)}</td></tr>
+                                    <tr><td style="padding:4px 0; color:#b91c1c;">PhilHealth</td><td style="padding:4px 0; text-align:right; color:#b91c1c;">-${payslipFormatPeso(data.philhealth)}</td></tr>
+                                    <tr><td style="padding:4px 0; color:#b91c1c;">Pag-IBIG</td><td style="padding:4px 0; text-align:right; color:#b91c1c;">-${payslipFormatPeso(data.pagibig)}</td></tr>
+                                    <tr><td style="padding:4px 0; color:#b91c1c;">Cash Advance</td><td style="padding:4px 0; text-align:right; color:#b91c1c;">-${payslipFormatPeso(data.cashAdvance)}</td></tr>
+                                    ${data.cashAdvanceRemainingBalance !== undefined && data.cashAdvanceRemainingBalance !== null ? `<tr><td colspan="2" style="padding:3px 0 0; font-size:9.5px; color:#6b7280; font-style:italic;">CA Balance na Natitira: ${payslipFormatPeso(data.cashAdvanceRemainingBalance)}</td></tr>` : ''}
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                    <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+                        <tr style="border-top:2px solid #1f2937;">
+                            <td style="padding:8px 0; font-weight:800; font-size:15px;">NET PAY</td>
+                            <td style="padding:8px 0; text-align:right; font-weight:800; font-size:15px;">${payslipFormatPeso(data.netPay)}</td>
+                        </tr>
+                    </table>
+                    <div style="margin-top: 24px; font-size: 10px; color: #9ca3af; text-align:center;">
+                        Generated by ${payslipEscapeHtml(data.generatedBy)} on ${payslipEscapeHtml(data.timestamp)} -- ${MQ_BRAND.name}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const hiddenDiv = document.createElement('div');
+        hiddenDiv.innerHTML = htmlString;
+        hiddenDiv.style.position = 'absolute';
+        hiddenDiv.style.top = '-9999px';
+        hiddenDiv.style.left = '-9999px';
+        hiddenDiv.style.width = '800px';
+        document.body.appendChild(hiddenDiv);
+
+        const element = hiddenDiv.querySelector('#payslip-pdf-content-wrapper');
+        const opt = {
+            // Same margin/format combo as Manual Quotation's PDF (see
+            // MQ_MARGIN_IN above), which this app already validated does not
+            // produce stray blank/truncated pages -- 0.4in + 'letter' (this
+            // function's original values) were untested here and, combined
+            // with the now-removed flex wrapper, are what produced the
+            // mid-row cutoff reported by the user.
+            margin: 0.3,
+            filename: `Payslip_${(data.employee || '').replace(/ /g, '_')}_${data.startDate}_to_${data.endDate}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+            // '.payslip-avoid-break' wraps the whole Pay Summary/Deductions/Net
+            // Pay/footer block as ONE atomic unit -- combined with removing
+            // the flex wrapper (page-break-inside/'avoid' is unreliable on
+            // flex children in many rendering engines, which is what actually
+            // let a row get sliced across the page boundary before), this
+            // block now either fits entirely on the current page or moves
+            // wholly to the next one, never split mid-row/mid-table again.
+            pagebreak: { mode: ['css'], avoid: ['tr', '.payslip-avoid-break'] }
+        };
+
+        // Fix (reported by the user, 2026-08-27): a payslip for a longer
+        // cutoff (6 days + the new Commission/Cash-Advance-hint fields from
+        // Fix 75 making the form taller) came out with a big blank gap
+        // before the header, table cut off partway through. Root cause,
+        // confirmed by reproducing this through the real html2pdf library:
+        // html2canvas's default capture is relative to the browser window's
+        // CURRENT SCROLL POSITION, but this function's hidden render target
+        // sits at a fixed off-screen spot (top:-9999px/left:-9999px)
+        // regardless of scroll. A longer Payslip form now needs scrolling
+        // to reach the "I-save" button -- so by the time this runs, the
+        // page is no longer scrolled to the top, and html2canvas's capture
+        // window ends up offset by roughly that same scroll distance,
+        // producing a blank gap (or, at a large enough offset, an entirely
+        // blank capture) instead of the actual content. Fix: snap the page
+        // to the very top immediately before capturing, then restore
+        // exactly where the user was scrolled to -- so this is invisible
+        // to them and doesn't jump their place in the form.
+        const scrollXBeforeCapture = window.scrollX;
+        const scrollYBeforeCapture = window.scrollY;
+        window.scrollTo(0, 0);
+
+        try {
+            const pdfUrl = await html2pdf().set(opt).from(element).output('bloburl');
+            if (newTab) newTab.location.href = pdfUrl;
+        } catch (err) {
+            console.error('Error generating payslip PDF:', err);
+            if (newTab) newTab.close();
+        } finally {
+            document.body.removeChild(hiddenDiv);
+            window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+        }
     }
 
     // PDF Report Generator Logic

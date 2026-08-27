@@ -87,6 +87,30 @@
                 <span class="icon">🕒</span>
                 Attendance
             </button>
+            <!-- Fix 72 (Payroll/Payslip project, Phase 2): OT Requests -- its own
+                 standalone top-level menu item (not nested inside Attendance), per
+                 the agreed design. Visible to everyone (any employee can file an OT
+                 request); the "Pending Approvals" section inside is what's actually
+                 gated to Supervisor/Manager/Owner. -->
+            <button class="menu-action-btn" id="menu-ot-requests-btn">
+                <span class="icon">⏱️</span>
+                OT Requests
+            </button>
+            <!-- Fix 73 (Payroll Phase 3): Holiday Pay marking -- hidden by default,
+                 shown only for Owner/Payroll roles (see the role-gating block in
+                 showApp() in app.js), same "hidden by default, shown in showApp()"
+                 pattern already used for Manual Quotation's store-based gate. -->
+            <button class="menu-action-btn" id="menu-holiday-pay-btn" style="display: none;">
+                <span class="icon">🎉</span>
+                Holiday Pay
+            </button>
+            <!-- Fix 74 (Payroll Phase 4): Weekly Payroll Computation + Payslip --
+                 same role gate as Holiday Pay (Owner/Payroll only, see showApp()
+                 in app.js), hidden by default. -->
+            <button class="menu-action-btn" id="menu-payslip-btn" style="display: none;">
+                <span class="icon">💵</span>
+                Payslip
+            </button>
             <!-- Fix 20: Manual Quotation -- access restricted to store === 'All' or
                  store === 'MarvsPCStufz', same rule as the MarvsPCStufz button above
                  (see the store-gating block in showApp() in app.js). Hidden by
@@ -342,6 +366,373 @@
                             </tr>
                         </thead>
                         <tbody id="attendance-table-body">
+                            <tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- OT Requests Container (Fix 72 - Payroll/Payslip project, Phase 2) -->
+    <div class="container hidden" id="ot-requests-container" style="max-width: 700px;">
+        <header>
+            <h1><i class="fas fa-stopwatch" style="margin-right: 8px;"></i>OT Requests</h1>
+            <p>File an overtime request before your duty, or review pending approvals</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <h2 style="margin-top: 0;">File OT Request</h2>
+            <form id="ot-request-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ot-request-employee">Employee</label>
+                        <input type="text" id="ot-request-employee" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;">
+                    </div>
+                    <div class="form-group">
+                        <label for="ot-request-date">Date</label>
+                        <input type="date" id="ot-request-date" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="ot-request-branch">Branch</label>
+                    <select id="ot-request-branch" required>
+                        <option value="" disabled selected>Select Branch</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                        <option value="MarvsPCStufz">MarvsPCStufz</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="ot-request-reason">Reason</label>
+                    <textarea id="ot-request-reason" rows="3" placeholder="Bakit kailangan ng OT?" required></textarea>
+                </div>
+                <button type="submit" class="submit-btn" id="ot-request-submit-btn">
+                    <span class="btn-text"><i class="fas fa-paper-plane"></i> Submit Request</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div id="ot-request-status-message" class="hidden" style="margin-top: 15px;"></div>
+
+            <!-- Gated to Supervisor/Manager/Owner in app.js (otIsApproverRole) --
+                 the backend re-checks the deciding user's role independently on
+                 every decideOtRequest call, so this client-side hide is a UX
+                 convenience only, never the real security boundary. -->
+            <div id="ot-pending-approvals-section" class="hidden" style="margin-top: 30px;">
+                <hr style="margin: 0 0 20px 0; border: none; border-top: 1px solid var(--glass-border);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h2 style="margin: 0;">Pending Approvals</h2>
+                    <button type="button" id="btn-ot-requests-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
+                </div>
+                <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Date</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Employee</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Branch</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Reason</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ot-pending-approvals-table-body">
+                            <tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="ot-pending-approvals-status-message" class="hidden" style="margin-top: 10px;"></div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Holiday Pay Container (Fix 73 - Payroll Phase 3). The button that opens
+         this page is itself hidden unless the session's role is Owner or Payroll
+         (see showApp() in app.js) -- this container has no content anyone else
+         would ever see, but the backend also independently re-validates the
+         Marked By / Deleted By role on every write, same defense-in-depth pattern
+         as saveEmployeeRate/decideOtRequest. -->
+    <div class="container hidden" id="holiday-pay-container" style="max-width: 800px;">
+        <header>
+            <h1><i class="fas fa-umbrella-beach" style="margin-right: 8px;"></i>Holiday Pay</h1>
+            <p>I-mark ang mga Regular Holiday / Special Non-Working Holiday dates</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <h2 style="margin-top: 0;" id="hp-form-heading">Mag-mark ng Holiday</h2>
+            <form id="hp-form">
+                <input type="hidden" id="hp-edit-row-index">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="hp-date">Date</label>
+                        <input type="date" id="hp-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="hp-type">Type</label>
+                        <select id="hp-type" required>
+                            <option value="" disabled selected>Select Type</option>
+                            <option value="Regular Holiday">Regular Holiday</option>
+                            <option value="Special Non-Working Holiday">Special Non-Working Holiday</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="hp-name">Holiday Name</label>
+                    <input type="text" id="hp-name" placeholder="hal. Araw ng Kagitingan" required>
+                </div>
+                <div class="form-group">
+                    <label for="hp-worked-multiplier">Worked Multiplier (%)</label>
+                    <input type="number" id="hp-worked-multiplier" min="0" step="0.01" placeholder="hal. 200 para sa double pay" required>
+                    <!-- Fix 73: this is a MANUAL value per holiday, not auto-derived
+                         from Type -- the user explicitly asked for manual values
+                         rather than a hardcoded DOLE table, so the same "Type" can
+                         carry a different multiplier on different dates if the
+                         user wants that. Unworked days are a fixed, hardcoded 0%
+                         (no-work-no-pay, per the user's explicit confirmation) --
+                         there is deliberately no "unworked %" field to fill in. -->
+                    <p style="color: var(--text-muted); font-size: 0.82em; margin-top: 4px;">
+                        Kapag HINDI pinasukan ang holiday na ito, 0% ang ibabayad (no work, no pay) -- awtomatiko ito, walang kailangang i-set. Ang multiplier na ito ay para lang sa mga PUMASOK sa araw na ito.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit" class="submit-btn" id="hp-submit-btn" style="margin-top: 0;">
+                        <span class="btn-text"><i class="fas fa-save"></i> Save Holiday</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                    <button type="button" id="hp-cancel-edit-btn" class="hidden" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 8px; padding: 0 18px; cursor: pointer; font-weight: 500;">Cancel</button>
+                </div>
+            </form>
+            <div id="hp-status-message" class="hidden" style="margin-top: 15px;"></div>
+
+            <div style="margin-top: 30px;">
+                <hr style="margin: 0 0 20px 0; border: none; border-top: 1px solid var(--glass-border);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h2 style="margin: 0;">Mga Naka-mark na Holiday</h2>
+                    <button type="button" id="btn-hp-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
+                </div>
+                <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Date</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Name</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Type</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Worked %</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Marked By</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hp-table-body">
+                            <tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Payslip Container (Fix 74 - Payroll Phase 4). Same access gate as
+         Holiday Pay: the menu button is hidden unless the session's role is
+         Owner or Payroll (see showApp() in app.js). Flow: pick Employee +
+         Start/End Date -> "I-compute" calls computePayslipPreview (read-only,
+         no save) -> preview shows a per-day breakdown + totals -> fill in the
+         5 manual deductions -> "I-save at I-print" calls savePayslip, which
+         independently RECOMPUTES server-side (never trusts whatever the
+         preview showed) before appending a new row to "Payroll Records" and
+         generating the PDF. Every save is a brand-new record, even for a
+         repeat employee+range -- confirmed by the user, so a late-approved OT
+         Request just means re-generating rather than editing an old one. -->
+    <div class="container hidden" id="payslip-container" style="max-width: 900px;">
+        <header>
+            <h1><i class="fas fa-money-check-dollar" style="margin-right: 8px;"></i>Payslip</h1>
+            <p>Kalkulahin at i-print ang payslip ng isang empleyado para sa isang date range</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <!-- Fix 75: Cash Advance ledger -- running balance + weekly installment per
+                 employee, tracked separately from the payslip form below so Marvin can
+                 record a new advance any time, not just while generating a payslip. -->
+            <div style="margin-bottom: 30px; padding: 16px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--glass-border);">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <h2 style="margin: 0;">Cash Advance Balances</h2>
+                    <button type="button" id="btn-payslip-show-add-ca" style="background: rgba(79,70,229,0.15); border: 1px solid rgba(79,70,229,0.4); color: var(--primary); border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 600; cursor: pointer;">+ Bagong Cash Advance</button>
+                </div>
+                <div style="overflow-x: auto; margin-top: 12px; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Employee</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Natitirang Balance</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Weekly Installment</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cash-advance-balances-table-body">
+                            <tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <form id="add-cash-advance-form" class="hidden" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--glass-border);">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="ca-employee">Employee</label>
+                            <select id="ca-employee" required>
+                                <option value="" disabled selected>Select Employee</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ca-amount">Halaga ng Bagong Cash Advance</label>
+                            <input type="number" id="ca-amount" min="0.01" step="0.01" required>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="ca-weekly-installment">Weekly Installment (babawasin kada payslip)</label>
+                            <input type="number" id="ca-weekly-installment" min="0.01" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="ca-note">Note (opsyonal)</label>
+                            <input type="text" id="ca-note">
+                        </div>
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 0.8em;">Kung may natitira pang balance ang empleyadong ito, idadagdag lang ang bagong halaga sa existing balance niya -- naka-pre-fill na ang Weekly Installment sa kasalukuyang rate niya, iwan mo na lang kung same pa rin.</p>
+                    <button type="submit" class="submit-btn" id="ca-save-btn" style="margin-top: 6px;">
+                        <span class="btn-text"><i class="fas fa-hand-holding-dollar"></i> I-save ang Cash Advance</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                </form>
+                <div id="ca-status-message" class="hidden" style="margin-top: 12px;"></div>
+            </div>
+
+            <h2 style="margin-top: 0;">1. Piliin ang Employee at Cutoff Range</h2>
+            <form id="payslip-form">
+                <div class="form-group">
+                    <label for="payslip-employee">Employee</label>
+                    <select id="payslip-employee" required>
+                        <option value="" disabled selected>Select Employee</option>
+                    </select>
+                    <p style="color: var(--text-muted); font-size: 0.82em; margin-top: 4px;">
+                        Mga empleyadong may naka-set na Daily Rate lang ang lalabas dito. Kung wala ang gusto mong piliin, i-set muna ang Daily Rate niya sa Employee Rates.
+                    </p>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="payslip-start-date">Start Date</label>
+                        <input type="date" id="payslip-start-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="payslip-end-date">End Date</label>
+                        <input type="date" id="payslip-end-date" required>
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn" id="payslip-compute-btn" style="margin-top: 0;">
+                    <span class="btn-text"><i class="fas fa-calculator"></i> I-compute</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div id="payslip-status-message" class="hidden" style="margin-top: 15px;"></div>
+
+            <!-- Preview + deductions + save, hidden until a computation succeeds -->
+            <div id="payslip-preview-section" class="hidden" style="margin-top: 30px;">
+                <hr style="margin: 0 0 20px 0; border: none; border-top: 1px solid var(--glass-border);">
+                <h2 style="margin-top: 0;">2. Preview ng Bawat Araw</h2>
+                <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.83em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Date</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Hours</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Holiday</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">OT Hrs</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">OT Pay</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Base Pay</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payslip-days-table-body"></tbody>
+                    </table>
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; padding: 14px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--glass-border);">
+                    <div><span style="color: var(--text-muted); font-size: 0.78em;">Total Base Pay</span><br><strong id="payslip-total-base-pay">₱0.00</strong></div>
+                    <div><span style="color: var(--text-muted); font-size: 0.78em;">Total OT Hours</span><br><strong id="payslip-total-ot-hours">0</strong></div>
+                    <div><span style="color: var(--text-muted); font-size: 0.78em;">Total OT Pay</span><br><strong id="payslip-total-ot-pay">₱0.00</strong></div>
+                    <div><span style="color: var(--primary); font-size: 0.78em;">Gross Pay</span><br><strong id="payslip-gross-pay" style="color: var(--primary); font-size: 1.1em;">₱0.00</strong></div>
+                </div>
+
+                <div class="form-row" style="margin-top: 16px;">
+                    <div class="form-group">
+                        <label for="payslip-commission">Commission (Manual, idadagdag sa Gross Pay)</label>
+                        <input type="number" id="payslip-commission" min="0" step="0.01" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="payslip-food-allowance">Food Allowance (Manual, idadagdag sa Gross Pay)</label>
+                        <input type="number" id="payslip-food-allowance" min="0" step="0.01" value="0">
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 26px;">3. Mga Deductions (Manual)</h2>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="payslip-withholding-tax">Withholding Tax</label>
+                        <input type="number" id="payslip-withholding-tax" min="0" step="0.01" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="payslip-sss">SSS</label>
+                        <input type="number" id="payslip-sss" min="0" step="0.01" value="0">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="payslip-philhealth">PhilHealth</label>
+                        <input type="number" id="payslip-philhealth" min="0" step="0.01" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="payslip-pagibig">Pag-IBIG</label>
+                        <input type="number" id="payslip-pagibig" min="0" step="0.01" value="0">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="payslip-cash-advance">Cash Advance</label>
+                    <input type="number" id="payslip-cash-advance" min="0" step="0.01" value="0">
+                    <p id="payslip-ca-balance-hint" class="hidden" style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px;"></p>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 14px; background: rgba(79,70,229,0.08); border-radius: 10px; border: 1px solid rgba(79,70,229,0.25);">
+                    <span style="font-weight: 600;">Net Pay</span>
+                    <strong id="payslip-net-pay" style="font-size: 1.3em; color: var(--primary);">₱0.00</strong>
+                </div>
+
+                <button type="button" class="submit-btn" id="payslip-save-btn" style="margin-top: 16px;">
+                    <span class="btn-text"><i class="fas fa-file-invoice-dollar"></i> I-save at I-print ang Payslip</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div style="margin-top: 30px;">
+                <hr style="margin: 0 0 20px 0; border: none; border-top: 1px solid var(--glass-border);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h2 style="margin: 0;">Payroll Records</h2>
+                    <button type="button" id="btn-payslip-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
+                </div>
+                <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Employee</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Cutoff</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Net Pay</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Generated By</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">When</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="payslip-records-table-body">
                             <tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
                         </tbody>
                     </table>
@@ -2144,6 +2535,12 @@
                             <option value="Manager">Manager</option>
                             <option value="Auditor">Auditor</option>
                             <option value="Owner">Owner</option>
+                            <!-- Fix 73 (Payroll Phase 3, Holiday Pay): new role, gates ONLY the
+                                 new Holiday Pay marking feature (alongside Owner) -- deliberately
+                                 does NOT replace the existing Owner/Manager gate on Employee Rates
+                                 or the existing Supervisor/Manager/Owner gate on OT Approvals; the
+                                 user explicitly confirmed those two should stay unchanged. -->
+                            <option value="Payroll">Payroll</option>
                         </select>
                     </div>
 
@@ -2166,6 +2563,32 @@
                 </form>
 
                 <div id="acc-status-message" class="hidden"></div>
+
+                <!-- Fix 71 (Phase 1 of Payroll/Payslip project): per-employee Daily Rate,
+                     the base figure the whole payroll feature (base pay, OT rate, holiday
+                     pay) will be computed from. Owner/Manager-only, same gate as the rest
+                     of this Admin Panel (see adminLoginForm's role check) -- no separate
+                     re-verification needed since getting here already required it. -->
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid var(--glass-border);">
+                <h2>Employee Daily Rates</h2>
+                <p style="color: var(--text-muted); margin-bottom: 15px;">Itakda ang Daily Rate ng bawat empleyado -- ito ang gagamitin bilang basehan ng payroll computation (kasama na ang OT rate = Daily Rate ÷ 9 hours).</p>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--glass-border);">
+                                <th style="padding: 10px; text-align: left;">Name</th>
+                                <th style="padding: 10px; text-align: left;">Role</th>
+                                <th style="padding: 10px; text-align: left;">Store</th>
+                                <th style="padding: 10px; text-align: left;">Daily Rate (₱)</th>
+                                <th style="padding: 10px; text-align: left;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="employee-rates-table-body">
+                            <tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div id="employee-rates-status-message" class="hidden" style="margin-top: 10px;"></div>
             </div>
         </main>
     </div>
@@ -4138,7 +4561,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=81"></script>
+    <script src="app.js?v=89"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
