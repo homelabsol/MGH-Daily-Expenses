@@ -7557,11 +7557,106 @@ document.addEventListener('DOMContentLoaded', () => {
     const schedStaffRows = document.getElementById('sched-staff-rows');
     const btnGenerateSchedule = document.getElementById('btn-generate-schedule');
     const btnSaveSchedule = document.getElementById('btn-save-schedule');
+    const schedRotationPeriod = document.getElementById('sched-rotation-period');
+    const schedStartDateInput = document.getElementById('sched-start-date');
+    const schedEndDateInput = document.getElementById('sched-end-date');
+    const schedStandardHint = document.getElementById('sched-standard-hint');
     let lastGeneratedSchedule = null;
+
+    // Staff Name dropdown (requested by the user, 2026-08-27): the per-staff
+    // "Name" field used to be a free-text input, which let two rows for the
+    // same real person end up with slightly different spellings/casing
+    // ("Juan Dela Cruz" vs "juan dela cruz") -- Marvin asked to pull the
+    // name from the existing employee list instead ("kuhain nalang yung
+    // employee name sa sheet natin"), same source (`getEmployeeRates`,
+    // reading the "Account" sheet) already reused for the Payslip employee
+    // dropdown and the Add-Cash-Advance form. Cached module-level so
+    // reopening the modal or adding more staff rows doesn't refetch.
+    let scheduleEmployeeList = [];
+    let scheduleEmployeeListLoaded = false;
+
+    async function ensureScheduleEmployeeListLoaded() {
+        if (scheduleEmployeeListLoaded) return;
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getEmployeeRates' })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                scheduleEmployeeList = result.data || [];
+                scheduleEmployeeListLoaded = true;
+            }
+        } catch (error) {
+            console.error('Error loading employee list for Staff Schedule Generator:', error);
+        }
+    }
+
+    // Standard Schedule (requested by the user, 2026-08-27): a dedicated
+    // "Shift Rotation Every" option for staff who just work fixed Monday-
+    // Saturday, 9:00 AM - 6:00 PM hours with no rotation at all -- exactly
+    // the fixed pattern MarvsPCStufz staff already always get (see the
+    // branchName === 'MarvsPCStufz' special case inside
+    // generateStaffSchedule below), now exposed as an explicit, selectable
+    // option instead of only being an implicit per-branch behavior. Locked
+    // design (confirmed via AskUserQuestion):
+    //  - Date From/To are disabled in this mode (read-only, just a
+    //    transparency preview of the computed range) -- Save Schedule still
+    //    writes one row per date under the hood, so a concrete range is
+    //    still needed; it's auto-computed as a full 1-year window starting
+    //    today, so Marvin doesn't have to manually pick dates for what's
+    //    meant to be a standing/indefinite schedule.
+    //  - Number of Staff + the Staff Name/Branch rows work exactly as
+    //    before -- this only changes how the schedule is COMPUTED and what
+    //    date range gets used, not how staff are selected.
+    //  - The 9am-6pm/Mon-Sat/no-rotation treatment is what MarvsPCStufz
+    //    branch staff already unconditionally get today, so nothing changes
+    //    for them. If a Parang/Concepcion staff member is added to a
+    //    Standard Schedule batch, they keep using their OWN branch's normal
+    //    multi-shift rotation logic (the user explicitly did NOT want this
+    //    option to override Parang/Concepcion's existing shift options) --
+    //    the rotation period for those non-MarvsPCStufz staff just defaults
+    //    silently to 2 weeks internally (since there's no numeric period to
+    //    pick in this mode).
+    function formatLocalDateYMD(d) {
+        const y = d.getFullYear();
+        const m = ('0' + (d.getMonth() + 1)).slice(-2);
+        const day = ('0' + d.getDate()).slice(-2);
+        return `${y}-${m}-${day}`;
+    }
+
+    function computeStandardScheduleDateRange() {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const oneYearLater = new Date(today);
+        oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+        oneYearLater.setDate(oneYearLater.getDate() - 1); // inclusive 1-year window
+        return { startDate: formatLocalDateYMD(today), endDate: formatLocalDateYMD(oneYearLater) };
+    }
+
+    function updateScheduleDateFieldsForRotationMode() {
+        if (!schedRotationPeriod) return;
+        const isStandard = schedRotationPeriod.value === 'standard';
+        if (schedStartDateInput) schedStartDateInput.disabled = isStandard;
+        if (schedEndDateInput) schedEndDateInput.disabled = isStandard;
+        if (schedStandardHint) schedStandardHint.classList.toggle('hidden', !isStandard);
+        if (isStandard) {
+            const range = computeStandardScheduleDateRange();
+            if (schedStartDateInput) schedStartDateInput.value = range.startDate;
+            if (schedEndDateInput) schedEndDateInput.value = range.endDate;
+        }
+    }
+
+    if (schedRotationPeriod) {
+        schedRotationPeriod.addEventListener('change', updateScheduleDateFieldsForRotationMode);
+    }
 
     if (btnAttendanceSchedule) {
         btnAttendanceSchedule.addEventListener('click', () => {
             if (attendanceScheduleModal) attendanceScheduleModal.classList.remove('hidden');
+            updateScheduleDateFieldsForRotationMode();
+            ensureScheduleEmployeeListLoaded(); // pre-warm the cache while Marvin is still picking Number of Staff
         });
     }
     if (closeAttendanceScheduleModalBtn) {
@@ -7587,6 +7682,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderScheduleStaffRows(count) {
         schedStaffRows.innerHTML = '';
+        // Staff Name is now a dropdown sourced from the real Account sheet
+        // (via getEmployeeRates) instead of free text -- avoids the same
+        // person ending up spelled two different ways across rows/cutoffs.
+        // Each option carries the employee's on-file Store as a data
+        // attribute so picking a name can auto-suggest the matching branch.
+        const employeeOptionsHtml = '<option value="" disabled selected>Select Employee</option>' +
+            scheduleEmployeeList.map(emp =>
+                `<option value="${payslipEscapeHtml(emp.name)}" data-store="${payslipEscapeHtml(emp.store || '')}">${payslipEscapeHtml(emp.name)}</option>`
+            ).join('');
         for (let i = 1; i <= count; i++) {
             const row = document.createElement('div');
             row.className = 'sched-staff-row';
@@ -7594,7 +7698,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.innerHTML = `
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 0.75em;">Staff ${i} Name</label>
-                    <input type="text" class="sched-staff-name" placeholder="e.g. Juan Dela Cruz" style="width: 100%;">
+                    <select class="sched-staff-name" style="width: 100%;">${employeeOptionsHtml}</select>
                 </div>
                 <div class="form-group" style="margin: 0;">
                     <label style="font-size: 0.75em;">Branch</label>
@@ -7610,12 +7714,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (schedStaffCount) {
-        schedStaffCount.addEventListener('change', () => {
+        schedStaffCount.addEventListener('change', async () => {
             const count = parseInt(schedStaffCount.value) || 0;
+            await ensureScheduleEmployeeListLoaded(); // usually already resolved (pre-warmed on modal open); this just covers a very fast click
             renderScheduleStaffRows(count);
             btnSaveSchedule.classList.add('hidden');
             document.getElementById('sched-preview-container').innerHTML = '';
             document.getElementById('sched-warnings').innerHTML = '';
+        });
+    }
+
+    // Auto-suggest the Branch when a Staff Name is picked, based on that
+    // employee's on-file Store in the Account sheet -- only applied when
+    // the store value matches one of the 3 valid branch options exactly, so
+    // an Owner/Payroll account (Store = "All") or a blank Store just leaves
+    // Branch as-is for manual selection.
+    if (schedStaffRows) {
+        schedStaffRows.addEventListener('change', (e) => {
+            if (!e.target.classList.contains('sched-staff-name')) return;
+            const row = e.target.closest('.sched-staff-row');
+            if (!row) return;
+            const selectedOption = e.target.selectedOptions[0];
+            const store = selectedOption ? selectedOption.getAttribute('data-store') : '';
+            const branchSelect = row.querySelector('.sched-staff-branch');
+            if (branchSelect && store && Array.from(branchSelect.options).some(o => o.value === store)) {
+                branchSelect.value = store;
+            }
         });
     }
 
@@ -7786,16 +7910,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnGenerateSchedule) {
         btnGenerateSchedule.addEventListener('click', () => {
-            const startDate = document.getElementById('sched-start-date').value;
-            const endDate = document.getElementById('sched-end-date').value;
+            const rotationValue = schedRotationPeriod ? schedRotationPeriod.value : '2';
+            const isStandardSchedule = rotationValue === 'standard';
 
-            if (!startDate || !endDate) {
-                alert('Please select both Date From and Date To.');
-                return;
-            }
-            if (new Date(startDate) > new Date(endDate)) {
-                alert('Date From cannot be later than Date To.');
-                return;
+            let startDate, endDate;
+            if (isStandardSchedule) {
+                // Standard Schedule: Date From/To are disabled in this mode --
+                // always recompute the 1-year-from-today window fresh here
+                // (rather than trusting whatever's currently sitting in the
+                // disabled inputs) so "today" is never stale.
+                const range = computeStandardScheduleDateRange();
+                startDate = range.startDate;
+                endDate = range.endDate;
+            } else {
+                startDate = document.getElementById('sched-start-date').value;
+                endDate = document.getElementById('sched-end-date').value;
+
+                if (!startDate || !endDate) {
+                    alert('Please select both Date From and Date To.');
+                    return;
+                }
+                if (new Date(startDate) > new Date(endDate)) {
+                    alert('Date From cannot be later than Date To.');
+                    return;
+                }
             }
 
             const nameInputs = document.querySelectorAll('.sched-staff-name');
@@ -7818,7 +7956,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!confirm('May mga staff na walang pangalan. Ituloy pa rin ba?')) return;
             }
 
-            const rotationPeriodWeeks = parseInt(document.getElementById('sched-rotation-period').value) || 2;
+            // Now that Name is a dropdown of real employees (not free text),
+            // picking the same person twice is an easy misclick to make --
+            // warn (don't block) instead of silently generating a schedule
+            // where one employee ends up double-booked across two rows.
+            const chosenNames = staffList.map(s => s.name).filter(n => n && n !== '(Unnamed)');
+            const hasDuplicateName = new Set(chosenNames).size !== chosenNames.length;
+            if (hasDuplicateName) {
+                if (!confirm('May paulit-ulit na napiling employee sa mga staff row. Ituloy pa rin ba?')) return;
+            }
+
+            // Standard Schedule has no numeric rotation period of its own --
+            // MarvsPCStufz-branch staff ignore this value entirely (always
+            // fixed Mon-Sat/9am-6pm, see generateStaffSchedule above), and any
+            // Parang/Concepcion staff in the same batch fall back to the
+            // normal 2-week rotation default (their existing shift options
+            // are intentionally left untouched by this feature).
+            const rotationPeriodWeeks = isStandardSchedule ? 2 : (parseInt(rotationValue) || 2);
             const result = generateStaffSchedule(staffList, startDate, endDate, rotationPeriodWeeks);
             lastGeneratedSchedule = { ...result, startDate, endDate };
 
@@ -7837,12 +7991,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 warningsEl.innerHTML = `<div style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 8px; padding: 8px 14px; color: #6ee7b7; font-size: 0.85em;"><i class="fas fa-check-circle"></i> May staff na naka-duty araw-araw sa bawat branch.</div>`;
             }
 
-            // Render preview table
+            // Render preview table. Standard Schedule generates a full
+            // 1-year range (365+ date columns) -- rendering every single day
+            // would make the preview table unusably wide, so the ON-SCREEN
+            // preview is capped to the first PREVIEW_MAX_DAYS days as a
+            // representative sample; the FULL range is still what actually
+            // gets saved (lastGeneratedSchedule keeps the untouched full
+            // result.dates/schedule, only the rendered HTML below is capped).
+            const PREVIEW_MAX_DAYS = 14;
+            const previewDates = result.dates.slice(0, PREVIEW_MAX_DAYS);
+            const isPreviewTruncated = result.dates.length > PREVIEW_MAX_DAYS;
             const previewContainer = document.getElementById('sched-preview-container');
-            let tableHtml = '<table style="border-collapse: collapse; font-size: 0.78em; min-width: 100%;"><thead><tr>';
+            let tableHtml = '';
+            if (isPreviewTruncated) {
+                tableHtml += `<div style="margin-bottom: 10px; color: var(--text-muted); font-size: 0.85em;"><i class="fas fa-info-circle"></i> Preview lang ang unang ${PREVIEW_MAX_DAYS} araw (${result.dates.length} araw total ang isesave, ${startDate} hanggang ${endDate}).</div>`;
+            }
+            tableHtml += '<table style="border-collapse: collapse; font-size: 0.78em; min-width: 100%;"><thead><tr>';
             tableHtml += '<th style="padding: 8px; text-align: left; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid var(--glass-border);">Staff</th>';
             tableHtml += '<th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Branch</th>';
-            result.dates.forEach(d => {
+            previewDates.forEach(d => {
                 const label = `${d.getMonth() + 1}/${d.getDate()}`;
                 tableHtml += `<th style="padding: 6px; text-align: center; border-bottom: 1px solid var(--glass-border); min-width: 55px;">${label}</th>`;
             });
@@ -7851,7 +8018,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tableHtml += '<tr>';
                 tableHtml += `<td style="padding: 8px; font-weight: 500; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staff.name}</td>`;
                 tableHtml += `<td style="padding: 8px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staff.branch}</td>`;
-                row.cells.forEach(cell => {
+                row.cells.slice(0, PREVIEW_MAX_DAYS).forEach(cell => {
                     const isDuty = cell.status === 'Duty';
                     const cellText = isDuty ? (cell.shift ? cell.shift.shortLabel : 'Duty') : 'Off';
                     const cellTitle = isDuty && cell.shift ? cell.shift.label : 'Day Off';
@@ -8695,6 +8862,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const payslipTotalBasePayEl = document.getElementById('payslip-total-base-pay');
     const payslipTotalOtHoursEl = document.getElementById('payslip-total-ot-hours');
     const payslipTotalOtPayEl = document.getElementById('payslip-total-ot-pay');
+    const payslipDaysPresentEl = document.getElementById('payslip-days-present');
+    const payslipDaysAbsentEl = document.getElementById('payslip-days-absent');
     const payslipGrossPayEl = document.getElementById('payslip-gross-pay');
     const payslipWithholdingTaxInput = document.getElementById('payslip-withholding-tax');
     const payslipSssInput = document.getElementById('payslip-sss');
@@ -8703,6 +8872,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const payslipCashAdvanceInput = document.getElementById('payslip-cash-advance');
     const payslipCommissionInput = document.getElementById('payslip-commission');
     const payslipFoodAllowanceInput = document.getElementById('payslip-food-allowance');
+    const payslipFoodAllowanceHint = document.getElementById('payslip-food-allowance-hint');
     const payslipCaBalanceHint = document.getElementById('payslip-ca-balance-hint');
     const payslipNetPayEl = document.getElementById('payslip-net-pay');
     const payslipSaveBtn = document.getElementById('payslip-save-btn');
@@ -8937,12 +9107,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (payslipTotalBasePayEl) payslipTotalBasePayEl.textContent = payslipFormatPeso(data.totalBasePay);
         if (payslipTotalOtHoursEl) payslipTotalOtHoursEl.textContent = data.totalOtHours;
         if (payslipTotalOtPayEl) payslipTotalOtPayEl.textContent = payslipFormatPeso(data.totalOtPay);
+        if (payslipDaysPresentEl) payslipDaysPresentEl.textContent = data.daysPresent !== undefined ? data.daysPresent : '0';
+        if (payslipDaysAbsentEl) payslipDaysAbsentEl.textContent = data.daysAbsent !== undefined ? data.daysAbsent : '0';
         // Fix 75: fresh compute always starts Commission at 0 (Marvin types it
         // in per payslip), and auto-fills the Cash Advance field with the
         // server-suggested, already-capped deduction -- editable, per the
         // user's explicit "suggestion, pwede pa ring i-adjust" decision.
         if (payslipCommissionInput) payslipCommissionInput.value = '0';
-        if (payslipFoodAllowanceInput) payslipFoodAllowanceInput.value = '0';
+        // Food Allowance follow-up: instead of starting at 0, pre-fill with
+        // the server-computed suggestion (Days Present x ₱80/day) -- still
+        // fully editable before saving, same "auto-fill, editable" pattern.
+        if (payslipFoodAllowanceInput) {
+            const autoFoodAllowance = Number(data.autoFoodAllowance) || 0;
+            payslipFoodAllowanceInput.value = autoFoodAllowance.toFixed(2);
+        }
+        if (payslipFoodAllowanceHint) {
+            const daysPresent = data.daysPresent !== undefined ? data.daysPresent : 0;
+            payslipFoodAllowanceHint.textContent = `Auto-compute: ${daysPresent} araw na present x ₱80.00 = ${payslipFormatPeso(data.autoFoodAllowance || 0)} -- pwede mo pang baguhin.`;
+            payslipFoodAllowanceHint.classList.remove('hidden');
+        }
         if (payslipCashAdvanceInput) {
             const suggested = Number(data.suggestedCashAdvanceDeduction) || 0;
             payslipCashAdvanceInput.value = suggested.toFixed(2);
@@ -9142,7 +9325,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 pagibig: rec.pagibig, cashAdvance: rec.cashAdvance, totalDeductions: rec.totalDeductions,
                 netPay: rec.netPay, generatedBy: rec.generatedBy, timestamp: rec.timestamp,
                 commission: rec.commission, cashAdvanceRemainingBalance: rec.cashAdvanceRemainingBalance,
-                foodAllowance: rec.foodAllowance
+                foodAllowance: rec.foodAllowance, daysPresent: rec.daysPresent, daysAbsent: rec.daysAbsent
             });
         });
     }
@@ -9208,6 +9391,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="padding:8px 4px;"><strong>Employee:</strong> ${payslipEscapeHtml(data.employee)}</td>
                         <td style="padding:8px 4px;"><strong>Cutoff:</strong> ${data.startDate} to ${data.endDate}</td>
                         <td style="padding:8px 4px; text-align:right;"><strong>Daily Rate:</strong> ${payslipFormatPeso(data.dailyRate)}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0 4px 8px;"><strong>Days Present:</strong> ${data.daysPresent !== undefined && data.daysPresent !== null ? data.daysPresent : '-'}</td>
+                        <td style="padding:0 4px 8px;"><strong>Days Absent:</strong> ${data.daysAbsent !== undefined && data.daysAbsent !== null ? data.daysAbsent : '-'}</td>
+                        <td style="padding:0 4px 8px;"></td>
                     </tr>
                 </table>
                 <table style="width:100%; border-collapse: collapse; margin-bottom: 18px;">

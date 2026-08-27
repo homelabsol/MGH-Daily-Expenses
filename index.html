@@ -662,6 +662,8 @@
                     <div><span style="color: var(--text-muted); font-size: 0.78em;">Total Base Pay</span><br><strong id="payslip-total-base-pay">₱0.00</strong></div>
                     <div><span style="color: var(--text-muted); font-size: 0.78em;">Total OT Hours</span><br><strong id="payslip-total-ot-hours">0</strong></div>
                     <div><span style="color: var(--text-muted); font-size: 0.78em;">Total OT Pay</span><br><strong id="payslip-total-ot-pay">₱0.00</strong></div>
+                    <div><span style="color: var(--text-muted); font-size: 0.78em;">Days Present</span><br><strong id="payslip-days-present">0</strong></div>
+                    <div><span style="color: var(--text-muted); font-size: 0.78em;">Days Absent</span><br><strong id="payslip-days-absent">0</strong></div>
                     <div><span style="color: var(--primary); font-size: 0.78em;">Gross Pay</span><br><strong id="payslip-gross-pay" style="color: var(--primary); font-size: 1.1em;">₱0.00</strong></div>
                 </div>
 
@@ -671,8 +673,9 @@
                         <input type="number" id="payslip-commission" min="0" step="0.01" value="0">
                     </div>
                     <div class="form-group">
-                        <label for="payslip-food-allowance">Food Allowance (Manual, idadagdag sa Gross Pay)</label>
+                        <label for="payslip-food-allowance">Food Allowance (Auto: Days Present x ₱80, pwede i-adjust)</label>
                         <input type="number" id="payslip-food-allowance" min="0" step="0.01" value="0">
+                        <p id="payslip-food-allowance-hint" class="hidden" style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px;"></p>
                     </div>
                 </div>
 
@@ -4561,7 +4564,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=89"></script>
+    <script src="app.js?v=92"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -4897,9 +4900,11 @@
                         <select id="sched-rotation-period">
                             <option value="1">1 Week</option>
                             <option value="2" selected>2 Weeks</option>
+                            <option value="standard">Standard Schedule</option>
                         </select>
                     </div>
                 </div>
+                <p id="sched-standard-hint" class="hidden" style="color: var(--text-muted); font-size: 0.8em; margin-top: -6px;">Standard Schedule: Monday-Saturday, 9:00 AM - 6:00 PM, Sunday off, walang rotation. Awtomatikong 1 taon (mula ngayon) ang isesave -- kaya naka-disable ang Date From/To.</p>
 
                 <div id="sched-staff-rows" style="margin-top: 15px; display: flex; flex-direction: column; gap: 10px;"></div>
 
