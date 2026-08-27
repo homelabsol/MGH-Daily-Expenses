@@ -6386,7 +6386,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const adminMonthlyContent = document.getElementById('admin-monthly-income-content');
     const adminSurveyContent = document.getElementById('admin-survey-report-content');
     const adminAttendanceReportContent = document.getElementById('admin-attendance-report-content');
-    
+    const adminPayrollReportContent = document.getElementById('admin-payroll-report-content');
+    // Holds the last-fetched Payroll Report rows (plain JS data, not scraped
+    // from the DOM) so Export Excel and expand/collapse detail rows both
+    // work off the real numbers even though the table has hidden detail rows.
+    let lastPayrollReportData = [];
+
     const reportAdminLoginSection = document.getElementById('report-admin-login-section');
     const reportBackBtns = document.querySelectorAll('.report-back-btn');
     
@@ -6405,6 +6410,7 @@ document.addEventListener('DOMContentLoaded', () => {
         adminMonthlyContent.classList.add('hidden');
         adminSurveyContent.classList.add('hidden');
         adminAttendanceReportContent.classList.add('hidden');
+        adminPayrollReportContent.classList.add('hidden');
         reportAdminLoginSection.classList.add('hidden');
     }
 
@@ -6534,6 +6540,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('btn-admin-survey-report').style.display = isAuditor ? 'none' : '';
                     document.getElementById('btn-admin-attendance-report').style.display = isAuditor ? 'none' : '';
                     document.getElementById('btn-admin-monthly-income').style.display = isAuditor ? 'none' : '';
+
+                    // Payroll Report: Owner-only (owner's explicit choice), stricter
+                    // than the rest of this menu which allows Manager/Auditor too.
+                    document.getElementById('btn-admin-payroll-report').style.display = (verifiedRole === 'Owner') ? '' : 'none';
                 } else {
                     // Valid credentials, but not allowed
                     reportAdminErrorMessage.textContent = 'Access Denied: Only Owner, Manager, or Auditor can access Admin Reports.';
@@ -6615,6 +6625,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         document.getElementById('report-attendance-start-date').value = firstDay.toISOString().split('T')[0];
         document.getElementById('report-attendance-end-date').value = lastDay.toISOString().split('T')[0];
+    });
+
+    document.getElementById('btn-admin-payroll-report').addEventListener('click', () => {
+        hideAllReportSections();
+        adminPayrollReportContent.classList.remove('hidden');
+
+        // Auto-set current month range, same convenience as Attendance Report.
+        const now = new Date();
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        document.getElementById('report-payroll-start-date').value = firstDay.toISOString().split('T')[0];
+        document.getElementById('report-payroll-end-date').value = lastDay.toISOString().split('T')[0];
+
+        // Reset any previous results so a stale report isn't left showing.
+        document.getElementById('payroll-report-tbody').innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);">Select a date range to generate report.</td></tr>';
+        document.getElementById('payroll-report-stat-count').textContent = '0';
+        document.getElementById('payroll-report-stat-gross').textContent = '₱0.00';
+        document.getElementById('payroll-report-stat-deductions').textContent = '₱0.00';
+        document.getElementById('payroll-report-stat-net').textContent = '₱0.00';
+        lastPayrollReportData = [];
     });
 
     document.getElementById('btn-admin-monthly-income').addEventListener('click', () => {
@@ -12264,6 +12294,315 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // ======= Payroll Report (Admin Reports Menu, Owner-only) =======
+    // Consolidated view of every saved payslip for a chosen branch + date
+    // range, so the owner doesn't have to pull up payslips one employee at a
+    // time. Mirrors the sample/mockup the owner already approved: filter
+    // form, summary stat cards, an expandable table (row click reveals the
+    // full breakdown), Export Excel, and Print PDF.
+    function payrollReportEscapeHtml(str) {
+        return String(str === undefined || str === null ? '' : str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function payrollReportRenderRows(rows) {
+        const tbody = document.getElementById('payroll-report-tbody');
+        if (!rows.length) {
+            tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);">No payslips found for this branch/date range.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = '';
+        rows.forEach((r, idx) => {
+            const mainRow = document.createElement('tr');
+            mainRow.className = 'payroll-report-row';
+            mainRow.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+            mainRow.style.cursor = 'pointer';
+            mainRow.dataset.detailTarget = `payroll-report-detail-${idx}`;
+            mainRow.innerHTML = `
+                <td style="padding: 12px;"><i class="fas fa-chevron-right payroll-report-expand-icon" style="font-size: 0.8em; color: var(--text-muted);"></i></td>
+                <td style="padding: 12px;">${payrollReportEscapeHtml(r.employee)}</td>
+                <td style="padding: 12px; color: var(--text-muted); font-size: 0.9em;">${payrollReportEscapeHtml(r.branch || '—')}</td>
+                <td style="padding: 12px;">${payrollReportEscapeHtml(r.startDate)} to ${payrollReportEscapeHtml(r.endDate)}</td>
+                <td style="padding: 12px;">${r.daysPresent}/${r.daysAbsent}</td>
+                <td style="padding: 12px;">₱${formatCurrency(r.grossPay || 0)}</td>
+                <td style="padding: 12px; color: #f87171;">₱${formatCurrency(r.totalDeductions || 0)}</td>
+                <td style="padding: 12px; font-weight: 600; color: #4ade80;">₱${formatCurrency(r.netPay || 0)}</td>
+            `;
+
+            const detailRow = document.createElement('tr');
+            detailRow.className = 'payroll-report-detail-row hidden';
+            detailRow.id = `payroll-report-detail-${idx}`;
+            detailRow.innerHTML = `
+                <td></td>
+                <td colspan="7" style="padding: 12px 12px 18px 12px; background: rgba(0,0,0,0.15);">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 20px; font-size: 0.85em;">
+                        <div><span style="color: var(--text-muted);">Daily Rate</span><br>₱${formatCurrency(r.dailyRate || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Base Pay</span><br>₱${formatCurrency(r.totalBasePay || 0)}</div>
+                        <div><span style="color: var(--text-muted);">OT Hours / Pay</span><br>${r.totalOtHours || 0} hrs / ₱${formatCurrency(r.totalOtPay || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Commission</span><br>₱${formatCurrency(r.commission || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Food Allowance</span><br>₱${formatCurrency(r.foodAllowance || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Withholding Tax</span><br>₱${formatCurrency(r.withholdingTax || 0)}</div>
+                        <div><span style="color: var(--text-muted);">SSS</span><br>₱${formatCurrency(r.sss || 0)}</div>
+                        <div><span style="color: var(--text-muted);">PhilHealth</span><br>₱${formatCurrency(r.philhealth || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Pag-IBIG</span><br>₱${formatCurrency(r.pagibig || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Cash Advance</span><br>₱${formatCurrency(r.cashAdvance || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Generated By</span><br>${payrollReportEscapeHtml(r.generatedBy || '—')}</div>
+                    </div>
+                </td>
+            `;
+
+            mainRow.addEventListener('click', () => {
+                const targetDetail = document.getElementById(mainRow.dataset.detailTarget);
+                const icon = mainRow.querySelector('.payroll-report-expand-icon');
+                if (!targetDetail) return;
+                const nowHidden = targetDetail.classList.toggle('hidden');
+                if (icon) icon.className = nowHidden ? 'fas fa-chevron-right payroll-report-expand-icon' : 'fas fa-chevron-down payroll-report-expand-icon';
+            });
+
+            tbody.appendChild(mainRow);
+            tbody.appendChild(detailRow);
+        });
+    }
+
+    function payrollReportUpdateStats(rows) {
+        const totalGross = rows.reduce((sum, r) => sum + (Number(r.grossPay) || 0), 0);
+        const totalDeductions = rows.reduce((sum, r) => sum + (Number(r.totalDeductions) || 0), 0);
+        const totalNet = rows.reduce((sum, r) => sum + (Number(r.netPay) || 0), 0);
+        document.getElementById('payroll-report-stat-count').textContent = rows.length;
+        document.getElementById('payroll-report-stat-gross').textContent = '₱' + formatCurrency(totalGross);
+        document.getElementById('payroll-report-stat-deductions').textContent = '₱' + formatCurrency(totalDeductions);
+        document.getElementById('payroll-report-stat-net').textContent = '₱' + formatCurrency(totalNet);
+    }
+
+    const generatePayrollReportForm = document.getElementById('generate-payroll-report-form');
+    if (generatePayrollReportForm) {
+        generatePayrollReportForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const startDate = document.getElementById('report-payroll-start-date').value;
+            const endDate = document.getElementById('report-payroll-end-date').value;
+            const branch = document.getElementById('report-payroll-branch').value;
+
+            const submitBtn = generatePayrollReportForm.querySelector('.submit-btn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const spinner = submitBtn.querySelector('.spinner');
+            const tbody = document.getElementById('payroll-report-tbody');
+
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            submitBtn.disabled = true;
+            tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Generating report...</td></tr>';
+
+            try {
+                const requestedBy = sessionStorage.getItem('loggedInUser') || '';
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'getPayrollReport', startDate, endDate, branch, requestedBy })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    lastPayrollReportData = result.data || [];
+                    payrollReportRenderRows(lastPayrollReportData);
+                    payrollReportUpdateStats(lastPayrollReportData);
+                } else {
+                    lastPayrollReportData = [];
+                    tbody.innerHTML = `<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--error);">${payrollReportEscapeHtml(result.message || 'Failed to load report.')}</td></tr>`;
+                    payrollReportUpdateStats([]);
+                }
+            } catch (error) {
+                console.error(error);
+                lastPayrollReportData = [];
+                tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--error);">Network error. Try again.</td></tr>';
+                payrollReportUpdateStats([]);
+            } finally {
+                submitBtn.disabled = false;
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    const btnPrintPayrollReport = document.getElementById('btn-print-payroll-report');
+    if (btnPrintPayrollReport) {
+        btnPrintPayrollReport.addEventListener('click', () => {
+            if (!lastPayrollReportData.length) {
+                alert('Please generate a report first.');
+                return;
+            }
+
+            const startDate = document.getElementById('report-payroll-start-date').value;
+            const endDate = document.getElementById('report-payroll-end-date').value;
+            const branch = document.getElementById('report-payroll-branch').value;
+
+            const btnText = btnPrintPayrollReport.querySelector('.btn-text');
+            const originalText = btnText.innerHTML;
+            btnText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            btnPrintPayrollReport.disabled = true;
+
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating PDF Report, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            try {
+                const totalGross = lastPayrollReportData.reduce((sum, r) => sum + (Number(r.grossPay) || 0), 0);
+                const totalDeductions = lastPayrollReportData.reduce((sum, r) => sum + (Number(r.totalDeductions) || 0), 0);
+                const totalNet = lastPayrollReportData.reduce((sum, r) => sum + (Number(r.netPay) || 0), 0);
+
+                const rowsHtml = lastPayrollReportData.map(r => `
+                    <tr style="border-bottom: 1px solid #e2e8f0;">
+                        <td style="padding: 8px;">${payrollReportEscapeHtml(r.employee)}</td>
+                        <td style="padding: 8px;">${payrollReportEscapeHtml(r.branch || '—')}</td>
+                        <td style="padding: 8px;">${payrollReportEscapeHtml(r.startDate)} to ${payrollReportEscapeHtml(r.endDate)}</td>
+                        <td style="padding: 8px;">${r.daysPresent}/${r.daysAbsent}</td>
+                        <td style="padding: 8px;">₱${formatCurrency(r.grossPay || 0)}</td>
+                        <td style="padding: 8px;">₱${formatCurrency(r.totalDeductions || 0)}</td>
+                        <td style="padding: 8px; font-weight: 600;">₱${formatCurrency(r.netPay || 0)}</td>
+                    </tr>
+                `).join('');
+
+                const htmlString = `
+                    <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 1000px; margin: 0 auto;">
+                        <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                            <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">Payroll Report</h2>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Branch:</strong> ${payrollReportEscapeHtml(branch)}</p>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Period:</strong> ${payrollReportEscapeHtml(startDate)} to ${payrollReportEscapeHtml(endDate)}</p>
+                        </div>
+
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; margin-top: 20px;">
+                            <thead>
+                                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                    <th style="padding: 8px; color: #334155;">Employee</th>
+                                    <th style="padding: 8px; color: #334155;">Branch</th>
+                                    <th style="padding: 8px; color: #334155;">Cutoff</th>
+                                    <th style="padding: 8px; color: #334155;">Days P/A</th>
+                                    <th style="padding: 8px; color: #334155;">Gross Pay</th>
+                                    <th style="padding: 8px; color: #334155;">Deductions</th>
+                                    <th style="padding: 8px; color: #334155;">Net Pay</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                            <tfoot>
+                                <tr style="border-top: 2px solid #cbd5e1; font-weight: 600;">
+                                    <td style="padding: 8px;" colspan="4">TOTAL (${lastPayrollReportData.length} payslip${lastPayrollReportData.length === 1 ? '' : 's'})</td>
+                                    <td style="padding: 8px;">₱${formatCurrency(totalGross)}</td>
+                                    <td style="padding: 8px;">₱${formatCurrency(totalDeductions)}</td>
+                                    <td style="padding: 8px;">₱${formatCurrency(totalNet)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        <div style="margin-top: 30px; text-align: right; font-size: 11px; color: #94a3b8;">
+                            <p>Generated on ${new Date().toLocaleString()}</p>
+                        </div>
+                    </div>
+                `;
+
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = '1000px';
+                document.body.appendChild(hiddenDiv);
+
+                const opt = {
+                    margin:       0.5,
+                    filename:     `Payroll_Report_${startDate}_to_${endDate}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' },
+                    pagebreak:    { mode: ['css'], avoid: ['tr'] }
+                };
+
+                const elementToPrint = hiddenDiv.firstElementChild;
+
+                // Same scroll-reset fix applied to Payslip's PDF generator
+                // this session (html2canvas captures relative to the current
+                // scroll position even though this hidden render target sits
+                // at a fixed off-screen spot) -- applied here proactively so
+                // this report doesn't hit the same blank-gap bug once the
+                // owner is scrolled partway down the Admin Reports panel.
+                const scrollXBeforeCapture = window.scrollX;
+                const scrollYBeforeCapture = window.scrollY;
+                window.scrollTo(0, 0);
+
+                setTimeout(() => {
+                    html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function(pdfUrl) {
+                        if (newTab) {
+                            newTab.location.href = pdfUrl;
+                        }
+                        document.body.removeChild(hiddenDiv);
+                        window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                        btnText.innerHTML = originalText;
+                        btnPrintPayrollReport.disabled = false;
+                    }).catch(err => {
+                        console.error(err);
+                        if (newTab) newTab.close();
+                        document.body.removeChild(hiddenDiv);
+                        window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                        btnText.innerHTML = originalText;
+                        btnPrintPayrollReport.disabled = false;
+                        alert('Failed to generate PDF.');
+                    });
+                }, 500);
+            } catch (error) {
+                console.error(error);
+                if (newTab) newTab.close();
+                btnText.innerHTML = originalText;
+                btnPrintPayrollReport.disabled = false;
+                alert('Failed to generate PDF.');
+            }
+        });
+    }
+
+    const btnExportPayrollReportExcel = document.getElementById('btn-export-payroll-report-excel');
+    if (btnExportPayrollReportExcel) {
+        btnExportPayrollReportExcel.addEventListener('click', () => {
+            if (!lastPayrollReportData.length) {
+                alert('Please generate a report first.');
+                return;
+            }
+
+            const startDate = document.getElementById('report-payroll-start-date').value;
+            const endDate = document.getElementById('report-payroll-end-date').value;
+
+            try {
+                // Built from the underlying data array (not table_to_book on
+                // the DOM table), since that table has hidden expand/collapse
+                // detail rows that table_to_book would otherwise pull in.
+                const header = [
+                    'Employee', 'Branch', 'Start Date', 'End Date', 'Days Present', 'Days Absent',
+                    'Daily Rate', 'Base Pay', 'OT Hours', 'OT Pay', 'Commission', 'Food Allowance',
+                    'Gross Pay', 'Withholding Tax', 'SSS', 'PhilHealth', 'Pag-IBIG', 'Cash Advance',
+                    'Total Deductions', 'Net Pay', 'Generated By'
+                ];
+                const aoa = [header];
+                lastPayrollReportData.forEach(r => {
+                    aoa.push([
+                        r.employee || '', r.branch || '', r.startDate || '', r.endDate || '',
+                        r.daysPresent || 0, r.daysAbsent || 0,
+                        Number(r.dailyRate) || 0, Number(r.totalBasePay) || 0, Number(r.totalOtHours) || 0,
+                        Number(r.totalOtPay) || 0, Number(r.commission) || 0, Number(r.foodAllowance) || 0,
+                        Number(r.grossPay) || 0, Number(r.withholdingTax) || 0, Number(r.sss) || 0,
+                        Number(r.philhealth) || 0, Number(r.pagibig) || 0, Number(r.cashAdvance) || 0,
+                        Number(r.totalDeductions) || 0, Number(r.netPay) || 0, r.generatedBy || ''
+                    ]);
+                });
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Payroll Report");
+                XLSX.writeFile(wb, `Payroll_Report_${startDate}_to_${endDate}.xlsx`);
+            } catch (error) {
+                console.error(error);
+                alert('Failed to export to Excel.');
+            }
+        });
+    }
+
     // Validation Form Submit Handler
     const valForm = document.getElementById('warranty-validation-form');
     if (valForm) {
@@ -12554,6 +12893,59 @@ document.addEventListener("DOMContentLoaded", function() {
                 isDragging = false;
                 attContent.style.cursor = '';
                 attHeader.style.cursor = 'move';
+            }
+        });
+    }
+});
+
+
+// Make Admin Payroll Report Draggable
+document.addEventListener("DOMContentLoaded", function() {
+    const payrollContent = document.getElementById("admin-payroll-report-content");
+    const payrollHeader = document.getElementById("admin-payroll-report-header");
+
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    if (payrollHeader && payrollContent) {
+        payrollHeader.addEventListener("mousedown", (e) => {
+            isDragging = true;
+            offsetX = e.clientX - payrollContent.getBoundingClientRect().left;
+            offsetY = e.clientY - payrollContent.getBoundingClientRect().top;
+
+            payrollContent.style.transform = 'none';
+            payrollContent.style.left = e.clientX - offsetX + 'px';
+            payrollContent.style.top = e.clientY - offsetY + 'px';
+
+            payrollContent.style.cursor = 'grabbing';
+            payrollHeader.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener("mousemove", (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+
+            payrollContent.style.left = newX + "px";
+            payrollContent.style.top = newY + "px";
+        });
+
+        document.addEventListener("mouseup", () => {
+            if (isDragging) {
+                isDragging = false;
+                payrollContent.style.cursor = '';
+                payrollHeader.style.cursor = 'move';
+            }
+        });
+
+        // Safety net: reset stuck drag state if mouse is released outside the window.
+        window.addEventListener("blur", () => {
+            if (isDragging) {
+                isDragging = false;
+                payrollContent.style.cursor = '';
+                payrollHeader.style.cursor = 'move';
             }
         });
     }

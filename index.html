@@ -2756,6 +2756,14 @@
                         <p>View daily employee logs</p>
                     </div>
                 </button>
+
+                <button class="menu-action-btn" id="btn-admin-payroll-report">
+                    <div class="btn-icon">🧾</div>
+                    <div class="btn-text">
+                        <h3>Payroll Report</h3>
+                        <p>All employee payslips, one branch/date range at a time</p>
+                    </div>
+                </button>
             </div>
 
             <button class="report-back-btn" data-target="report-main-menu" style="margin-top: 25px; width: 100%; text-align: center; color: var(--primary); background: none; border: none; cursor: pointer;">← Back to Main Reports</button>
@@ -4389,6 +4397,89 @@
         </div>
     </main>
 
+    <main class="glass-panel hidden" id="admin-payroll-report-content" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 950px; max-width: 95vw; max-height: 90vh; overflow-y: auto; resize: both; z-index: 1000; padding: 25px; margin: 0; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+        <div id="admin-payroll-report-header" style="cursor: move; user-select: none; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px;">
+            <div>
+                <h2 style="margin: 0; font-size: 1.5em; font-weight: 600; display: flex; align-items: center;"><i class="fas fa-file-invoice-dollar" style="margin-right: 10px; color: var(--text-muted); font-size: 0.7em;"></i> Payroll Report</h2>
+                <p style="margin: 5px 0 0 28px; font-size: 0.85em; color: var(--text-muted);">All employee payslips for a branch + date range, in one view</p>
+            </div>
+            <div onmousedown="event.stopPropagation()" style="display: flex; gap: 10px;">
+                <button id="btn-export-payroll-report-excel" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(34, 197, 94, 0.2); border: 1px solid rgba(34, 197, 94, 0.5); border-radius: 6px; cursor: pointer; color: #4ade80;">
+                    <span class="btn-text"><i class="fas fa-file-excel" style="margin-right: 5px;"></i> Export Excel</span>
+                </button>
+                <button id="btn-print-payroll-report" class="submit-btn" style="padding: 8px 16px; margin: 0; font-size: 0.85em; width: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; cursor: pointer; color: white;">
+                    <span class="btn-text"><i class="fas fa-file-pdf" style="margin-right: 5px;"></i> Print PDF</span>
+                </button>
+                <button class="report-back-btn" data-target="admin-reports-dashboard" style="background: rgba(255,255,255,0.1); border: none; padding: 6px 12px; border-radius: 6px; color: var(--text-muted); cursor: pointer;"><i class="fas fa-times"></i> Close</button>
+            </div>
+        </div>
+
+        <div class="report-section" id="payroll-report-print-area">
+            <form id="generate-payroll-report-form" style="display: flex; gap: 15px; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Date From</label>
+                    <input type="date" id="report-payroll-start-date" required style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                </div>
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Date To</label>
+                    <input type="date" id="report-payroll-end-date" required style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                </div>
+                <div style="flex: 1; min-width: 130px;">
+                    <label style="font-size: 0.8em; color: var(--text-muted); text-transform: uppercase;">Branch</label>
+                    <select id="report-payroll-branch" style="padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); width: 100%; color: white; margin-top: 5px;">
+                        <option value="All">All Branches</option>
+                        <option value="MarvsPCStufz">MarvsPCStufz</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                    </select>
+                </div>
+                <button type="submit" class="submit-btn" style="margin: 0; padding: 10px 20px; flex: 0 0 auto; width: auto; height: 42px;">
+                    <span class="btn-text">Generate</span>
+                    <div class="spinner hidden" style="width: 16px; height: 16px; border-width: 2px;"></div>
+                </button>
+            </form>
+
+            <div id="payroll-report-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 18px;">
+                <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px;">
+                    <span style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase;">Payslips</span><br>
+                    <strong id="payroll-report-stat-count" style="font-size: 1.2em;">0</strong>
+                </div>
+                <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px;">
+                    <span style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase;">Total Gross</span><br>
+                    <strong id="payroll-report-stat-gross" style="font-size: 1.2em;">₱0.00</strong>
+                </div>
+                <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px;">
+                    <span style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase;">Total Deductions</span><br>
+                    <strong id="payroll-report-stat-deductions" style="font-size: 1.2em; color: #f87171;">₱0.00</strong>
+                </div>
+                <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px;">
+                    <span style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase;">Total Net Pay</span><br>
+                    <strong id="payroll-report-stat-net" style="font-size: 1.2em; color: #4ade80;">₱0.00</strong>
+                </div>
+            </div>
+
+            <div style="overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
+                <table id="payroll-report-table" style="width: 100%; min-width: 900px; white-space: nowrap; border-collapse: collapse; font-size: 0.9em; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted);">
+                            <th style="padding: 12px; font-weight: 500; width: 30px;"></th>
+                            <th style="padding: 12px; font-weight: 500;">Employee</th>
+                            <th style="padding: 12px; font-weight: 500;">Branch</th>
+                            <th style="padding: 12px; font-weight: 500;">Cutoff</th>
+                            <th style="padding: 12px; font-weight: 500;">Days P/A</th>
+                            <th style="padding: 12px; font-weight: 500;">Gross Pay</th>
+                            <th style="padding: 12px; font-weight: 500;">Deductions</th>
+                            <th style="padding: 12px; font-weight: 500;">Net Pay</th>
+                        </tr>
+                    </thead>
+                    <tbody id="payroll-report-tbody">
+                        <tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);">Select a date range to generate report.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
     <!-- Handover Container -->
     <div class="container hidden" id="handover-container" style="position: fixed; top: 5%; left: 50%; transform: translateX(-50%); z-index: 1000; width: 90%; max-width: 800px; max-height: 90vh; overflow-y: auto;">
         <header id="handover-header" style="cursor: move; user-select: none;">
@@ -4564,7 +4655,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=92"></script>
+    <script src="app.js?v=93"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
