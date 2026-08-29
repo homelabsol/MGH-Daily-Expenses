@@ -1165,6 +1165,169 @@
                 <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🧮</span>
                 Daily Parts Inventory
             </button>
+            <button class="menu-action-btn" id="menu-marvspc-pisonet-checklist-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">✅</span>
+                Pisonet/Diskless Checklist
+            </button>
+            <button class="menu-action-btn" id="menu-marvspc-site-checklist-btn" style="padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🧾</span>
+                Site Checklist
+            </button>
+        </main>
+    </div>
+
+    <!-- Pisonet/Diskless Checklist -- print-only pre-deployment inspection
+         checklist for technicians (requested 2026-08-28). Deliberately has
+         NO Save/backend action: the owner wants this printed blank and
+         checked by hand with a ballpen, not tracked digitally -- so
+         Technician/Date/Units/Customer plus every item's checkbox state
+         exist only in the DOM for building the printed PDF, never sent to
+         the server. Technician Name is a dropdown sourced from the same
+         getEmployeeRates action the Staff Schedule Generator already uses
+         (no new backend action needed). Sample/mockup was approved by the
+         user as a private Artifact before this was built -- see the project
+         handoff doc for the approved design. -->
+    <div class="container hidden" id="marvspc-pisonet-checklist-container" style="max-width: 820px;">
+        <!-- Alignment fix (reported by the user, 2026-08-29): "Number of
+             Units Purchased" is a long label that wraps to 2 lines at these
+             column widths while "Deployment Date"/"Technician Name" stay on
+             1 line -- since each label sits directly above its own input
+             with no shared row height, the wrapped label pushed its input
+             down relative to the other 3 fields. Fix: give every label in
+             this meta row a shared min-height (room for 2 lines) and bottom-
+             align its text, so every input starts at the same Y regardless
+             of whether that field's own label happens to wrap. -->
+        <style>
+            #marvspc-pisonet-checklist-container .form-row label {
+                min-height: 2.3em;
+                display: flex;
+                align-items: flex-end;
+            }
+        </style>
+        <header>
+            <h1><i class="fas fa-clipboard-check" style="margin-right: 8px;"></i>Pisonet/Diskless Checklist</h1>
+            <p>Technical Side Before the Deployment</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="flex-wrap: wrap; gap: 14px;">
+                <div class="form-group" style="flex: 1; min-width: 180px;">
+                    <label for="pc-technician">Technician Name</label>
+                    <select id="pc-technician">
+                        <option value="" selected disabled>Select Technician</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 150px;">
+                    <label for="pc-date">Deployment Date</label>
+                    <input type="date" id="pc-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 150px;">
+                    <label for="pc-units">Number of Units Purchased</label>
+                    <input type="number" id="pc-units" min="1" placeholder="e.g. 6">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 180px;">
+                    <label for="pc-customer">Customer Name</label>
+                    <input type="text" id="pc-customer" placeholder="e.g. Aling Nena's Pisonet">
+                </div>
+            </div>
+
+            <div id="pc-sections"></div>
+
+            <div class="form-group" style="margin-top: 4px;">
+                <label for="pc-remarks">Remarks (optional)</label>
+                <textarea id="pc-remarks" rows="3" placeholder="Anumang note, issue, o follow-up..."></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+                <div style="width: 260px; text-align: center;">
+                    <div style="height: 1px; background: var(--text-muted); margin-bottom: 8px;"></div>
+                    <div id="pc-sig-name" style="font-size: 0.92em; font-weight: 600; min-height: 1.3em;"></div>
+                    <div style="font-size: 0.72em; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); margin-top: 3px;">Technician Signature over Printed Name</div>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-top: 22px;">
+                <button type="button" id="btn-print-pisonet-checklist" class="submit-btn" style="width: auto; padding: 12px 30px;">
+                    <span class="btn-text"><i class="fas fa-print"></i> Print</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Site Checklist -- print-only on-site verification checklist a
+         Rider fills out with the customer before leaving the deployment
+         site (requested 2026-08-29), same print-only/no-Save design as the
+         Pisonet/Diskless Checklist above. Rider Name is a plain text box
+         (NOT a dropdown, per the user's explicit correction on the
+         approved sample -- "wag na naka dropdown, text box lang para rider
+         na mismo ang maglalagay ng pangalan"), so unlike the Pisonet
+         Checklist this page needs NO backend read action at all -- nothing
+         is fetched, and nothing is ever POSTed. Sample/mockup was approved
+         by the user as a private Artifact before this was built -- see the
+         project handoff doc for the approved design. -->
+    <div class="container hidden" id="marvspc-site-checklist-container" style="max-width: 820px;">
+        <!-- Same label-alignment fix applied proactively as the Pisonet
+             Checklist needed reactively (2026-08-29): reserve a shared
+             min-height for every label in this meta row and bottom-align
+             its text, so all 3 inputs start at the same Y even if a label
+             ever wraps to 2 lines on a narrow screen. -->
+        <style>
+            #marvspc-site-checklist-container .form-row label {
+                min-height: 2.3em;
+                display: flex;
+                align-items: flex-end;
+            }
+        </style>
+        <header>
+            <h1><i class="fas fa-clipboard-list" style="margin-right: 8px;"></i>Site Checklist</h1>
+            <p>On-Site Verification Before Client Sign-Off</p>
+            <button class="back-btn" data-target="marvspc-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div class="form-row" style="flex-wrap: wrap; gap: 14px;">
+                <div class="form-group" style="flex: 1; min-width: 180px;">
+                    <label for="sc-rider">Rider Name</label>
+                    <input type="text" id="sc-rider" placeholder="Isulat ang buong pangalan">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 150px;">
+                    <label for="sc-date">Date</label>
+                    <input type="date" id="sc-date">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 180px;">
+                    <label for="sc-customer">Site / Customer Name</label>
+                    <input type="text" id="sc-customer" placeholder="e.g. Aling Nena's Pisonet">
+                </div>
+            </div>
+
+            <div id="sc-items"></div>
+
+            <div class="form-group" style="margin-top: 4px;">
+                <label for="sc-remarks">Remarks (optional)</label>
+                <textarea id="sc-remarks" rows="3" placeholder="Anumang note, issue, o follow-up..."></textarea>
+            </div>
+
+            <div class="form-row" style="margin-top: 20px; gap: 24px;">
+                <div class="form-group" style="flex: 1; text-align: center;">
+                    <div style="height: 1px; background: var(--text-muted); margin-bottom: 8px;"></div>
+                    <div id="sc-sig-rider" style="font-size: 0.92em; font-weight: 600; min-height: 1.3em;"></div>
+                    <div style="font-size: 0.72em; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); margin-top: 3px;">Rider Signature over Printed Name</div>
+                </div>
+                <div class="form-group" style="flex: 1; text-align: center;">
+                    <div style="height: 1px; background: var(--text-muted); margin-bottom: 8px;"></div>
+                    <div id="sc-sig-customer" style="font-size: 0.92em; font-weight: 600; min-height: 1.3em;"></div>
+                    <div style="font-size: 0.72em; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-muted); margin-top: 3px;">Customer Signature over Printed Name</div>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-top: 22px;">
+                <button type="button" id="btn-print-site-checklist" class="submit-btn" style="width: auto; padding: 12px 30px;">
+                    <span class="btn-text"><i class="fas fa-print"></i> Print</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
         </main>
     </div>
 
@@ -1645,50 +1808,33 @@
                 </button>
             </div>
 
+            <!-- Fix (requested by the user, 2026-08-28): this table used to
+                 show all 17 columns side-by-side in a 1950px-wide row,
+                 requiring horizontal scroll with no visible scrollbar --
+                 whatever was off to the right just looked "cut off" (napuputol)
+                 instead of obviously scrollable. Same fix already applied to
+                 the new Payroll Report this session: a compact set of primary
+                 columns is always visible, and clicking a row expands it to
+                 reveal the rest (Address, Mobile#, No. of Builds, Type of
+                 Build, Shipping Fee, Free Shipping Justification, Downpayment
+                 Amount, Sales Admin, Build Status, Payment Completion,
+                 Delivery Status) without needing to scroll sideways at all on
+                 a normal screen. -->
             <div style="overflow-x: auto; margin-top: 20px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1950px; table-layout: fixed;">
-                    <colgroup>
-                        <col style="width: 90px;">
-                        <col style="width: 140px;">
-                        <col style="width: 180px;">
-                        <col style="width: 105px;">
-                        <col style="width: 70px;">
-                        <col style="width: 100px;">
-                        <col style="width: 95px;">
-                        <col style="width: 110px;">
-                        <col style="width: 90px;">
-                        <col style="width: 160px;">
-                        <col style="width: 120px;">
-                        <col style="width: 110px;">
-                        <col style="width: 110px;">
-                        <col style="width: 130px;">
-                        <col style="width: 110px;">
-                        <col style="width: 130px;">
-                        <col style="width: 100px;">
-                    </colgroup>
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 760px;">
                     <thead>
                         <tr style="border-bottom: 1px solid var(--glass-border);">
+                            <th style="padding: 10px; text-align: left; width: 30px;"></th>
                             <th style="padding: 10px; text-align: left;">Date</th>
                             <th style="padding: 10px; text-align: left;">Customer Name</th>
-                            <th style="padding: 10px; text-align: left;">Address</th>
-                            <th style="padding: 10px; text-align: left;">Mobile#</th>
-                            <th style="padding: 10px; text-align: left;">No. of Builds</th>
-                            <th style="padding: 10px; text-align: left;">Type of Build</th>
                             <th style="padding: 10px; text-align: left;">Delivery Date</th>
                             <th style="padding: 10px; text-align: left;">Delivery Method</th>
-                            <th style="padding: 10px; text-align: left;">Shipping Fee</th>
-                            <th style="padding: 10px; text-align: left;">Free Shipping Justification</th>
-                            <th style="padding: 10px; text-align: left;">Downpayment Amount</th>
-                            <th style="padding: 10px; text-align: left;">Sales Admin</th>
-                            <th style="padding: 10px; text-align: left;">Build Status</th>
-                            <th style="padding: 10px; text-align: left;">Payment Completion</th>
-                            <th style="padding: 10px; text-align: left;">Delivery Status</th>
                             <th style="padding: 10px; text-align: left;">Overall Status</th>
                             <th style="padding: 10px; text-align: left;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="deliveries-list-table-body">
-                        <tr><td colspan="17" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
+                        <tr><td colspan="7" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Load" to view records.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -4655,7 +4801,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=93"></script>
+    <script src="app.js?v=96"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

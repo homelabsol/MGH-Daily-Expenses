@@ -885,6 +885,521 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Pisonet/Diskless Checklist (requested by the user, 2026-08-29): a
+    // print-only pre-deployment technical checklist for Pisonet/Diskless
+    // units. Sample was approved as a private Artifact first ("Ok na yan i
+    // execute muna"). Deliberately has NO Save/backend write action -- it's
+    // meant to be printed blank and checked by hand with a ballpen
+    // ("hindi na dapat i save yan mostly print lang para mano-mano i check
+    // ni technician gamit ang ballpen"), so there's no new google_apps_script.js
+    // action here, only the existing `getEmployeeRates` read (same source
+    // already reused for the Payslip/Staff Schedule/Add-Cash-Advance
+    // dropdowns) to populate the Technician Name select.
+    //
+    // PISONET_CHECKLIST_SECTIONS is the single source of truth for both the
+    // on-screen render (renderPisonetChecklistSections) and the printed PDF
+    // (btnPrintPisonetChecklist below) so the two never drift apart.
+    const PISONET_CHECKLIST_SECTIONS = [
+        {
+            title: 'System Unit',
+            items: [
+                'Checking if Memory Frequency — dapat naka 2900MHz or 3200MHz (Task Manager)',
+                'Checking if mataas ang utilization/usage ng storage (Task Manager)',
+                'Checking if ang processor speed ay 0.5 / 0.9 (Task Manager)',
+                'Checking if date and time ay naka Philippine time',
+                'Checking if meron tamang Drivers ang mga unit (Chipset, GPU, Sound, Bluetooth, Wireless, etc.)',
+                'Checking if gumagana ang audio sa harap at sa likod',
+                'Checking if ang Monitor ay meron mga line o dead pixel',
+                'Checking if Martec application is running and activated',
+                'Checking if installed na ang bagong game menu',
+                { text: 'Checking one by one if all games installed are running and updated', gamesField: true }
+            ]
+        },
+        {
+            title: 'RS232 / Comport Checking',
+            items: [
+                'Check if nasaksak ang RS232/Comport',
+                'Check kung anong USB port unang tinesting ang RS232',
+                'Make sure na nalagyan ng masking tape as marking kung saan sinaksak ang USB RS232 bago i-deploy, para hindi mahirapan ang client/riders'
+            ]
+        },
+        {
+            title: 'Coinbox',
+            items: [
+                'Check if meron damage ang box',
+                'Check if hindi baliktad ang wires',
+                'Check if gumagana ang Coins',
+                'Check if tama ang oras kapag hinulugan ng piso / 5 / 10 at 20',
+                'Check kung meron request ang client na alisin ang piso o 5'
+            ]
+        }
+    ];
+
+    function pcEscapeHtml(str) {
+        return String(str === undefined || str === null ? '' : str)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    let pcSectionsRendered = false;
+
+    function renderPisonetChecklistSections() {
+        const mount = document.getElementById('pc-sections');
+        if (!mount || pcSectionsRendered) return;
+
+        mount.innerHTML = PISONET_CHECKLIST_SECTIONS.map((section, sIdx) => {
+            const itemsHtml = section.items.map((item, iIdx) => {
+                const isObj = typeof item === 'object';
+                const text = isObj ? item.text : item;
+                const checkboxId = `pc-check-${sIdx}-${iIdx}`;
+                const itemHtml = `
+                    <label class="form-row" for="${checkboxId}" style="align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); margin: 0; cursor: pointer;">
+                        <span style="flex: 0 0 22px; color: var(--text-muted); font-size: 0.85em; padding-top: 2px;">${iIdx + 1}</span>
+                        <span style="flex: 1; font-size: 0.91em; line-height: 1.5;">${pcEscapeHtml(text)}</span>
+                        <input type="checkbox" id="${checkboxId}" style="flex: 0 0 auto; width: 20px; height: 20px; margin-top: 2px; cursor: pointer;">
+                    </label>
+                `;
+                if (isObj && item.gamesField) {
+                    return itemHtml + `
+                        <div class="form-group" style="margin: 2px 0 12px 34px;">
+                            <label for="pc-games" style="font-size: 0.75em; color: var(--text-muted);">List of games checked</label>
+                            <textarea id="pc-games" rows="2" placeholder="e.g. Mobile Legends, Valorant, GTA V..." style="width: 100%;"></textarea>
+                        </div>
+                    `;
+                }
+                return itemHtml;
+            }).join('');
+
+            return `
+                <div class="glass-panel" style="padding: 4px 20px 6px; margin: 16px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                        <h3 style="margin: 0; font-size: 1.05em;">${pcEscapeHtml(section.title)}</h3>
+                        <span style="font-size: 0.78em; color: var(--text-muted);">${section.items.length} items</span>
+                    </div>
+                    ${itemsHtml}
+                </div>
+            `;
+        }).join('');
+
+        pcSectionsRendered = true;
+    }
+
+    let pcTechnicianList = [];
+    let pcTechnicianListLoaded = false;
+
+    async function ensurePisonetTechnicianListLoaded() {
+        const select = document.getElementById('pc-technician');
+        if (!select || pcTechnicianListLoaded) return;
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getEmployeeRates' })
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                pcTechnicianList = result.data || [];
+                pcTechnicianList.forEach(emp => {
+                    const name = (emp.name || '').toString();
+                    if (!name) return;
+                    const opt = document.createElement('option');
+                    opt.value = name;
+                    opt.textContent = name;
+                    select.appendChild(opt);
+                });
+                pcTechnicianListLoaded = true;
+            }
+        } catch (error) {
+            console.error('Error loading technician list for Pisonet Checklist:', error);
+        }
+    }
+
+    const pcTechnicianSelect = document.getElementById('pc-technician');
+    const pcSigNameEl = document.getElementById('pc-sig-name');
+    if (pcTechnicianSelect && pcSigNameEl) {
+        pcTechnicianSelect.addEventListener('change', () => {
+            pcSigNameEl.textContent = pcTechnicianSelect.value || '';
+        });
+    }
+
+    const menuMarvsPcPisonetChecklistBtn = document.getElementById('menu-marvspc-pisonet-checklist-btn');
+    if (menuMarvsPcPisonetChecklistBtn) {
+        menuMarvsPcPisonetChecklistBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-pisonet-checklist-container');
+            if (container) container.classList.remove('hidden');
+            renderPisonetChecklistSections();
+            ensurePisonetTechnicianListLoaded();
+            const dateEl = document.getElementById('pc-date');
+            if (dateEl && !dateEl.value) {
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                dateEl.value = `${yyyy}-${mm}-${dd}`;
+            }
+        });
+    }
+
+    const btnPrintPisonetChecklist = document.getElementById('btn-print-pisonet-checklist');
+    if (btnPrintPisonetChecklist) {
+        btnPrintPisonetChecklist.addEventListener('click', () => {
+            const technician = document.getElementById('pc-technician').value;
+            const date = document.getElementById('pc-date').value;
+            const units = document.getElementById('pc-units').value;
+            const customer = document.getElementById('pc-customer').value;
+            const remarks = document.getElementById('pc-remarks').value;
+            const gamesEl = document.getElementById('pc-games');
+            const games = gamesEl ? gamesEl.value : '';
+
+            const btnText = btnPrintPisonetChecklist.querySelector('.btn-text');
+            const spinner = btnPrintPisonetChecklist.querySelector('.spinner');
+            const originalText = btnText.innerHTML;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            btnPrintPisonetChecklist.disabled = true;
+
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating PDF, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            const restoreButton = () => {
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+                btnPrintPisonetChecklist.disabled = false;
+                btnText.innerHTML = originalText;
+            };
+
+            try {
+                const sectionsHtml = PISONET_CHECKLIST_SECTIONS.map((section, sIdx) => {
+                    const itemsHtml = section.items.map((item, iIdx) => {
+                        const isObj = typeof item === 'object';
+                        const text = isObj ? item.text : item;
+                        const checkboxEl = document.getElementById(`pc-check-${sIdx}-${iIdx}`);
+                        const checked = checkboxEl ? checkboxEl.checked : false;
+                        const boxHtml = `<span style="display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border: 1.5px solid #64748b; border-radius: 3px; flex: 0 0 auto;">${checked ? '<span style="font-size: 11px; font-weight: 700; color: #16a34a;">&#10003;</span>' : ''}</span>`;
+                        let rowHtml = `
+                            <tr style="border-bottom: 1px solid #e2e8f0;">
+                                <td style="padding: 6px 8px; width: 24px; color: #64748b; font-size: 11px;">${iIdx + 1}</td>
+                                <td style="padding: 6px 8px; font-size: 11px; color: #1e293b;">${pcEscapeHtml(text)}</td>
+                                <td style="padding: 6px 8px; width: 30px; text-align: center;">${boxHtml}</td>
+                            </tr>
+                        `;
+                        if (isObj && item.gamesField) {
+                            rowHtml += `
+                                <tr>
+                                    <td></td>
+                                    <td colspan="2" style="padding: 2px 8px 10px; font-size: 10px; color: #475569;"><i>List of games checked:</i> ${pcEscapeHtml(games) || '&mdash;'}</td>
+                                </tr>
+                            `;
+                        }
+                        return rowHtml;
+                    }).join('');
+
+                    return `
+                        <div style="margin-bottom: 14px; break-inside: avoid;">
+                            <div style="font-size: 12px; font-weight: 700; color: #1e293b; background: #f1f5f9; padding: 6px 8px; border-radius: 4px 4px 0 0;">${pcEscapeHtml(section.title)}</div>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tbody>${itemsHtml}</tbody>
+                            </table>
+                        </div>
+                    `;
+                }).join('');
+
+                const htmlString = `
+                    <div style="font-family: sans-serif; color: #333; padding: 24px; background: white; max-width: 800px; margin: 0 auto;">
+                        <div style="text-align: center; margin-bottom: 16px; border-bottom: 2px solid #3b82f6; padding-bottom: 12px;">
+                            <h2 style="margin: 0 0 8px 0; color: #1e293b; font-size: 20px;">Pisonet/Diskless Checklist</h2>
+                            <p style="margin: 0; color: #64748b; font-size: 12px;">Technical Side Before the Deployment</p>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px;">
+                            <tr>
+                                <td style="padding: 3px 0; width: 25%;"><b>Technician:</b> ${pcEscapeHtml(technician) || '&mdash;'}</td>
+                                <td style="padding: 3px 0; width: 25%;"><b>Deployment Date:</b> ${pcEscapeHtml(date) || '&mdash;'}</td>
+                                <td style="padding: 3px 0; width: 25%;"><b>No. of Units:</b> ${pcEscapeHtml(units) || '&mdash;'}</td>
+                                <td style="padding: 3px 0; width: 25%;"><b>Customer:</b> ${pcEscapeHtml(customer) || '&mdash;'}</td>
+                            </tr>
+                        </table>
+                        ${sectionsHtml}
+                        <div style="margin: 14px 0; break-inside: avoid;">
+                            <div style="font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Remarks</div>
+                            <div style="min-height: 40px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-size: 11px; color: #334155;">${pcEscapeHtml(remarks) || '&nbsp;'}</div>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; margin-top: 30px; break-inside: avoid;">
+                            <div style="width: 240px; text-align: center;">
+                                <div style="height: 1px; background: #94a3b8; margin-bottom: 6px;"></div>
+                                <div style="font-size: 11px; font-weight: 600; color: #1e293b;">${pcEscapeHtml(technician) || '&nbsp;'}</div>
+                                <div style="font-size: 9px; letter-spacing: 0.03em; text-transform: uppercase; color: #64748b; margin-top: 3px;">Technician Signature over Printed Name</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = '800px';
+                document.body.appendChild(hiddenDiv);
+
+                const opt = {
+                    margin:       0.4,
+                    filename:     `Pisonet_Checklist_${(customer || 'checklist').replace(/[^a-z0-9]+/gi, '_')}_${date || 'nodate'}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
+                    pagebreak:    { mode: ['css'] }
+                };
+
+                const elementToPrint = hiddenDiv.firstElementChild;
+
+                // Same scroll-reset fix used by the Payroll Report Print PDF
+                // generator (html2canvas captures relative to the current
+                // scroll position even though this hidden render target sits
+                // at a fixed off-screen spot).
+                const scrollXBeforeCapture = window.scrollX;
+                const scrollYBeforeCapture = window.scrollY;
+                window.scrollTo(0, 0);
+
+                setTimeout(() => {
+                    html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function (pdfUrl) {
+                        if (newTab) newTab.location.href = pdfUrl;
+                        document.body.removeChild(hiddenDiv);
+                        window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                        restoreButton();
+                    }).catch(err => {
+                        console.error(err);
+                        if (newTab) newTab.close();
+                        document.body.removeChild(hiddenDiv);
+                        window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                        restoreButton();
+                        alert('Failed to generate PDF.');
+                    });
+                }, 500);
+            } catch (error) {
+                console.error(error);
+                if (newTab) newTab.close();
+                restoreButton();
+                alert('Failed to generate PDF.');
+            }
+        });
+    }
+
+    // Site Checklist (requested by the user, 2026-08-29): a print-only
+    // on-site verification checklist a Rider fills out with the customer
+    // before leaving the deployment site. Same print-only/no-Save design as
+    // the Pisonet/Diskless Checklist above. UNLIKE that feature, Rider Name
+    // is a plain text box (not a dropdown) -- the user's explicit
+    // correction on the approved sample: "wag na naka dropdown, text box
+    // lang para rider na mismo ang maglalagay ng pangalan" -- so this page
+    // needs NO backend read action at all (no getEmployeeRates fetch), and
+    // like the Pisonet Checklist, nothing here is ever POSTed to the
+    // backend either.
+    const SITE_CHECKLIST_ITEMS = [
+        'Check if nakabit ng maayos ang mga LAN cable',
+        'Check if 100mbps ang bawat computer — napaka-importante nito kaya kailangan i-double check at ipakita sa owner isa-isa',
+        'Check if working and updated lahat ng games, isa-isa',
+        'Check if installed and activated ang Martec',
+        'Check if napalitan ng customer ang admin password ng Martec',
+        'Check if naka-enable at running ang Shadow Defender kapag pisonet — hindi pwedeng iwan na naka-disable',
+        'Check if napa-palitan sa customer ang admin password ng Shadow Defender',
+        'Siguraduhing ipa-test sa customer ang paghuhulog ng barya sa coinslot kung tama ang oras na binabasa (1 / 5 / 10 / 20)',
+        'Papirmahan ang customer na maayos na na-testing ang mga units bago umalis at bago sila mag-bayad'
+    ];
+
+    let scItemsRendered = false;
+
+    function renderSiteChecklistItems() {
+        const mount = document.getElementById('sc-items');
+        if (!mount || scItemsRendered) return;
+
+        const itemsHtml = SITE_CHECKLIST_ITEMS.map((text, iIdx) => {
+            const checkboxId = `sc-check-${iIdx}`;
+            return `
+                <label class="form-row" for="${checkboxId}" style="align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); margin: 0; cursor: pointer;">
+                    <span style="flex: 0 0 22px; color: var(--text-muted); font-size: 0.85em; padding-top: 2px;">${iIdx + 1}</span>
+                    <span style="flex: 1; font-size: 0.91em; line-height: 1.5;">${pcEscapeHtml(text)}</span>
+                    <input type="checkbox" id="${checkboxId}" style="flex: 0 0 auto; width: 20px; height: 20px; margin-top: 2px; cursor: pointer;">
+                </label>
+            `;
+        }).join('');
+
+        mount.innerHTML = `
+            <div class="glass-panel" style="padding: 4px 20px 6px; margin: 16px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 10px; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <h3 style="margin: 0; font-size: 1.05em;">Site Checklist</h3>
+                    <span style="font-size: 0.78em; color: var(--text-muted);">${SITE_CHECKLIST_ITEMS.length} items</span>
+                </div>
+                ${itemsHtml}
+            </div>
+        `;
+
+        scItemsRendered = true;
+    }
+
+    const scRiderInput = document.getElementById('sc-rider');
+    const scSigRiderEl = document.getElementById('sc-sig-rider');
+    if (scRiderInput && scSigRiderEl) {
+        scRiderInput.addEventListener('input', () => {
+            scSigRiderEl.textContent = scRiderInput.value || '';
+        });
+    }
+
+    const menuMarvsPcSiteChecklistBtn = document.getElementById('menu-marvspc-site-checklist-btn');
+    if (menuMarvsPcSiteChecklistBtn) {
+        menuMarvsPcSiteChecklistBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-site-checklist-container');
+            if (container) container.classList.remove('hidden');
+            renderSiteChecklistItems();
+            const dateEl = document.getElementById('sc-date');
+            if (dateEl && !dateEl.value) {
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                dateEl.value = `${yyyy}-${mm}-${dd}`;
+            }
+        });
+    }
+
+    const btnPrintSiteChecklist = document.getElementById('btn-print-site-checklist');
+    if (btnPrintSiteChecklist) {
+        btnPrintSiteChecklist.addEventListener('click', () => {
+            const rider = document.getElementById('sc-rider').value;
+            const date = document.getElementById('sc-date').value;
+            const customer = document.getElementById('sc-customer').value;
+            const remarks = document.getElementById('sc-remarks').value;
+
+            const btnText = btnPrintSiteChecklist.querySelector('.btn-text');
+            const spinner = btnPrintSiteChecklist.querySelector('.spinner');
+            const originalText = btnText.innerHTML;
+            btnText.classList.add('hidden');
+            spinner.classList.remove('hidden');
+            btnPrintSiteChecklist.disabled = true;
+
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating PDF, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            const restoreButton = () => {
+                btnText.classList.remove('hidden');
+                spinner.classList.add('hidden');
+                btnPrintSiteChecklist.disabled = false;
+                btnText.innerHTML = originalText;
+            };
+
+            try {
+                const itemsHtml = SITE_CHECKLIST_ITEMS.map((text, iIdx) => {
+                    const checkboxEl = document.getElementById(`sc-check-${iIdx}`);
+                    const checked = checkboxEl ? checkboxEl.checked : false;
+                    const boxHtml = `<span style="display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border: 1.5px solid #64748b; border-radius: 3px; flex: 0 0 auto;">${checked ? '<span style="font-size: 11px; font-weight: 700; color: #16a34a;">&#10003;</span>' : ''}</span>`;
+                    return `
+                        <tr style="border-bottom: 1px solid #e2e8f0;">
+                            <td style="padding: 6px 8px; width: 24px; color: #64748b; font-size: 11px;">${iIdx + 1}</td>
+                            <td style="padding: 6px 8px; font-size: 11px; color: #1e293b;">${pcEscapeHtml(text)}</td>
+                            <td style="padding: 6px 8px; width: 30px; text-align: center;">${boxHtml}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                const htmlString = `
+                    <div style="font-family: sans-serif; color: #333; padding: 24px; background: white; max-width: 800px; margin: 0 auto;">
+                        <div style="text-align: center; margin-bottom: 16px; border-bottom: 2px solid #3b82f6; padding-bottom: 12px;">
+                            <h2 style="margin: 0 0 8px 0; color: #1e293b; font-size: 20px;">Site Checklist</h2>
+                            <p style="margin: 0; color: #64748b; font-size: 12px;">On-Site Verification Before Client Sign-Off</p>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 11px;">
+                            <tr>
+                                <td style="padding: 3px 0; width: 33%;"><b>Rider:</b> ${pcEscapeHtml(rider) || '&mdash;'}</td>
+                                <td style="padding: 3px 0; width: 33%;"><b>Date:</b> ${pcEscapeHtml(date) || '&mdash;'}</td>
+                                <td style="padding: 3px 0; width: 34%;"><b>Site/Customer:</b> ${pcEscapeHtml(customer) || '&mdash;'}</td>
+                            </tr>
+                        </table>
+                        <div style="margin-bottom: 14px; break-inside: avoid;">
+                            <div style="font-size: 12px; font-weight: 700; color: #1e293b; background: #f1f5f9; padding: 6px 8px; border-radius: 4px 4px 0 0;">Site Checklist</div>
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tbody>${itemsHtml}</tbody>
+                            </table>
+                        </div>
+                        <div style="margin: 14px 0; break-inside: avoid;">
+                            <div style="font-size: 11px; font-weight: 700; color: #1e293b; margin-bottom: 4px;">Remarks</div>
+                            <div style="min-height: 40px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 8px; font-size: 11px; color: #334155;">${pcEscapeHtml(remarks) || '&nbsp;'}</div>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; margin-top: 30px; break-inside: avoid;">
+                            <tr>
+                                <td style="width: 50%; padding: 0 16px 0 0; text-align: center;">
+                                    <div style="height: 1px; background: #94a3b8; margin-bottom: 6px;"></div>
+                                    <div style="font-size: 11px; font-weight: 600; color: #1e293b;">${pcEscapeHtml(rider) || '&nbsp;'}</div>
+                                    <div style="font-size: 9px; letter-spacing: 0.03em; text-transform: uppercase; color: #64748b; margin-top: 3px;">Rider Signature over Printed Name</div>
+                                </td>
+                                <td style="width: 50%; padding: 0 0 0 16px; text-align: center;">
+                                    <div style="height: 1px; background: #94a3b8; margin-bottom: 6px;"></div>
+                                    <div style="font-size: 11px; font-weight: 600; color: #1e293b;">&nbsp;</div>
+                                    <div style="font-size: 9px; letter-spacing: 0.03em; text-transform: uppercase; color: #64748b; margin-top: 3px;">Customer Signature over Printed Name</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                `;
+
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = '800px';
+                document.body.appendChild(hiddenDiv);
+
+                const opt = {
+                    margin:       0.4,
+                    filename:     `Site_Checklist_${(customer || 'checklist').replace(/[^a-z0-9]+/gi, '_')}_${date || 'nodate'}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
+                    pagebreak:    { mode: ['css'] }
+                };
+
+                const elementToPrint = hiddenDiv.firstElementChild;
+
+                // Same scroll-reset fix used by the Pisonet Checklist and
+                // Payroll Report Print PDF generators (html2canvas captures
+                // relative to the current scroll position even though this
+                // hidden render target sits at a fixed off-screen spot).
+                const scrollXBeforeCapture = window.scrollX;
+                const scrollYBeforeCapture = window.scrollY;
+                window.scrollTo(0, 0);
+
+                setTimeout(() => {
+                    html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function (pdfUrl) {
+                        if (newTab) newTab.location.href = pdfUrl;
+                        document.body.removeChild(hiddenDiv);
+                        window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                        restoreButton();
+                    }).catch(err => {
+                        console.error(err);
+                        if (newTab) newTab.close();
+                        document.body.removeChild(hiddenDiv);
+                        window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                        restoreButton();
+                        alert('Failed to generate PDF.');
+                    });
+                }, 500);
+            } catch (error) {
+                console.error(error);
+                if (newTab) newTab.close();
+                restoreButton();
+                alert('Failed to generate PDF.');
+            }
+        });
+    }
+
     const dpiBtnAddRow = document.getElementById('dpi-btn-add-row');
     if (dpiBtnAddRow) {
         dpiBtnAddRow.addEventListener('click', () => {
@@ -2664,7 +3179,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderDeliveriesListTable(rows) {
         const tbody = document.getElementById('deliveries-list-table-body');
         if (!rows || rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="17" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
             return;
         }
         // Fix 19: the "Modified" button is Owner-only. Every other role sees a
@@ -2675,7 +3190,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // button, just omit it entirely.
         const currentRole = sessionStorage.getItem('userRole');
         const canModifyDeliveries = currentRole === 'Owner';
-        tbody.innerHTML = rows.map(row => {
+        tbody.innerHTML = rows.map((row, idx) => {
             let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
             let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
             const modifyBtnHtml = canModifyDeliveries
@@ -2703,44 +3218,75 @@ document.addEventListener('DOMContentLoaded', () => {
             const anyStillPending = paymentCompletion.toLowerCase() === 'pending' ||
                 deliveryStatus.toLowerCase() === 'pending' ||
                 overallStatus.toLowerCase() === 'pending';
-            const rowStyle = `border-bottom: 1px solid rgba(255,255,255,0.05);${anyStillPending ? ' color: #ef4444;' : ''}`;
-            // Fix 69: same overlapping-text bug already fixed for the Item
-            // Replacement list (Fix 61) and the MarvsPCStufz Warranty list
-            // (Fix 63) -- long unbroken values (a Mobile# with no spaces,
-            // e.g. two numbers joined with "/", or a long Address/Free
-            // Shipping Justification note) have no natural place for the
-            // browser to wrap, so with this table's fixed column widths
-            // (table-layout: fixed + explicit <col> widths in index.html)
-            // they were overflowing straight past their own cell and
-            // rendering on top of the next column's text instead of
-            // wrapping within their own column. word-break/overflow-wrap
-            // force a break even mid-word so every cell wraps within its
-            // own column. The Actions cell deliberately keeps its own
-            // `white-space: nowrap` instead, same as the other two lists,
-            // so the Modified/Print buttons don't awkwardly wrap.
+            const rowStyle = `border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;${anyStillPending ? ' color: #ef4444;' : ''}`;
             const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+            const detailId = `deliveries-list-detail-${idx}`;
+
+            // Fix (2026-08-28): the old version put all 17 columns side-by-side
+            // in a 1950px-wide row, forcing horizontal scroll with no visible
+            // scrollbar -- content off to the right just looked "cut off"
+            // instead of obviously scrollable. Same expand/collapse pattern
+            // just built for the new Payroll Report: only the columns needed
+            // for a quick scan (Date, Customer, Delivery Date, Delivery
+            // Method, Overall Status, Actions) show in the main row; the rest
+            // (Address, Mobile#, No. of Builds, Type of Build, Shipping Fee,
+            // Free Shipping Justification, Downpayment Amount, Sales Admin,
+            // Build Status, Payment Completion, Delivery Status) live in a
+            // detail row underneath, revealed by clicking anywhere on the row.
             return `
-                <tr style="${rowStyle}">
+                <tr style="${rowStyle}" class="deliveries-list-row" data-detail-target="${detailId}">
+                    <td style="padding: 8px 10px;"><i class="fas fa-chevron-right deliveries-list-expand-icon" style="font-size: 0.8em; color: var(--text-muted);"></i></td>
                     <td style="${cellStyle}">${dateStr}</td>
                     <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
-                    <td style="${cellStyle}">${row[2] || ''}</td>
-                    <td style="${cellStyle}">${row[3] || ''}</td>
-                    <td style="${cellStyle}">${row[4] || ''}</td>
-                    <td style="${cellStyle}">${row[5] || ''}</td>
                     <td style="${cellStyle}">${deliveryDateStr}</td>
                     <td style="${cellStyle}">${row[7] || ''}</td>
-                    <td style="${cellStyle}">${row[8] || ''}</td>
-                    <td style="${cellStyle}">${row[9] || ''}</td>
-                    <td style="${cellStyle}">${row[11] || ''}</td>
-                    <td style="${cellStyle}">${row[15] || ''}</td>
-                    <td style="${cellStyle}">${row[18] || ''}</td>
-                    <td style="${cellStyle}">${paymentCompletion}</td>
-                    <td style="${cellStyle}">${deliveryStatus}</td>
                     <td style="${cellStyle}">${overallStatus}</td>
                     <td style="padding: 8px 10px; white-space: nowrap;">${actionsCell}</td>
                 </tr>
+                <tr class="deliveries-list-detail-row hidden" id="${detailId}">
+                    <td></td>
+                    <td colspan="6" style="padding: 10px 10px 16px 10px; background: rgba(0,0,0,0.15); word-break: break-word; overflow-wrap: break-word;${anyStillPending ? ' color: #ef4444;' : ''}">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 20px; font-size: 0.85em;">
+                            <div><span style="color: var(--text-muted);">Address</span><br>${row[2] || ''}</div>
+                            <div><span style="color: var(--text-muted);">Mobile#</span><br>${row[3] || ''}</div>
+                            <div><span style="color: var(--text-muted);">No. of Builds</span><br>${row[4] || ''}</div>
+                            <div><span style="color: var(--text-muted);">Type of Build</span><br>${row[5] || ''}</div>
+                            <div><span style="color: var(--text-muted);">Shipping Fee</span><br>${row[8] || ''}</div>
+                            <div><span style="color: var(--text-muted);">Free Shipping Justification</span><br>${row[9] || ''}</div>
+                            <div><span style="color: var(--text-muted);">Downpayment Amount</span><br>${row[11] || ''}</div>
+                            <div><span style="color: var(--text-muted);">Sales Admin</span><br>${row[15] || ''}</div>
+                            <div><span style="color: var(--text-muted);">Build Status</span><br>${row[18] || ''}</div>
+                            <div><span style="color: var(--text-muted);">Payment Completion</span><br>${paymentCompletion}</div>
+                            <div><span style="color: var(--text-muted);">Delivery Status</span><br>${deliveryStatus}</div>
+                        </div>
+                    </td>
+                </tr>
             `;
         }).join('');
+    }
+
+    // Expand/collapse a Deliveries row to reveal its detail breakdown. Clicks
+    // on the Modified/Print buttons stop propagation (see actionsCell's
+    // onclick above) so they open their own modal instead of toggling the row.
+    const deliveriesListTableBodyForExpand = document.getElementById('deliveries-list-table-body');
+    if (deliveriesListTableBodyForExpand) {
+        deliveriesListTableBodyForExpand.addEventListener('click', (e) => {
+            // Don't toggle the row when the click was on Modified/Print --
+            // those have their OWN delegated listeners on this same tbody
+            // (see below/Fix 29), so this must not call stopPropagation()
+            // (that would silently break those sibling listeners too, since
+            // they're all attached to the same element) -- just bail out
+            // here instead.
+            if (e.target.closest('button')) return;
+            const row = e.target.closest('.deliveries-list-row');
+            if (!row) return;
+            const targetId = row.getAttribute('data-detail-target');
+            const detailRow = targetId && document.getElementById(targetId);
+            if (!detailRow) return;
+            const icon = row.querySelector('.deliveries-list-expand-icon');
+            const nowHidden = detailRow.classList.toggle('hidden');
+            if (icon) icon.className = nowHidden ? 'fas fa-chevron-right deliveries-list-expand-icon' : 'fas fa-chevron-down deliveries-list-expand-icon';
+        });
     }
 
     let currentDeliveriesListRecords = [];
@@ -2809,7 +3355,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnLoad.disabled = true;
         btnText.classList.add('hidden');
         spinner.classList.remove('hidden');
-        tbody.innerHTML = '<tr><td colspan="17" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 
         try {
             const response = await fetch(SCRIPT_URL, {
@@ -2830,11 +3376,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 currentDeliveriesListRecords = result.data || [];
                 applyDeliveriesListFilter();
             } else {
-                tbody.innerHTML = `<tr><td colspan="17" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
             }
         } catch (error) {
             console.error('Error loading deliveries records:', error);
-            tbody.innerHTML = '<tr><td colspan="17" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
         } finally {
             btnLoad.disabled = false;
             btnText.classList.remove('hidden');
