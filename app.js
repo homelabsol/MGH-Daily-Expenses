@@ -330,6 +330,297 @@ document.addEventListener('DOMContentLoaded', () => {
         if (menuMarvsPcSheetHealthBtnApp) {
             menuMarvsPcSheetHealthBtnApp.style.display = (role === 'Owner') ? '' : 'none';
         }
+
+        // Fix 75: Main Menu Dashboard -- Gaming Hub foot-traffic + MarvsPCStufz
+        // incomplete-parts-releasing insights. Loaded every time the menu
+        // screen is shown (same "refresh on showApp()" timing as everything
+        // else above) so it reflects whatever's been logged since the last
+        // login/menu visit.
+        loadMenuDashboard();
+    }
+
+    // ===== Main Menu Dashboard (Fix 75) =====
+    // Reuses the existing 'getExpenseRecords' action for both halves -- no
+    // backend changes/redeploy needed for this feature. Daily Survey gives the
+    // Gaming Hub foot-traffic numbers (Date, Branch, Time, Count, Loggedin);
+    // Customer Information Sheet gives the MarvsPCStufz Parts Releasing status
+    // (column index 23: blank/"Pending", "Partially Released", "Item Released").
+    let menuFootTrafficChartInstance = null;
+
+    function dashFmtDate(d) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function dashShortLabel(dateStr) {
+        const parts = dateStr.split('-');
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function dashPctChange(curr, prev) {
+        if (prev === 0) return curr > 0 ? 100 : 0;
+        return Math.round(((curr - prev) / prev) * 100);
+    }
+
+    function dashSetDelta(el, pct) {
+        if (!el) return;
+        if (pct > 0) {
+            el.textContent = `▲ ${pct}% vs last week`;
+            el.className = 'delta up';
+        } else if (pct < 0) {
+            el.textContent = `▼ ${Math.abs(pct)}% vs last week`;
+            el.className = 'delta down';
+        } else {
+            el.textContent = 'No change vs last week';
+            el.className = 'delta';
+        }
+    }
+
+    function loadMenuDashboard() {
+        const store = sessionStorage.getItem('userStore') || '';
+
+        // MarvsPCStufz half: same isAllowedStore rule as the MarvsPCStufz menu
+        // button itself (Fix 20's rule, reused above in this same function).
+        const marvsCard = document.getElementById('dash-marvspc-card');
+        const isAllowedMarvsStore = (store === 'All' || store === 'MarvsPCStufz');
+        if (marvsCard) {
+            marvsCard.style.display = isAllowedMarvsStore ? '' : 'none';
+        }
+
+        loadFootTrafficDashboard();
+        if (isAllowedMarvsStore) {
+            loadReleaseStatusDashboard();
+        }
+    }
+
+    async function loadFootTrafficDashboard() {
+        const canvas = document.getElementById('menu-foot-traffic-chart');
+        if (!canvas) return;
+
+        const insightEl = document.getElementById('dash-traffic-insight');
+        const totalEl = document.getElementById('dash-stat-total');
+        const parangEl = document.getElementById('dash-stat-parang');
+        const concepcionEl = document.getElementById('dash-stat-concepcion');
+        const totalDeltaEl = document.getElementById('dash-stat-total-delta');
+        const parangDeltaEl = document.getElementById('dash-stat-parang-delta');
+        const concepcionDeltaEl = document.getElementById('dash-stat-concepcion-delta');
+
+        try {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - 13); // 14-day window: 7 prior days + 7 current days
+            const startStr = dashFmtDate(start);
+            const endStr = dashFmtDate(end);
+
+            const result = await postToScriptWithRetry({
+                action: 'getExpenseRecords',
+                sheetName: 'Daily Survey',
+                startDate: startStr,
+                endDate: endStr,
+                branch: 'All'
+            });
+            const rows = (result && result.status === 'success' && result.data) ? result.data : [];
+
+            const days = [];
+            for (let i = 0; i < 14; i++) {
+                const d = new Date(start);
+                d.setDate(start.getDate() + i);
+                days.push(dashFmtDate(d));
+            }
+
+            const BRANCHES = ['MGH Parang', 'MGH Concepcion'];
+            const sums = {};
+            BRANCHES.forEach(b => { sums[b] = {}; days.forEach(d => { sums[b][d] = 0; }); });
+
+            rows.forEach(row => {
+                const rDate = row[0];
+                const rBranch = row[1];
+                const rCount = Number(row[3]) || 0;
+                if (sums[rBranch] && Object.prototype.hasOwnProperty.call(sums[rBranch], rDate)) {
+                    sums[rBranch][rDate] += rCount;
+                }
+            });
+
+            const prev7 = days.slice(0, 7);
+            const last7 = days.slice(7);
+            const sumRange = (branch, range) => range.reduce((acc, d) => acc + sums[branch][d], 0);
+
+            const thisWeekParang = sumRange('MGH Parang', last7);
+            const lastWeekParang = sumRange('MGH Parang', prev7);
+            const thisWeekConcepcion = sumRange('MGH Concepcion', last7);
+            const lastWeekConcepcion = sumRange('MGH Concepcion', prev7);
+            const thisWeekTotal = thisWeekParang + thisWeekConcepcion;
+            const lastWeekTotal = lastWeekParang + lastWeekConcepcion;
+
+            if (totalEl) totalEl.textContent = thisWeekTotal;
+            if (parangEl) parangEl.textContent = thisWeekParang;
+            if (concepcionEl) concepcionEl.textContent = thisWeekConcepcion;
+
+            const totalPct = dashPctChange(thisWeekTotal, lastWeekTotal);
+            const parangPct = dashPctChange(thisWeekParang, lastWeekParang);
+            const concepcionPct = dashPctChange(thisWeekConcepcion, lastWeekConcepcion);
+            dashSetDelta(totalDeltaEl, totalPct);
+            dashSetDelta(parangDeltaEl, parangPct);
+            dashSetDelta(concepcionDeltaEl, concepcionPct);
+
+            if (insightEl) {
+                if (thisWeekTotal === 0 && lastWeekTotal === 0) {
+                    insightEl.style.display = 'none';
+                } else {
+                    const isUp = totalPct >= 0;
+                    insightEl.style.display = 'flex';
+                    insightEl.className = 'insight-bar ' + (isUp ? 'positive' : 'negative');
+                    const arrow = isUp ? '▲' : '▼';
+                    const driver = Math.abs(parangPct) >= Math.abs(concepcionPct) ? 'MGH Parang' : 'MGH Concepcion';
+                    insightEl.innerHTML = `<span class="arrow">${arrow}</span><span>Overall foot traffic is <b>${isUp ? 'up' : 'down'} ${Math.abs(totalPct)}%</b> this week vs last week (${thisWeekTotal} vs ${lastWeekTotal}) — mostly driven by ${driver}.</span>`;
+                }
+            }
+
+            const chartLabels = days.map(dashShortLabel);
+            const chartParang = days.map(d => sums['MGH Parang'][d]);
+            const chartConcepcion = days.map(d => sums['MGH Concepcion'][d]);
+
+            await loadHeavyLib('Chart');
+            if (typeof Chart === 'undefined') return; // CDN unreachable -- fail quietly, stats above still show
+
+            if (menuFootTrafficChartInstance) {
+                menuFootTrafficChartInstance.destroy();
+            }
+            const ctx = canvas.getContext('2d');
+            menuFootTrafficChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartLabels,
+                    datasets: [
+                        {
+                            label: 'MGH Parang',
+                            data: chartParang,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                            tension: 0.35,
+                            fill: true,
+                            pointRadius: 2,
+                            pointBackgroundColor: '#3b82f6'
+                        },
+                        {
+                            label: 'MGH Concepcion',
+                            data: chartConcepcion,
+                            borderColor: '#8b5cf6',
+                            backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                            tension: 0.35,
+                            fill: true,
+                            pointRadius: 2,
+                            pointBackgroundColor: '#8b5cf6'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: 'rgba(255, 255, 255, 0.6)', font: { size: 10 }, maxTicksLimit: 7 },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { color: 'rgba(255, 255, 255, 0.6)', font: { size: 10 } },
+                            grid: { color: 'rgba(255, 255, 255, 0.06)' },
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error loading foot traffic dashboard:', error);
+            if (insightEl) insightEl.style.display = 'none';
+        }
+    }
+
+    async function loadReleaseStatusDashboard() {
+        const listEl = document.getElementById('dash-marvspc-list');
+        const pendingCountEl = document.getElementById('dash-pending-count');
+        const partialCountEl = document.getElementById('dash-partial-count');
+        if (!listEl) return;
+
+        listEl.innerHTML = '<div class="dash-empty">Loading...</div>';
+
+        try {
+            const result = await postToScriptWithRetry({
+                action: 'getExpenseRecords',
+                sheetName: 'Customer Information Sheet',
+                startDate: '2000-01-01',
+                endDate: dashFmtDate(new Date()),
+                branch: 'All'
+            });
+            const rows = (result && result.status === 'success' && result.data) ? result.data : [];
+
+            // Column index 23 = Parts Releasing (Fix 11's convention: blank == "Pending").
+            const incomplete = rows.filter(row => {
+                const status = row[23] || 'Pending';
+                return status !== 'Item Released';
+            });
+
+            incomplete.sort((a, b) => (b[0] || '').localeCompare(a[0] || ''));
+
+            const pendingCount = incomplete.filter(r => (r[23] || 'Pending') === 'Pending').length;
+            const partialCount = incomplete.filter(r => r[23] === 'Partially Released').length;
+
+            if (pendingCountEl) pendingCountEl.textContent = pendingCount;
+            if (partialCountEl) partialCountEl.textContent = partialCount;
+
+            if (incomplete.length === 0) {
+                listEl.innerHTML = '<div class="dash-empty">🎉 Wala pang customer na naka-pending ang parts releasing.</div>';
+                return;
+            }
+
+            listEl.innerHTML = '';
+            incomplete.forEach(row => {
+                const name = row[1] || '(no name)';
+                const numBuilds = row[4] || 1;
+                const date = row[0] || '';
+                const status = row[23] || 'Pending';
+                const pillClass = status === 'Partially Released' ? 'partial' : 'pending';
+
+                const rowEl = document.createElement('div');
+                rowEl.className = 'cust-row-compact';
+
+                const whoEl = document.createElement('div');
+                whoEl.className = 'ccr-who';
+                const nameEl = document.createElement('span');
+                nameEl.className = 'ccr-name';
+                nameEl.textContent = name;
+                const metaEl = document.createElement('span');
+                metaEl.className = 'ccr-meta';
+                metaEl.textContent = `${numBuilds} build${numBuilds == 1 ? '' : 's'} · ${date}`;
+                whoEl.appendChild(nameEl);
+                whoEl.appendChild(metaEl);
+
+                const pillEl = document.createElement('span');
+                pillEl.className = 'status-pill ' + pillClass;
+                pillEl.textContent = status;
+
+                rowEl.appendChild(whoEl);
+                rowEl.appendChild(pillEl);
+                listEl.appendChild(rowEl);
+            });
+        } catch (error) {
+            console.error('Error loading release status dashboard:', error);
+            listEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+        }
     }
 
     function showLogin() {

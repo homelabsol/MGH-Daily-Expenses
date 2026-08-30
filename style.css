@@ -516,7 +516,9 @@ textarea {
    ========================================================= */
 @media (min-width: 900px) {
     #main-menu-container {
-        max-width: 1100px;
+        /* Fix 75: widened from 1100px so the new dashboard column (see below)
+           has real room beside the sidebar + shrunk menu buttons. */
+        max-width: 1360px;
         display: flex;
         align-items: flex-start;
         gap: 28px;
@@ -556,19 +558,301 @@ textarea {
         text-align: center;
     }
 
-    /* Right main content: menu buttons */
+    /* Right main content: menu buttons -- Fix 75: shrunk from flex:1 1 auto to
+       a fixed-ish basis so it no longer eats all the remaining width; the new
+       #menu-dashboard-col (below) takes the rest. User asked for the buttons
+       themselves to be visibly smaller too (icon + padding + font shrunk),
+       not just narrower. */
     #main-menu-container > .main-menu {
-        flex: 1 1 auto;
+        flex: 0 1 300px;
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
+        gap: 8px;
         align-content: start;
         padding: 4px;
     }
 
     #main-menu-container > .main-menu .menu-action-btn {
-        padding: 18px 20px;
+        padding: 8px 8px;
+        font-size: 0.76rem;
+        gap: 7px;
+        border-radius: 10px;
     }
+
+    #main-menu-container > .main-menu .menu-action-btn .icon {
+        width: 24px;
+        height: 24px;
+        font-size: 0.78rem;
+    }
+}
+
+/* =========================================================
+   Main Menu Dashboard (Fix 75) -- Gaming Hub foot-traffic +
+   MarvsPCStufz incomplete-parts-releasing insights. Sits beside the
+   shrunk menu buttons on desktop, stacks full-width below them on
+   mobile (no media query needed for the stacked case -- it's just
+   normal block flow).
+   ========================================================= */
+#menu-dashboard-col {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
+    margin-top: 20px;
+}
+
+@media (min-width: 900px) {
+    #menu-dashboard-col {
+        flex: 1 1 420px;
+        min-width: 320px;
+        margin-top: 0;
+    }
+}
+
+.dash-card {
+    padding: 20px 22px 22px;
+}
+
+.dash-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.dash-head .titlewrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.dash-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    font-size: 1rem;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.25), rgba(139, 92, 246, 0.25));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    flex-shrink: 0;
+}
+
+.dash-head h3 {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 700;
+}
+
+.dash-head .sub {
+    margin: 1px 0 0;
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+.branch-toggle {
+    display: flex;
+    gap: 6px;
+}
+
+.chip {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.chip i {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.chart-wrap {
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px 6px;
+    height: 190px;
+    margin-bottom: 16px;
+}
+
+.stat-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.stat-box {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    padding: 12px 13px;
+}
+
+.stat-box .lbl {
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.stat-box .val {
+    font-size: 1.25rem;
+    font-weight: 800;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+}
+
+.stat-box .delta {
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 1em;
+}
+
+.stat-box .delta.up { color: var(--success); }
+.stat-box .delta.down { color: #ef4444; }
+
+.insight-bar {
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: var(--radius-sm);
+    padding: 11px 14px;
+    font-size: 0.82rem;
+}
+
+.insight-bar.negative {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+
+.insight-bar .arrow {
+    font-size: 1.1rem;
+    font-weight: 800;
+    margin-right: 4px;
+}
+
+.insight-bar.positive .arrow { color: var(--success); }
+.insight-bar.negative .arrow { color: #ef4444; }
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.metric-card {
+    border-radius: var(--radius-sm);
+    padding: 13px 15px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.metric-card.warn { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.3); }
+.metric-card.mid { background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.3); }
+
+.metric-card .lbl {
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.metric-card .val {
+    font-size: 1.6rem;
+    font-weight: 800;
+    margin-top: 4px;
+}
+
+/* Compact, capped-height customer list -- keeps the MarvsPCStufz card from
+   growing tall no matter how many customers are pending. User explicitly
+   asked this be "compressed" so it doesn't make the page long, so this caps
+   at ~230px with its own internal scrollbar instead of growing forever. */
+.cust-list-scroll {
+    max-height: 230px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-right: 4px;
+}
+
+.cust-row-compact {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+}
+
+.cust-row-compact .ccr-who {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.cust-row-compact .ccr-name {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cust-row-compact .ccr-meta {
+    font-size: 0.66rem;
+    color: var(--text-muted);
+}
+
+.status-pill {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.status-pill.pending {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.status-pill.partial {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.dash-empty {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    padding: 16px 8px;
 }
 
 
