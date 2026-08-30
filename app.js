@@ -8007,14 +8007,179 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="font-weight: 600;">${otHours}</td>
                     <td><span style="background: rgba(255,255,255,0.1); color: ${statusColor}; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500;">${status}</span></td>
                     <td>
-                        <button class="delete-btn" onclick="deleteAttendanceRecord(${rowIndex})" style="background: rgba(239,68,68,0.15); border: none; color: #ef4444; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" title="Delete Record">
-                            <i class="fas fa-trash"></i>
-                        </button>
+                        <div style="display: flex; gap: 6px;">
+                            <button class="edit-btn" onclick="openAttendanceEditModal(${rowIndex})" style="background: rgba(59,130,246,0.15); border: none; color: #3b82f6; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;" onmouseover="this.style.background='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(59,130,246,0.15)'" title="Edit Record">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            <button class="delete-btn" onclick="deleteAttendanceRecord(${rowIndex})" style="background: rgba(239,68,68,0.15); border: none; color: #ef4444; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s;" onmouseover="this.style.background='rgba(239,68,68,0.3)'" onmouseout="this.style.background='rgba(239,68,68,0.15)'" title="Delete Record">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </td>
                 </tr>
             `;
         }).join('');
     }
+
+    // ===== Attendance Edit Modal logic (2026-08-30) =====
+    // Fixes a forgotten/wrong Time In or Time Out on an EXISTING Attendance
+    // row (e.g. Aug 25 in the user's real example: no Time In logged that
+    // day, which threw off Late/Base Pay on the payslip). Edit-only, no
+    // brand-new-row creation -- the user explicitly chose that scope.
+    // Gated to Owner or Payroll role via the same re-auth-modal pattern
+    // already used for Delete Attendance, just with a different allowed
+    // role set (Owner/Payroll here, vs. Manager/Owner for Delete).
+    let attendanceRowToEdit = null;
+    const attEditModal = document.getElementById('attendance-edit-modal');
+    const closeAttEditModalBtn = document.getElementById('close-att-edit-modal-btn');
+    // Employee is a disabled/readonly plain text field, NOT a dropdown --
+    // auto-filled from the row being edited and never itself editable (per
+    // the user's explicit correction, 2026-08-30: "no need na i drop down
+    // yan basta dapat normal text box lang sya na nakalagay na dyan
+    // pangalan ng employee na i e edit tapos disabled yung box").
+    const attEditEmployeeInput = document.getElementById('att-edit-employee');
+    const attEditDateInput = document.getElementById('att-edit-date');
+    const attEditBranchSelect = document.getElementById('att-edit-branch');
+    const attEditTimeInInput = document.getElementById('att-edit-timein');
+    const attEditTimeOutInput = document.getElementById('att-edit-timeout');
+    const attEditUsernameInput = document.getElementById('att-edit-username');
+    const attEditPasswordInput = document.getElementById('att-edit-password');
+    const attEditSaveBtn = document.getElementById('att-edit-save-btn');
+
+    function attendanceDateStrToInputValue(raw) {
+        if (!raw) return '';
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return '';
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function attendanceTimeStrToInputValue(raw) {
+        if (!raw) return '';
+        const s = raw.toString().trim();
+        let m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (m && !/am|pm/i.test(s)) {
+            return `${String(m[1]).padStart(2, '0')}:${m[2]}`;
+        }
+        m = s.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+        if (m) {
+            let hh = parseInt(m[1], 10);
+            const ap = m[3].toLowerCase();
+            if (ap === 'pm' && hh < 12) hh += 12;
+            if (ap === 'am' && hh === 12) hh = 0;
+            return `${String(hh).padStart(2, '0')}:${m[2]}`;
+        }
+        return '';
+    }
+
+    window.openAttendanceEditModal = function(rowIndex) {
+        const row = allAttendanceData.find(r => r[10] === rowIndex);
+        if (!row) {
+            showToast('Record not found.', 'error');
+            return;
+        }
+        attendanceRowToEdit = rowIndex;
+
+        const date = row[1] || '';
+        const employee = row[2] || '';
+        const branch = row[3] || '';
+        const timeIn = row[4] || '';
+        const timeOut = row[5] || '';
+
+        if (attEditDateInput) attEditDateInput.value = attendanceDateStrToInputValue(date);
+        if (attEditEmployeeInput) attEditEmployeeInput.value = employee;
+        if (attEditBranchSelect) attEditBranchSelect.value = branch;
+        if (attEditTimeInInput) attEditTimeInInput.value = attendanceTimeStrToInputValue(timeIn);
+        if (attEditTimeOutInput) attEditTimeOutInput.value = attendanceTimeStrToInputValue(timeOut);
+        if (attEditUsernameInput) attEditUsernameInput.value = '';
+        if (attEditPasswordInput) attEditPasswordInput.value = '';
+        if (attEditModal) attEditModal.classList.remove('hidden');
+    };
+
+    if (closeAttEditModalBtn) {
+        closeAttEditModalBtn.addEventListener('click', () => {
+            if (attEditModal) attEditModal.classList.add('hidden');
+            attendanceRowToEdit = null;
+        });
+    }
+
+    window.handleAttendanceEditSave = async function(e) {
+        e.preventDefault();
+        if (!attendanceRowToEdit) return;
+
+        const username = attEditUsernameInput.value;
+        const password = attEditPasswordInput.value;
+        const date = attEditDateInput.value;
+        const employee = attEditEmployeeInput.value;
+        const branch = attEditBranchSelect.value;
+        const timeIn = attEditTimeInInput.value;
+        const timeOut = attEditTimeOutInput.value;
+
+        if (!date || !employee || !branch || !timeIn) {
+            showToast('Kailangan ng Date, Employee, Branch, at Time In.', 'error');
+            return;
+        }
+
+        const btnText = attEditSaveBtn.querySelector('.btn-text');
+        const spinner = attEditSaveBtn.querySelector('.spinner');
+        attEditSaveBtn.disabled = true;
+        if (btnText) btnText.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+
+        try {
+            const verifyRes = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ action: 'login', username: username, password: password })
+            });
+            const verifyData = await verifyRes.json();
+
+            if (verifyData.status === 'success') {
+                const role = verifyData.role;
+                if (role === 'Owner' || role === 'Payroll') {
+                    showToast('Verification success. Saving changes...', 'info');
+                    const saveRes = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({
+                            action: 'updateAttendance',
+                            rowIndex: attendanceRowToEdit,
+                            date: date,
+                            employee: employee,
+                            branch: branch,
+                            timeIn: timeIn,
+                            timeOut: timeOut,
+                            editedBy: verifyData.name || username
+                        })
+                    });
+                    const saveData = await saveRes.json();
+
+                    if (saveData.status === 'success') {
+                        showToast('Na-update na ang record.', 'success');
+                        attEditModal.classList.add('hidden');
+                        attendanceRowToEdit = null;
+                        loadAllAttendance();
+                        loadAttendanceToday();
+                    } else {
+                        showToast(saveData.message || 'Error saving changes', 'error');
+                    }
+                } else {
+                    showToast('Access denied. Owner or Payroll role required.', 'error');
+                }
+            } else {
+                showToast('Invalid username or password', 'error');
+            }
+        } catch (error) {
+            console.error('Attendance edit save error:', error);
+            showToast('Network error', 'error');
+        } finally {
+            attEditSaveBtn.disabled = false;
+            if (btnText) btnText.classList.remove('hidden');
+            if (spinner) spinner.classList.add('hidden');
+        }
+    };
 
     function filterAttendanceByDate() {
         const fromVal = document.getElementById('attendanceFilterFrom').value;
@@ -9483,6 +9648,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return '₱' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    // Late Deduction display helper (2026-08-30): shows the logged Late
+    // duration + its peso deduction so Marvin can see WHY a day's Base Pay
+    // differs from a plain hours-based proration, instead of it just
+    // silently showing up baked into the Base Pay number. "-" when the day
+    // had no logged Late minutes (undertime/early-out days still use the
+    // original hours-worked proration untouched -- see the backend comment
+    // above parseLateMinutesFromAttendance).
+    function payslipFormatLateCell(d) {
+        const mins = Number(d && d.lateMinutes) || 0;
+        if (mins <= 0) return '-';
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        const durationLabel = h > 0 ? `${h}h ${m}m` : `${m}m`;
+        return `${durationLabel} (${payslipFormatPeso(d.lateDeduction)})`;
+    }
+
     function renderCaEmployeeOptions() {
         if (!caEmployeeSelect) return;
         const previousValue = caEmployeeSelect.value;
@@ -9672,6 +9853,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="padding: 7px 9px;">${d.date}</td>
                         <td style="padding: 7px 9px;">${d.hoursWorked}</td>
                         <td style="padding: 7px 9px;">${holidayLabel}</td>
+                        <td style="padding: 7px 9px;">${payslipFormatLateCell(d)}</td>
                         <td style="padding: 7px 9px;">${d.otHours}</td>
                         <td style="padding: 7px 9px;">${payslipFormatPeso(d.otPay)}</td>
                         <td style="padding: 7px 9px;">${payslipFormatPeso(d.basePay)}</td>
@@ -9919,6 +10101,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.date}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.hoursWorked}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${holidayLabel}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${payslipFormatLateCell(d)}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.otHours}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">₱${Number(d.otPay).toFixed(2)}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">₱${Number(d.basePay).toFixed(2)}</td>
@@ -9980,6 +10163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Date</th>
                             <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Hours</th>
                             <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Holiday</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Late</th>
                             <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">OT Hrs</th>
                             <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">OT Pay</th>
                             <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Base Pay</th>

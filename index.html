@@ -648,6 +648,7 @@
                                 <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Date</th>
                                 <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Hours</th>
                                 <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Holiday</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Late</th>
                                 <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">OT Hrs</th>
                                 <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">OT Pay</th>
                                 <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Base Pay</th>
@@ -4801,7 +4802,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=96"></script>
+    <script src="app.js?v=99"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -5182,6 +5183,67 @@
                 </div>
                 <button type="submit" class="submit-btn" id="att-delete-auth-btn" style="margin-top: 25px; width: 100%; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #ef4444;">
                     <span class="btn-text">Verify & Delete</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Attendance Edit Modal (2026-08-30) -- lets Owner/Payroll fix a forgotten
+         Time In/Time Out on an EXISTING Attendance row (no new-row creation --
+         see the comment above updateAttendanceRecord in google_apps_script.js).
+         Hours/Status/OT Hours/Late are all auto-recomputed server-side from
+         whatever Date/Branch/Time In/Time Out is saved here, same formulas as a
+         normal live Time In/Out. -->
+    <div id="attendance-edit-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 10000; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 440px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <div style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3);">
+                <h2 style="margin: 0; font-size: 1.2em; color: #3b82f6;"><i class="fas fa-pen"></i> I-edit ang Attendance Record</h2>
+                <button type="button" id="close-att-edit-modal-btn" style="background: none; border: none; color: var(--text-muted); font-size: 1.5em; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <form id="attendance-edit-form" style="padding: 20px;" onsubmit="handleAttendanceEditSave(event)">
+                <p style="font-size: 0.85em; color: var(--text-muted); margin-bottom: 15px;">Para sa mga nakalimutang Time In/Time Out. Awtomatikong mare-recompute ang Hours/Status/Late/OT Hours batay sa ilalagay dito.</p>
+                <div class="form-group">
+                    <label>Employee</label>
+                    <input type="text" id="att-edit-employee" disabled style="width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #aaa; border-radius: 6px; box-sizing: border-box; cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Date</label>
+                    <input type="date" id="att-edit-date" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; box-sizing: border-box;">
+                </div>
+                <div class="form-group" style="margin-top: 12px;">
+                    <label>Branch</label>
+                    <select id="att-edit-branch" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; box-sizing: border-box;">
+                        <option value="" disabled>Select Branch</option>
+                        <option value="MGH Parang">MGH Parang</option>
+                        <option value="MGH Concepcion">MGH Concepcion</option>
+                        <option value="MarvsPCStufz">MarvsPCStufz</option>
+                    </select>
+                </div>
+                <div class="form-row" style="display: flex; gap: 10px; margin-top: 12px;">
+                    <div class="form-group" style="flex: 1;">
+                        <label>Time In</label>
+                        <input type="time" id="att-edit-timein" required style="width: 100%; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label>Time Out</label>
+                        <input type="time" id="att-edit-timeout" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; box-sizing: border-box;">
+                    </div>
+                </div>
+                <p style="font-size: 0.8em; color: var(--text-muted); margin-top: 6px;">Iwanan blank ang Time Out kung hindi pa nag-time out (magiging "Timed In" ang status).</p>
+
+                <hr style="border-color: rgba(255,255,255,0.1); margin: 18px 0;">
+                <p style="font-size: 0.9em; color: var(--text-muted); margin-bottom: 15px;">Please enter Owner or Payroll credentials to authorize this edit.</p>
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" id="att-edit-username" required placeholder="Enter Username" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; box-sizing: border-box;">
+                </div>
+                <div class="form-group" style="margin-top: 15px;">
+                    <label>Password</label>
+                    <input type="password" id="att-edit-password" required placeholder="Enter Password" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 6px; box-sizing: border-box;">
+                </div>
+                <button type="submit" class="submit-btn" id="att-edit-save-btn" style="margin-top: 25px; width: 100%; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #3b82f6;">
+                    <span class="btn-text">Verify & Save Changes</span>
                     <div class="spinner hidden"></div>
                 </button>
             </form>
