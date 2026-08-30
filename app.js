@@ -3022,44 +3022,101 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ======= Build Tracker =======
+    // Fix 76: user reported lag opening Build Tracker/Build Status/Releasing
+    // of Build Status on other/slower browsers. Releasing of Build Status
+    // already got a batched-rendering fix for this exact symptom ("was
+    // causing scroll stutter on large result sets"); Build Tracker and
+    // Build Status never got the same treatment and were still dumping
+    // every filtered row into the DOM in one innerHTML pass. This extends
+    // that same proven pattern here. No per-row listener re-attachment
+    // needed: the Update button click is already event-delegated on the
+    // tbody itself (see buildTrackerTableBody listener below), so it keeps
+    // working no matter how many rows/batches are actually in the DOM.
+    const BUILD_TRACKER_PAGE_SIZE = 100;
+    let buildTrackerPageState = { rows: [], rendered: 0 };
+
+    function buildBuildTrackerRowHtml(row) {
+        let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+        let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+        const techBuilder = row[14] || '';
+        const buildStatus = row[18] || '-';
+        const isOngoing = techBuilder && buildStatus.toString().toLowerCase().includes('ongoing');
+        const rowStyle = isOngoing ? 'border-bottom: 1px solid rgba(255,255,255,0.05); color: #10b981;' : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
+        // Fix 69: same overlapping-text bug fixed on the Deliveries list
+        // (and previously Item Replacement/Fix 61, MarvsPCStufz
+        // Warranty/Fix 63) -- long unbroken values in a fixed-width
+        // table cell have no natural place to wrap, so they overflow
+        // into the next column instead. word-break/overflow-wrap force
+        // a break even mid-word so every cell wraps within its own
+        // column.
+        const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+        return `
+            <tr style="${rowStyle}">
+                <td style="${cellStyle}">${dateStr}</td>
+                <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
+                <td style="${cellStyle}">${row[2] || ''}</td>
+                <td style="${cellStyle}">${row[3] || ''}</td>
+                <td style="${cellStyle}">${row[4] || ''}</td>
+                <td style="${cellStyle}">${row[5] || ''}</td>
+                <td style="${cellStyle}">${deliveryDateStr}</td>
+                <td style="${cellStyle}">${techBuilder}</td>
+                <td style="${cellStyle}">${row[15] || ''}</td>
+                <td style="${cellStyle}">${row[17] || ''}</td>
+                <td style="${cellStyle}">${buildStatus}</td>
+                <td style="padding: 8px 10px; white-space: nowrap;"><button type="button" class="btn-build-tracker-update" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Update</button></td>
+            </tr>
+        `;
+    }
+
+    // Renders the next batch of rows into the Build Tracker table and
+    // appends a "Load More" row if more remain -- same pattern as
+    // renderReleasingStatusNextBatch above.
+    function renderBuildTrackerNextBatch() {
+        const tbody = document.getElementById('build-tracker-table-body');
+        const existingLoadMoreRow = document.getElementById('build-tracker-load-more-row');
+        if (existingLoadMoreRow) existingLoadMoreRow.remove();
+
+        const rows = buildTrackerPageState.rows;
+        const start = buildTrackerPageState.rendered;
+        const end = Math.min(start + BUILD_TRACKER_PAGE_SIZE, rows.length);
+        const batch = rows.slice(start, end);
+
+        // Use a <tbody> as the parsing context so <tr> markup parses correctly
+        // (a <div> would silently drop bare <tr> elements).
+        const parseWrapper = document.createElement('tbody');
+        parseWrapper.innerHTML = batch.map(buildBuildTrackerRowHtml).join('');
+        Array.from(parseWrapper.children).forEach(tr => tbody.appendChild(tr));
+
+        buildTrackerPageState.rendered = end;
+
+        if (buildTrackerPageState.rendered < rows.length) {
+            const remaining = rows.length - buildTrackerPageState.rendered;
+            const loadMoreTr = document.createElement('tr');
+            loadMoreTr.id = 'build-tracker-load-more-row';
+            const loadMoreTd = document.createElement('td');
+            loadMoreTd.colSpan = 12;
+            loadMoreTd.style.padding = '14px';
+            loadMoreTd.style.textAlign = 'center';
+            const loadMoreBtn = document.createElement('button');
+            loadMoreBtn.type = 'button';
+            loadMoreBtn.innerHTML = `<i class="fas fa-chevron-down"></i> Load More (${remaining} remaining)`;
+            loadMoreBtn.style.cssText = 'background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 0.9em;';
+            loadMoreBtn.addEventListener('click', renderBuildTrackerNextBatch);
+            loadMoreTd.appendChild(loadMoreBtn);
+            loadMoreTr.appendChild(loadMoreTd);
+            tbody.appendChild(loadMoreTr);
+        }
+    }
+
     function renderBuildTrackerTable(rows) {
         const tbody = document.getElementById('build-tracker-table-body');
+        tbody.innerHTML = '';
+        buildTrackerPageState = { rows: rows || [], rendered: 0 };
         if (!rows || rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="12" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
             return;
         }
-        tbody.innerHTML = rows.map(row => {
-            let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
-            let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
-            const techBuilder = row[14] || '';
-            const buildStatus = row[18] || '-';
-            const isOngoing = techBuilder && buildStatus.toString().toLowerCase().includes('ongoing');
-            const rowStyle = isOngoing ? 'border-bottom: 1px solid rgba(255,255,255,0.05); color: #10b981;' : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
-            // Fix 69: same overlapping-text bug fixed on the Deliveries list
-            // (and previously Item Replacement/Fix 61, MarvsPCStufz
-            // Warranty/Fix 63) -- long unbroken values in a fixed-width
-            // table cell have no natural place to wrap, so they overflow
-            // into the next column instead. word-break/overflow-wrap force
-            // a break even mid-word so every cell wraps within its own
-            // column.
-            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
-            return `
-                <tr style="${rowStyle}">
-                    <td style="${cellStyle}">${dateStr}</td>
-                    <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
-                    <td style="${cellStyle}">${row[2] || ''}</td>
-                    <td style="${cellStyle}">${row[3] || ''}</td>
-                    <td style="${cellStyle}">${row[4] || ''}</td>
-                    <td style="${cellStyle}">${row[5] || ''}</td>
-                    <td style="${cellStyle}">${deliveryDateStr}</td>
-                    <td style="${cellStyle}">${techBuilder}</td>
-                    <td style="${cellStyle}">${row[15] || ''}</td>
-                    <td style="${cellStyle}">${row[17] || ''}</td>
-                    <td style="${cellStyle}">${buildStatus}</td>
-                    <td style="padding: 8px 10px; white-space: nowrap;"><button type="button" class="btn-build-tracker-update" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Update</button></td>
-                </tr>
-            `;
-        }).join('');
+        renderBuildTrackerNextBatch();
     }
 
     let currentBuildTrackerRecords = [];
@@ -3316,42 +3373,92 @@ document.addEventListener('DOMContentLoaded', () => {
     // actions on purpose -- the user explicitly asked for a pure read-only list
     // here (updating Build Status itself lives on the Build Tracker page's
     // "Update" modal, Fix 13). Same generic reuse pattern as gotcha #11.
+    // Fix 76: same batched-rendering fix as Build Tracker above (see that
+    // comment block for the full rationale -- user-reported lag on other
+    // browsers when opening this page with a large filtered result set).
+    const BUILD_STATUS_PAGE_SIZE = 100;
+    let buildStatusPageState = { rows: [], rendered: 0 };
+
+    function buildBuildStatusRowHtml(row) {
+        let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+        let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
+        const buildStatus = row[18] || 'Pending';
+        const isCompleted = buildStatus.toString().toLowerCase().includes('complet');
+        const rowColor = isCompleted ? '#10b981' : (buildStatus.toString().toLowerCase().includes('ongoing') ? '#f59e0b' : 'inherit');
+        // Fix 69: same overlapping-text bug fixed on the Deliveries list
+        // (and previously Item Replacement/Fix 61, MarvsPCStufz
+        // Warranty/Fix 63) -- long unbroken values in a fixed-width
+        // table cell have no natural place to wrap, so they overflow
+        // into the next column instead. word-break/overflow-wrap force
+        // a break even mid-word so every cell wraps within its own
+        // column.
+        const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
+                <td style="${cellStyle}">${dateStr}</td>
+                <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
+                <td style="${cellStyle}">${row[2] || ''}</td>
+                <td style="${cellStyle}">${row[3] || ''}</td>
+                <td style="${cellStyle}">${row[4] || ''}</td>
+                <td style="${cellStyle}">${row[5] || ''}</td>
+                <td style="${cellStyle}">${deliveryDateStr}</td>
+                <td style="${cellStyle}">${row[14] || ''}</td>
+                <td style="${cellStyle}">${row[15] || ''}</td>
+                <td style="${cellStyle}">${buildStatus}</td>
+                <td style="${cellStyle}">${row[20] || ''}</td>
+            </tr>
+        `;
+    }
+
+    // Renders the next batch of rows into the Build Status table and
+    // appends a "Load More" row if more remain -- same pattern as
+    // renderReleasingStatusNextBatch/renderBuildTrackerNextBatch above.
+    // Build Status has no per-row action button, so there's no listener
+    // re-attachment to worry about at all.
+    function renderBuildStatusNextBatch() {
+        const tbody = document.getElementById('build-status-table-body');
+        const existingLoadMoreRow = document.getElementById('build-status-load-more-row');
+        if (existingLoadMoreRow) existingLoadMoreRow.remove();
+
+        const rows = buildStatusPageState.rows;
+        const start = buildStatusPageState.rendered;
+        const end = Math.min(start + BUILD_STATUS_PAGE_SIZE, rows.length);
+        const batch = rows.slice(start, end);
+
+        const parseWrapper = document.createElement('tbody');
+        parseWrapper.innerHTML = batch.map(buildBuildStatusRowHtml).join('');
+        Array.from(parseWrapper.children).forEach(tr => tbody.appendChild(tr));
+
+        buildStatusPageState.rendered = end;
+
+        if (buildStatusPageState.rendered < rows.length) {
+            const remaining = rows.length - buildStatusPageState.rendered;
+            const loadMoreTr = document.createElement('tr');
+            loadMoreTr.id = 'build-status-load-more-row';
+            const loadMoreTd = document.createElement('td');
+            loadMoreTd.colSpan = 11;
+            loadMoreTd.style.padding = '14px';
+            loadMoreTd.style.textAlign = 'center';
+            const loadMoreBtn = document.createElement('button');
+            loadMoreBtn.type = 'button';
+            loadMoreBtn.innerHTML = `<i class="fas fa-chevron-down"></i> Load More (${remaining} remaining)`;
+            loadMoreBtn.style.cssText = 'background: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 0.9em;';
+            loadMoreBtn.addEventListener('click', renderBuildStatusNextBatch);
+            loadMoreTd.appendChild(loadMoreBtn);
+            loadMoreTr.appendChild(loadMoreTd);
+            tbody.appendChild(loadMoreTr);
+        }
+    }
+
     function renderBuildStatusTable(rows) {
         const tbody = document.getElementById('build-status-table-body');
+        tbody.innerHTML = '';
+        buildStatusPageState = { rows: rows || [], rendered: 0 };
         if (!rows || rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
             return;
         }
-        tbody.innerHTML = rows.map(row => {
-            let dateStr = (row[0] || '').toString().split(/[T ]/)[0];
-            let deliveryDateStr = (row[6] || '').toString().split(/[T ]/)[0];
-            const buildStatus = row[18] || 'Pending';
-            const isCompleted = buildStatus.toString().toLowerCase().includes('complet');
-            const rowColor = isCompleted ? '#10b981' : (buildStatus.toString().toLowerCase().includes('ongoing') ? '#f59e0b' : 'inherit');
-            // Fix 69: same overlapping-text bug fixed on the Deliveries list
-            // (and previously Item Replacement/Fix 61, MarvsPCStufz
-            // Warranty/Fix 63) -- long unbroken values in a fixed-width
-            // table cell have no natural place to wrap, so they overflow
-            // into the next column instead. word-break/overflow-wrap force
-            // a break even mid-word so every cell wraps within its own
-            // column.
-            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
-            return `
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); color: ${rowColor};">
-                    <td style="${cellStyle}">${dateStr}</td>
-                    <td style="${cellStyle} font-weight: 500;">${row[1] || ''}</td>
-                    <td style="${cellStyle}">${row[2] || ''}</td>
-                    <td style="${cellStyle}">${row[3] || ''}</td>
-                    <td style="${cellStyle}">${row[4] || ''}</td>
-                    <td style="${cellStyle}">${row[5] || ''}</td>
-                    <td style="${cellStyle}">${deliveryDateStr}</td>
-                    <td style="${cellStyle}">${row[14] || ''}</td>
-                    <td style="${cellStyle}">${row[15] || ''}</td>
-                    <td style="${cellStyle}">${buildStatus}</td>
-                    <td style="${cellStyle}">${row[20] || ''}</td>
-                </tr>
-            `;
-        }).join('');
+        renderBuildStatusNextBatch();
     }
 
     let currentBuildStatusRecords = [];
