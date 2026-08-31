@@ -420,9 +420,16 @@ document.addEventListener('DOMContentLoaded', () => {
             warrantyCard.style.display = isAllowedMarvsStore ? '' : 'none';
         }
 
+        // Fix 82: Pending Deliveries card -- same store gate, also reads the
+        // Customer Information Sheet.
+        const pendingDeliveriesCard = document.getElementById('dash-pending-deliveries-card');
+        if (pendingDeliveriesCard) {
+            pendingDeliveriesCard.style.display = isAllowedMarvsStore ? '' : 'none';
+        }
+
         loadFootTrafficDashboard();
         if (isAllowedMarvsStore) {
-            loadReleaseStatusDashboard();
+            loadReleaseStatusAndDeliveryDashboards();
             loadWarrantyAgingDashboard();
         }
     }
@@ -581,13 +588,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadReleaseStatusDashboard() {
+    // Fix 82: renamed from loadReleaseStatusDashboard() -- now also computes
+    // the Pending Deliveries card from the SAME fetched rows (both cards
+    // read the "Customer Information Sheet", so there's no reason to hit
+    // the backend twice for one dashboard refresh). User explicitly asked
+    // for this to avoid adding backend load.
+    async function loadReleaseStatusAndDeliveryDashboards() {
         const listEl = document.getElementById('dash-marvspc-list');
         const pendingCountEl = document.getElementById('dash-pending-count');
         const partialCountEl = document.getElementById('dash-partial-count');
+        const deliveryListEl = document.getElementById('dash-pending-deliveries-list');
+        const deliveryCountEl = document.getElementById('dash-pending-deliveries-count');
+        const soonestDueEl = document.getElementById('dash-soonest-due');
         if (!listEl) return;
 
         listEl.innerHTML = '<div class="dash-empty">Loading...</div>';
+        if (deliveryListEl) deliveryListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
 
         try {
             const result = await postToScriptWithRetry({
@@ -599,6 +615,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const rows = (result && result.status === 'success' && result.data) ? result.data : [];
 
+            // ===== Parts Releasing half (unchanged) =====
             // Column index 23 = Parts Releasing (Fix 11's convention: blank == "Pending").
             const incomplete = rows.filter(row => {
                 const status = row[23] || 'Pending';
@@ -615,42 +632,102 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (incomplete.length === 0) {
                 listEl.innerHTML = '<div class="dash-empty">🎉 Wala pang customer na naka-pending ang parts releasing.</div>';
-                return;
+            } else {
+                listEl.innerHTML = '';
+                incomplete.forEach(row => {
+                    const name = row[1] || '(no name)';
+                    const numBuilds = row[4] || 1;
+                    const date = row[0] || '';
+                    const status = row[23] || 'Pending';
+                    const pillClass = status === 'Partially Released' ? 'partial' : 'pending';
+
+                    const rowEl = document.createElement('div');
+                    rowEl.className = 'cust-row-compact';
+
+                    const whoEl = document.createElement('div');
+                    whoEl.className = 'ccr-who';
+                    const nameEl = document.createElement('span');
+                    nameEl.className = 'ccr-name';
+                    nameEl.textContent = name;
+                    const metaEl = document.createElement('span');
+                    metaEl.className = 'ccr-meta';
+                    metaEl.textContent = `${numBuilds} build${numBuilds == 1 ? '' : 's'} · ${date}`;
+                    whoEl.appendChild(nameEl);
+                    whoEl.appendChild(metaEl);
+
+                    const pillEl = document.createElement('span');
+                    pillEl.className = 'status-pill ' + pillClass;
+                    pillEl.textContent = status;
+
+                    rowEl.appendChild(whoEl);
+                    rowEl.appendChild(pillEl);
+                    listEl.appendChild(rowEl);
+                });
             }
 
-            listEl.innerHTML = '';
-            incomplete.forEach(row => {
-                const name = row[1] || '(no name)';
-                const numBuilds = row[4] || 1;
-                const date = row[0] || '';
-                const status = row[23] || 'Pending';
-                const pillClass = status === 'Partially Released' ? 'partial' : 'pending';
+            // ===== Pending Deliveries half (Fix 82, new) =====
+            // Column index 20 = Delivery Status (blank == "Pending", same
+            // fallback convention as the Deliveries List page elsewhere in
+            // this file). Per the user's explicit confirmation: Pending
+            // status ONLY (no Walk-in), sorted by soonest Delivery Date
+            // (column 6) first -- different sort convention than the
+            // "newest record first" the other dashboard cards use, since
+            // for a pending-delivery list "which one's due next" is the
+            // actionable question.
+            if (deliveryListEl) {
+                const pendingDeliveries = rows.filter(row => (row[20] || 'Pending').toString().trim() === 'Pending');
 
-                const rowEl = document.createElement('div');
-                rowEl.className = 'cust-row-compact';
+                pendingDeliveries.sort((a, b) => {
+                    const dateA = new Date((a[6] || '').toString().split(/[T ]/)[0]).getTime();
+                    const dateB = new Date((b[6] || '').toString().split(/[T ]/)[0]).getTime();
+                    const safeA = isNaN(dateA) ? Infinity : dateA;
+                    const safeB = isNaN(dateB) ? Infinity : dateB;
+                    return safeA - safeB;
+                });
 
-                const whoEl = document.createElement('div');
-                whoEl.className = 'ccr-who';
-                const nameEl = document.createElement('span');
-                nameEl.className = 'ccr-name';
-                nameEl.textContent = name;
-                const metaEl = document.createElement('span');
-                metaEl.className = 'ccr-meta';
-                metaEl.textContent = `${numBuilds} build${numBuilds == 1 ? '' : 's'} · ${date}`;
-                whoEl.appendChild(nameEl);
-                whoEl.appendChild(metaEl);
+                if (deliveryCountEl) deliveryCountEl.textContent = pendingDeliveries.length;
+                if (soonestDueEl) {
+                    const soonestRaw = pendingDeliveries.length ? (pendingDeliveries[0][6] || '').toString().split(/[T ]/)[0] : '';
+                    soonestDueEl.textContent = soonestRaw || '--';
+                }
 
-                const pillEl = document.createElement('span');
-                pillEl.className = 'status-pill ' + pillClass;
-                pillEl.textContent = status;
+                if (pendingDeliveries.length === 0) {
+                    deliveryListEl.innerHTML = '<div class="dash-empty">🎉 Walang pending na delivery.</div>';
+                } else {
+                    deliveryListEl.innerHTML = '';
+                    pendingDeliveries.forEach(row => {
+                        const name = row[1] || '(no name)';
+                        const deliveryDate = (row[6] || '').toString().split(/[T ]/)[0] || 'No delivery date';
+                        const method = row[7] || '';
 
-                rowEl.appendChild(whoEl);
-                rowEl.appendChild(pillEl);
-                listEl.appendChild(rowEl);
-            });
+                        const rowEl = document.createElement('div');
+                        rowEl.className = 'cust-row-compact';
+
+                        const whoEl = document.createElement('div');
+                        whoEl.className = 'ccr-who';
+                        const nameEl = document.createElement('span');
+                        nameEl.className = 'ccr-name';
+                        nameEl.textContent = name;
+                        const metaEl = document.createElement('span');
+                        metaEl.className = 'ccr-meta';
+                        metaEl.textContent = method ? `Due ${deliveryDate} · ${method}` : `Due ${deliveryDate}`;
+                        whoEl.appendChild(nameEl);
+                        whoEl.appendChild(metaEl);
+
+                        const pillEl = document.createElement('span');
+                        pillEl.className = 'status-pill pending';
+                        pillEl.textContent = 'Pending';
+
+                        rowEl.appendChild(whoEl);
+                        rowEl.appendChild(pillEl);
+                        deliveryListEl.appendChild(rowEl);
+                    });
+                }
+            }
         } catch (error) {
-            console.error('Error loading release status dashboard:', error);
+            console.error('Error loading release status / delivery dashboards:', error);
             listEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+            if (deliveryListEl) deliveryListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
         }
     }
 
