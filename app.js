@@ -3633,8 +3633,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentBuildStatusRecords = [];
 
+    // User request (2026-08-31): default to newest-first, same convention as
+    // the Daily Survey report's sort-survey-date toggle this pattern is
+    // copied from -- true = descending (newest first).
+    let buildStatusSortDesc = true;
+
     function applyBuildStatusFilter() {
         const statusFilter = document.getElementById('build-status-filter').value;
+        const customerFilterEl = document.getElementById('build-status-customer-filter');
+        const customerQuery = ((customerFilterEl && customerFilterEl.value) || '').trim().toLowerCase();
+
         let filtered = currentBuildStatusRecords;
         if (statusFilter && statusFilter !== 'All') {
             if (statusFilter === 'Pending') {
@@ -3645,6 +3653,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 filtered = filtered.filter(row => (row[18] || '').toString().toLowerCase() === statusFilter.toLowerCase());
             }
         }
+        // User request: free-text, case-insensitive Customer Name filter --
+        // same substring-match convention as Deliveries List's Fix 41 filter.
+        if (customerQuery) {
+            filtered = filtered.filter(row => (row[1] || '').toString().toLowerCase().includes(customerQuery));
+        }
+
+        // User request: ascending/descending toggle on the Date column.
+        filtered = filtered.slice().sort((a, b) => {
+            const dateA = new Date((a[0] || '').toString().split(/[T ]/)[0]).getTime() || 0;
+            const dateB = new Date((b[0] || '').toString().split(/[T ]/)[0]).getTime() || 0;
+            const diff = dateA - dateB;
+            return buildStatusSortDesc ? -diff : diff;
+        });
+        const sortIcon = document.getElementById('sort-build-status-date-icon');
+        if (sortIcon) sortIcon.className = buildStatusSortDesc ? 'fas fa-sort-down' : 'fas fa-sort-up';
+
         renderBuildStatusTable(filtered);
     }
 
@@ -3732,6 +3756,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const buildStatusFilterSelect = document.getElementById('build-status-filter');
     if (buildStatusFilterSelect) {
         buildStatusFilterSelect.addEventListener('change', applyBuildStatusFilter);
+    }
+
+    // User request (2026-08-31): Customer Name filter re-applies live as the
+    // user types (same 'input' event convention as Deliveries List's Fix 41
+    // filter); the Date sort icon toggles direction on click, same pattern
+    // as the Daily Survey report's sort-survey-date header. Both re-filter/
+    // re-sort the already-loaded records in memory -- no reload needed.
+    const buildStatusCustomerFilter = document.getElementById('build-status-customer-filter');
+    if (buildStatusCustomerFilter) {
+        buildStatusCustomerFilter.addEventListener('input', applyBuildStatusFilter);
+    }
+    const sortBuildStatusDateBtn = document.getElementById('sort-build-status-date');
+    if (sortBuildStatusDateBtn) {
+        sortBuildStatusDateBtn.addEventListener('click', () => {
+            buildStatusSortDesc = !buildStatusSortDesc;
+            applyBuildStatusFilter();
+        });
     }
 
     // ======= Deliveries (Fix 16) =======
@@ -15163,6 +15204,19 @@ document.addEventListener("DOMContentLoaded", function() {
                 tr.style.color = '#ef4444';
             } else if (statusVal === 'Pending') {
                 tr.style.color = '#f59e0b';
+            }
+        }
+
+        // User request: on the Customer Information Sheet's View & Edit table,
+        // color the WHOLE row red when Parts Releasing is blank -- same
+        // "color the <tr>, per-cell divs inherit it" approach as Purchased
+        // Order above, so it's easy to spot at a glance which customers still
+        // have nothing released yet.
+        if (sheet === 'Customer Information Sheet') {
+            const partsReleasingColIdx = (sheetColumns[sheet] || []).indexOf('Parts Releasing');
+            const partsReleasingVal = (row[partsReleasingColIdx] || '').toString().trim();
+            if (!partsReleasingVal) {
+                tr.style.color = '#ef4444';
             }
         }
 

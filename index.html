@@ -1791,6 +1791,14 @@
                     <label for="build-status-end-date">Date To</label>
                     <input type="date" id="build-status-end-date">
                 </div>
+                <!-- User request (2026-08-31): no customer filter existed on this
+                     page -- added the same free-text, case-insensitive substring
+                     filter as Deliveries List (Fix 41) already has, re-applied
+                     client-side against the already-loaded records. -->
+                <div class="form-group" style="flex: 1; min-width: 150px;">
+                    <label for="build-status-customer-filter">Customer Name</label>
+                    <input type="text" id="build-status-customer-filter" placeholder="Search customer name...">
+                </div>
                 <div class="form-group" style="flex: 1; min-width: 150px;">
                     <label for="build-status-filter">Build Status</label>
                     <select id="build-status-filter">
@@ -1823,7 +1831,11 @@
                     </colgroup>
                     <thead>
                         <tr style="border-bottom: 1px solid var(--glass-border);">
-                            <th style="padding: 10px; text-align: left;">Date</th>
+                            <!-- User request (2026-08-31): no ascending/descending
+                                 control existed beside Date -- added the same
+                                 clickable-header + toggle-icon pattern the Daily
+                                 Survey report already uses (sort-survey-date). -->
+                            <th id="sort-build-status-date" style="padding: 10px; text-align: left; cursor: pointer; user-select: none;">Date <i class="fas fa-sort" id="sort-build-status-date-icon"></i></th>
                             <th style="padding: 10px; text-align: left;">Customer Name</th>
                             <th style="padding: 10px; text-align: left;">Address</th>
                             <th style="padding: 10px; text-align: left;">Mobile#</th>
@@ -4923,7 +4935,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=104"></script>
+    <script src="app.js?v=106"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
