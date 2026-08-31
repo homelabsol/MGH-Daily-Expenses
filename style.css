@@ -558,13 +558,23 @@ textarea {
         text-align: center;
     }
 
-    /* Right main content: menu buttons -- Fix 75: shrunk from flex:1 1 auto to
-       a fixed-ish basis so it no longer eats all the remaining width; the new
+    /* Middle column: menu buttons -- Fix 75: shrunk from flex:1 1 auto to a
+       fixed-ish basis so it no longer eats all the remaining width; the new
        #menu-dashboard-col (below) takes the rest. User asked for the buttons
        themselves to be visibly smaller too (icon + padding + font shrunk),
-       not just narrower. */
-    #main-menu-container > .main-menu {
+       not just narrower.
+       Fix 79: the flex-basis that used to sit directly on `.main-menu` now
+       sits on the new `.mid-col` wrapper instead, since the Warranty Aging
+       card stacks below the buttons inside that same wrapper -- the button
+       grid itself is unchanged otherwise. */
+    #main-menu-container > .mid-col {
         flex: 0 1 300px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+
+    #main-menu-container > .mid-col > .main-menu {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
@@ -572,14 +582,14 @@ textarea {
         padding: 4px;
     }
 
-    #main-menu-container > .main-menu .menu-action-btn {
+    #main-menu-container > .mid-col .menu-action-btn {
         padding: 8px 8px;
         font-size: 0.76rem;
         gap: 7px;
         border-radius: 10px;
     }
 
-    #main-menu-container > .main-menu .menu-action-btn .icon {
+    #main-menu-container > .mid-col .menu-action-btn .icon {
         width: 24px;
         height: 24px;
         font-size: 0.78rem;
@@ -599,6 +609,17 @@ textarea {
     gap: 18px;
     width: 100%;
     margin-top: 20px;
+}
+
+/* Fix 79: middle column wrapper (menu buttons + Warranty Aging card below
+   them). Mobile/base: just a full-width stack, same as .main-menu used to be
+   on its own -- the flex-basis that narrows it to ~300px only applies at the
+   900px+ breakpoint above. */
+.mid-col {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
 }
 
 @media (min-width: 900px) {
@@ -760,6 +781,12 @@ textarea {
     margin-bottom: 14px;
 }
 
+/* Fix 79: Warranty Aging's 3 age buckets need a 3rd column instead of the
+   2-column layout the MarvsPCStufz card's metric-cards use. */
+.card-grid.cols-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
 .metric-card {
     border-radius: var(--radius-sm);
     padding: 13px 15px;
@@ -846,6 +873,26 @@ textarea {
     background: rgba(245, 158, 11, 0.15);
     color: #fbbf24;
     border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+/* Fix 79: Warranty Aging's per-claim age pill -- 3 buckets, green/amber/red
+   matching the metric-card bucket colors above it. */
+.status-pill.fresh {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.status-pill.mid {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.status-pill.overdue {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
 }
 
 .dash-empty {

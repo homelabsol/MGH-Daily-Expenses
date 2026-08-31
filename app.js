@@ -198,6 +198,13 @@ document.addEventListener('DOMContentLoaded', () => {
         preventEnterSubmit(document.getElementById(id));
     });
 
+    // Fix 78: Main Menu Dashboard auto-refresh timer state -- declared here
+    // (above the auto-login check right below, which can call showApp()
+    // immediately on page load) so showApp() never references these before
+    // they're initialized.
+    let menuDashboardRefreshInterval = null;
+    const MENU_DASHBOARD_REFRESH_MS = 3 * 60 * 1000;
+
     // Check if user is already logged in
     const sessionUser = sessionStorage.getItem('loggedInUser');
     if (sessionUser) {
@@ -337,6 +344,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // else above) so it reflects whatever's been logged since the last
         // login/menu visit.
         loadMenuDashboard();
+
+        // Fix 78: auto-refresh the Main Menu Dashboard every 3 minutes so it
+        // doesn't go stale if another user edits the Daily Survey / Customer
+        // Information Sheet data while this dashboard is left open on screen.
+        // Clear any previous interval first so repeated showApp() calls (e.g.
+        // logging out and back in) never stack up duplicate timers.
+        if (menuDashboardRefreshInterval) {
+            clearInterval(menuDashboardRefreshInterval);
+        }
+        menuDashboardRefreshInterval = setInterval(() => {
+            // Only hit the backend while the dashboard is actually visible --
+            // no point refreshing it while the user is on another screen.
+            if (mainMenuContainer && !mainMenuContainer.classList.contains('hidden')) {
+                loadMenuDashboard();
+            }
+        }, MENU_DASHBOARD_REFRESH_MS);
     }
 
     // ===== Main Menu Dashboard (Fix 75) =====
@@ -390,9 +413,17 @@ document.addEventListener('DOMContentLoaded', () => {
             marvsCard.style.display = isAllowedMarvsStore ? '' : 'none';
         }
 
+        // Fix 79: Warranty Aging card -- same store gate, since it's also
+        // MarvsPCStufz-only data.
+        const warrantyCard = document.getElementById('dash-warranty-card');
+        if (warrantyCard) {
+            warrantyCard.style.display = isAllowedMarvsStore ? '' : 'none';
+        }
+
         loadFootTrafficDashboard();
         if (isAllowedMarvsStore) {
             loadReleaseStatusDashboard();
+            loadWarrantyAgingDashboard();
         }
     }
 
@@ -623,6 +654,137 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Fix 79: Warranty Aging -- open "MarvsPCStufz Warranty" claims (no
+    // "Date Return (Customer)" yet, i.e. the item hasn't been returned to the
+    // customer), bucketed by days since the Warranty Date: 0-7 "fresh", 8-30
+    // "mid", 31+ "overdue". Reuses the existing getExpenseRecords action on
+    // the same sheet the Warranty Record form/list already write to and read
+    // from -- zero backend changes.
+    //
+    // Row layout returned by getExpenseRecords for "MarvsPCStufz Warranty"
+    // (0-indexed, same column mapping mwrOpenModifyForm() above documents
+    // and relies on): 0 Warranty Date, 3 Customer Name, 5 Item Description,
+    // 14 Supplier Name, 18 Supplier Status, 19 Date Return (Customer).
+    async function loadWarrantyAgingDashboard() {
+        const listEl = document.getElementById('dash-warranty-list');
+        const freshCountEl = document.getElementById('dash-warranty-fresh-count');
+        const midCountEl = document.getElementById('dash-warranty-mid-count');
+        const overdueCountEl = document.getElementById('dash-warranty-overdue-count');
+        const insightEl = document.getElementById('dash-warranty-insight');
+        if (!listEl) return;
+
+        listEl.innerHTML = '<div class="dash-empty">Loading...</div>';
+        if (insightEl) insightEl.style.display = 'none';
+
+        try {
+            const result = await postToScriptWithRetry({
+                action: 'getExpenseRecords',
+                sheetName: 'MarvsPCStufz Warranty',
+                startDate: '2000-01-01',
+                endDate: dashFmtDate(new Date()),
+                branch: 'All'
+            });
+            const rows = (result && result.status === 'success' && result.data) ? result.data : [];
+
+            // Blank "Date Return (Customer)" (idx 19) == the item hasn't been
+            // returned to the customer yet == still an open/aging claim.
+            const open = rows.filter(row => !(row[19] || '').toString().trim());
+
+            const todayMs = new Date(dashFmtDate(new Date())).getTime();
+            const aged = open.map(row => {
+                const warrantyDateStr = row[0] || '';
+                const warrantyMs = warrantyDateStr ? new Date(warrantyDateStr).getTime() : NaN;
+                const days = isNaN(warrantyMs) ? 0 : Math.max(0, Math.round((todayMs - warrantyMs) / 86400000));
+                let bucket = 'fresh';
+                if (days > 30) bucket = 'overdue';
+                else if (days >= 8) bucket = 'mid';
+                return {
+                    name: row[3] || '(no name)',
+                    item: row[5] || 'Item',
+                    date: warrantyDateStr,
+                    supplier: row[14] || '',
+                    supplierStatus: row[18] || '',
+                    days: days,
+                    bucket: bucket
+                };
+            });
+
+            // Oldest (most urgent) first -- same convention as the
+            // MarvsPCStufz card's Pending/Partial list above.
+            aged.sort((a, b) => b.days - a.days);
+
+            const freshCount = aged.filter(r => r.bucket === 'fresh').length;
+            const midCount = aged.filter(r => r.bucket === 'mid').length;
+            const overdueCount = aged.filter(r => r.bucket === 'overdue').length;
+            if (freshCountEl) freshCountEl.textContent = freshCount;
+            if (midCountEl) midCountEl.textContent = midCount;
+            if (overdueCountEl) overdueCountEl.textContent = overdueCount;
+
+            if (insightEl) {
+                if (overdueCount > 0) {
+                    const oldest = aged[0];
+                    insightEl.className = 'insight-bar negative';
+                    insightEl.style.display = 'flex';
+                    insightEl.innerHTML = '';
+                    const arrowEl = document.createElement('span');
+                    arrowEl.className = 'arrow';
+                    arrowEl.textContent = '▲';
+                    const textEl = document.createElement('span');
+                    // Built with textContent (not innerHTML string interpolation)
+                    // since name/item/supplier are free-text sheet fields --
+                    // same defensive pattern loadReleaseStatusDashboard() above
+                    // already uses for the exact same reason.
+                    const supplierPhrase = oldest.supplier ? `still with ${oldest.supplier}` : 'not yet forwarded to a supplier';
+                    const statusSuffix = oldest.supplierStatus ? ` (${oldest.supplierStatus})` : '';
+                    const plural = overdueCount === 1 ? '' : 's';
+                    const verb = overdueCount === 1 ? 'has' : 'have';
+                    textEl.textContent = `${overdueCount} claim${plural} ${verb} been open for over a month — oldest is ${oldest.name}'s ${oldest.item} at ${oldest.days} days, ${supplierPhrase}${statusSuffix}.`;
+                    insightEl.appendChild(arrowEl);
+                    insightEl.appendChild(textEl);
+                } else {
+                    insightEl.style.display = 'none';
+                }
+            }
+
+            if (aged.length === 0) {
+                listEl.innerHTML = '<div class="dash-empty">🎉 Walang open na warranty claim.</div>';
+                return;
+            }
+
+            listEl.innerHTML = '';
+            aged.forEach(r => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'cust-row-compact';
+
+                const whoEl = document.createElement('div');
+                whoEl.className = 'ccr-who';
+                const nameEl = document.createElement('span');
+                nameEl.className = 'ccr-name';
+                nameEl.textContent = r.name;
+                const metaEl = document.createElement('span');
+                metaEl.className = 'ccr-meta';
+                metaEl.textContent = `${r.item} · filed ${r.date}`;
+                const supplierEl = document.createElement('span');
+                supplierEl.className = 'ccr-meta';
+                supplierEl.textContent = r.supplier ? `Supplier: ${r.supplier}` : 'Not yet forwarded to a supplier';
+                whoEl.appendChild(nameEl);
+                whoEl.appendChild(metaEl);
+                whoEl.appendChild(supplierEl);
+
+                const pillEl = document.createElement('span');
+                pillEl.className = 'status-pill ' + r.bucket;
+                pillEl.textContent = `${r.days} day${r.days === 1 ? '' : 's'}`;
+
+                rowEl.appendChild(whoEl);
+                rowEl.appendChild(pillEl);
+                listEl.appendChild(rowEl);
+            });
+        } catch (error) {
+            console.error('Error loading warranty aging dashboard:', error);
+            listEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+        }
+    }
+
     function showLogin() {
         hideAllContainers();
         loginContainer.classList.remove('hidden');
@@ -634,6 +796,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (aiChatFabEl) aiChatFabEl.classList.add('hidden');
         if (aiChatPanelEl) aiChatPanelEl.classList.add('hidden');
         if (window.speechSynthesis) window.speechSynthesis.cancel(); // stop any AI voice reply mid-sentence on logout
+
+        // Fix 78: stop the Main Menu Dashboard auto-refresh timer on logout --
+        // otherwise it would keep firing (and hitting the backend) against a
+        // logged-out session in the background.
+        if (menuDashboardRefreshInterval) {
+            clearInterval(menuDashboardRefreshInterval);
+            menuDashboardRefreshInterval = null;
+        }
     }
 
     // Navigation Listeners
@@ -4184,7 +4354,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const totalToCollect = invoiceBalance + shippingFee + installationFee;
 
             const htmlString = `
-                <div id="dr-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
+                <div id="dr-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 28px 44px; max-width: 800px; margin: 0 auto;">
                     <table style="width:100%; border-collapse:collapse; border-bottom:3px solid #4f46e5; padding-bottom:16px; margin-bottom:20px; table-layout:fixed;">
                         <tr>
                             <td style="width:60%; vertical-align:top; padding-bottom:16px;">
@@ -4263,19 +4433,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     </table>
                     <div style="font-size:10px; color:#9ca3af; margin-top:4px;">* Total Amount to be Collected = Invoice Balance + Shipping Fee + Installation/Service Fee Amount</div>
 
-                    <table style="width:100%; margin-top: 40px;">
-                        <tr>
-                            <td style="width: 50%; padding-right: 20px; vertical-align: top;">
-                                <div style="border-top:1px solid #374151; margin-top:46px; padding-top:6px; font-size:11px; color:#374151; text-align:center;">Customer Signature over Printed Name</div>
-                            </td>
-                            <td style="width: 50%; padding-left: 20px; vertical-align: top;">
-                                <div style="border-top:1px solid #374151; margin-top:46px; padding-top:6px; font-size:11px; color:#374151; text-align:center;">Released By (Signature)<div style="margin-top:3px; color:#6b7280;">Printed Name: ${riderName || '_______________'}</div></div>
-                            </td>
-                        </tr>
-                    </table>
+                    <div class="dr-avoid-break">
+                        <table style="width:100%; margin-top: 32px;">
+                            <tr>
+                                <td style="width: 50%; padding-right: 20px; vertical-align: top;">
+                                    <div style="border-top:1px solid #374151; margin-top:36px; padding-top:6px; font-size:11px; color:#374151; text-align:center;">Customer Signature over Printed Name</div>
+                                </td>
+                                <td style="width: 50%; padding-left: 20px; vertical-align: top;">
+                                    <div style="border-top:1px solid #374151; margin-top:36px; padding-top:6px; font-size:11px; color:#374151; text-align:center;">Released By (Signature)<div style="margin-top:3px; color:#6b7280;">Printed Name: ${riderName || '_______________'}</div></div>
+                                </td>
+                            </tr>
+                        </table>
 
-                    <div style="margin-top: 24px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #9ca3af; text-align: center;">
-                        This receipt confirms that the above item(s) were received in good order and condition.
+                        <div style="margin-top: 20px; padding-top: 10px; border-top: 1px solid #e5e7eb; font-size: 10px; color: #9ca3af; text-align: center;">
+                            This receipt confirms that the above item(s) were received in good order and condition.
+                        </div>
                     </div>
                 </div>
             `;
@@ -4295,7 +4467,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 filename: `Delivery_Receipt_${(receiptNumber || 'Draft')}_${(customerName || 'Customer').toString().replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+                jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+                // Fix 77: this was the only PDF-generating function in the whole app
+                // WITHOUT a pagebreak.avoid option (every other one -- Manual
+                // Quotation, Payslip, etc. -- already has this). Without it, if this
+                // receipt's content ever lands right at the page boundary (a longer
+                // customer name/address, more Sales Invoice # entries, etc.),
+                // html2pdf's default pagebreak behavior slices whatever element
+                // straddles that boundary right down the middle -- exactly the
+                // "putol" (cut) the user reported, showing the Total row visually
+                // sliced in half. 'tr' keeps every table row atomic (bumps the WHOLE
+                // row to the next page instead of cutting it); '.dr-avoid-break'
+                // does the same for the signature/footer block below the table, so
+                // it never gets separated from itself either. Combined with the
+                // tightened top/bottom padding above (more headroom under the
+                // 1-page budget), normal-length receipts should still land on a
+                // single page -- this is the safety net for when they don't.
+                pagebreak: { mode: ['css'], avoid: ['tr', '.dr-avoid-break'] }
             };
 
             html2pdf().set(opt).from(element).output('bloburl').then(function (pdfUrl) {
