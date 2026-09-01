@@ -427,14 +427,68 @@ document.addEventListener('DOMContentLoaded', () => {
             pendingDeliveriesCard.style.display = isAllowedMarvsStore ? '' : 'none';
         }
 
-        loadFootTrafficDashboard();
-        if (isAllowedMarvsStore) {
-            loadReleaseStatusAndDeliveryDashboards();
-            loadWarrantyAgingDashboard();
+        loadMenuDashboardCombined(isAllowedMarvsStore);
+    }
+
+    // Fix 86: single combined backend call for the whole Main Menu Dashboard,
+    // replacing 3 separate getExpenseRecords requests (Daily Survey /
+    // Customer Information Sheet / MarvsPCStufz Warranty) with ONE
+    // getMenuDashboardData request that reads all the needed sheets
+    // server-side in one Apps Script execution. Cuts per-request network +
+    // Apps-Script-dispatch overhead from 3x to 1x on every Main Menu open
+    // AND every Fix 78 3-minute auto-refresh -- meaningful on a slow branch
+    // connection where 3 simultaneous requests compete for the same limited
+    // pipe rather than really running in parallel. `includeMarvsPcData`
+    // mirrors the SAME isAllowedMarvsStore gate loadMenuDashboard already
+    // used to skip these 2 loaders entirely for a non-MarvsPCStufz store --
+    // the backend now also skips reading those 2 sheets in that case, not
+    // just skips rendering them, so a non-MarvsPCStufz store still only
+    // costs one Daily Survey read, exactly like before this fix.
+    async function loadMenuDashboardCombined(includeMarvsPcData) {
+        const marvsListEl = document.getElementById('dash-marvspc-list');
+        const deliveryListEl = document.getElementById('dash-pending-deliveries-list');
+        const warrantyListEl = document.getElementById('dash-warranty-list');
+        const warrantyInsightEl = document.getElementById('dash-warranty-insight');
+        const trafficInsightEl = document.getElementById('dash-traffic-insight');
+
+        if (includeMarvsPcData) {
+            if (marvsListEl) marvsListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
+            if (deliveryListEl) deliveryListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
+            if (warrantyListEl) warrantyListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
+            if (warrantyInsightEl) warrantyInsightEl.style.display = 'none';
+        }
+
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - 13); // 14-day window: 7 prior days + 7 current days
+        const footTrafficStart = dashFmtDate(start);
+        const footTrafficEnd = dashFmtDate(end);
+
+        try {
+            const result = await postToScriptWithRetry({
+                action: 'getMenuDashboardData',
+                footTrafficStart,
+                footTrafficEnd,
+                includeMarvsPcData: !!includeMarvsPcData
+            });
+            const data = (result && result.status === 'success' && result.data) ? result.data : {};
+            await renderFootTrafficDashboard(data.footTraffic || [], footTrafficStart, footTrafficEnd);
+            if (includeMarvsPcData) {
+                renderReleaseStatusAndDeliveryDashboards(data.customerInfo || []);
+                renderWarrantyAgingDashboard(data.warranty || []);
+            }
+        } catch (error) {
+            console.error('Error loading Main Menu Dashboard:', error);
+            if (trafficInsightEl) trafficInsightEl.style.display = 'none';
+            if (includeMarvsPcData) {
+                if (marvsListEl) marvsListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+                if (deliveryListEl) deliveryListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+                if (warrantyListEl) warrantyListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+            }
         }
     }
 
-    async function loadFootTrafficDashboard() {
+    async function renderFootTrafficDashboard(rows, footTrafficStart, footTrafficEnd) {
         const canvas = document.getElementById('menu-foot-traffic-chart');
         if (!canvas) return;
 
@@ -447,20 +501,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const concepcionDeltaEl = document.getElementById('dash-stat-concepcion-delta');
 
         try {
-            const end = new Date();
-            const start = new Date();
-            start.setDate(end.getDate() - 13); // 14-day window: 7 prior days + 7 current days
-            const startStr = dashFmtDate(start);
-            const endStr = dashFmtDate(end);
-
-            const result = await postToScriptWithRetry({
-                action: 'getExpenseRecords',
-                sheetName: 'Daily Survey',
-                startDate: startStr,
-                endDate: endStr,
-                branch: 'All'
-            });
-            const rows = (result && result.status === 'success' && result.data) ? result.data : [];
+            // Fix 86: rows are now fetched ONCE up front by the combined
+            // loadMenuDashboardCombined() (part of a single getMenuDashboardData
+            // call covering the whole dashboard) and passed in here -- this
+            // function just renders. `start` is reconstructed from the same
+            // footTrafficStart string the fetch was made with, so the 14-day
+            // window used to build `days` below always matches exactly what
+            // was actually requested/returned.
+            const start = new Date(footTrafficStart + 'T00:00:00');
 
             const days = [];
             for (let i = 0; i < 14; i++) {
@@ -593,7 +641,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // read the "Customer Information Sheet", so there's no reason to hit
     // the backend twice for one dashboard refresh). User explicitly asked
     // for this to avoid adding backend load.
-    async function loadReleaseStatusAndDeliveryDashboards() {
+    // Fix 86: no longer fetches -- rows are fetched ONCE up front by
+    // loadMenuDashboardCombined() (part of the single combined
+    // getMenuDashboardData call) and passed in here; this function just
+    // renders. The "Loading..." placeholder is set by the caller before the
+    // fetch starts, same as before.
+    function renderReleaseStatusAndDeliveryDashboards(rows) {
         const listEl = document.getElementById('dash-marvspc-list');
         const pendingCountEl = document.getElementById('dash-pending-count');
         const partialCountEl = document.getElementById('dash-partial-count');
@@ -602,19 +655,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const soonestDueEl = document.getElementById('dash-soonest-due');
         if (!listEl) return;
 
-        listEl.innerHTML = '<div class="dash-empty">Loading...</div>';
-        if (deliveryListEl) deliveryListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
-
         try {
-            const result = await postToScriptWithRetry({
-                action: 'getExpenseRecords',
-                sheetName: 'Customer Information Sheet',
-                startDate: '2000-01-01',
-                endDate: dashFmtDate(new Date()),
-                branch: 'All'
-            });
-            const rows = (result && result.status === 'success' && result.data) ? result.data : [];
-
             // ===== Parts Releasing half (unchanged) =====
             // Column index 23 = Parts Releasing (Fix 11's convention: blank == "Pending").
             const incomplete = rows.filter(row => {
@@ -742,7 +783,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // (0-indexed, same column mapping mwrOpenModifyForm() above documents
     // and relies on): 0 Warranty Date, 3 Customer Name, 5 Item Description,
     // 14 Supplier Name, 18 Supplier Status, 19 Date Return (Customer).
-    async function loadWarrantyAgingDashboard() {
+    // Fix 86: no longer fetches -- rows are fetched ONCE up front by
+    // loadMenuDashboardCombined() (part of the single combined
+    // getMenuDashboardData call) and passed in here; this function just
+    // renders. The "Loading..." placeholder is set by the caller before the
+    // fetch starts, same as before.
+    function renderWarrantyAgingDashboard(rows) {
         const listEl = document.getElementById('dash-warranty-list');
         const freshCountEl = document.getElementById('dash-warranty-fresh-count');
         const midCountEl = document.getElementById('dash-warranty-mid-count');
@@ -750,18 +796,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const insightEl = document.getElementById('dash-warranty-insight');
         if (!listEl) return;
 
-        listEl.innerHTML = '<div class="dash-empty">Loading...</div>';
-        if (insightEl) insightEl.style.display = 'none';
-
         try {
-            const result = await postToScriptWithRetry({
-                action: 'getExpenseRecords',
-                sheetName: 'MarvsPCStufz Warranty',
-                startDate: '2000-01-01',
-                endDate: dashFmtDate(new Date()),
-                branch: 'All'
-            });
-            const rows = (result && result.status === 'success' && result.data) ? result.data : [];
 
             // Blank "Date Return (Customer)" (idx 19) == the item hasn't been
             // returned to the customer yet == still an open/aging claim.

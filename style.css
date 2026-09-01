@@ -546,8 +546,12 @@ textarea {
 @media (min-width: 900px) {
     #main-menu-container {
         /* Fix 75: widened from 1100px so the new dashboard column (see below)
-           has real room beside the sidebar + shrunk menu buttons. */
-        max-width: 1360px;
+           has real room beside the sidebar + shrunk menu buttons.
+           Fix 87: widened again -- the menu-button sidebar shrank from
+           ~300px to ~148px, and that freed-up width now goes to the
+           dashboard card grid instead, per the user's "mas malaking
+           dashboard" ask. */
+        max-width: 1500px;
         display: flex;
         align-items: flex-start;
         gap: 28px;
@@ -587,75 +591,85 @@ textarea {
         text-align: center;
     }
 
-    /* Middle column: menu buttons -- Fix 75: shrunk from flex:1 1 auto to a
-       fixed-ish basis so it no longer eats all the remaining width; the new
-       #menu-dashboard-col (below) takes the rest. User asked for the buttons
-       themselves to be visibly smaller too (icon + padding + font shrunk),
-       not just narrower.
-       Fix 79: the flex-basis that used to sit directly on `.main-menu` now
-       sits on the new `.mid-col` wrapper instead, since the Warranty Aging
-       card stacks below the buttons inside that same wrapper -- the button
-       grid itself is unchanged otherwise. */
-    #main-menu-container > .mid-col {
-        flex: 0 1 300px;
+    /* Fix 87: menu buttons now live in their own narrow left-hand sidebar
+       (icon + small always-visible label, single column) with ALL 4
+       dashboard cards filling the remaining width in a responsive grid,
+       instead of the old split between a "mid-col" (buttons + 2 cards) and
+       a separate "menu-dashboard-col" (2 more cards). */
+    #main-menu-container > .menu-dashboard-layout {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 22px;
+        min-width: 0;
+    }
+
+    #main-menu-container .sidebar-menu {
+        flex: 0 0 148px;
+        width: 148px;
         display: flex;
         flex-direction: column;
-        gap: 18px;
-    }
-
-    #main-menu-container > .mid-col > .main-menu {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
+        gap: 6px;
         align-content: start;
         padding: 4px;
+        position: sticky;
+        top: 40px;
     }
 
-    #main-menu-container > .mid-col .menu-action-btn {
+    #main-menu-container .sidebar-menu .menu-action-btn {
         padding: 8px 8px;
-        font-size: 0.76rem;
-        gap: 7px;
+        font-size: 0.72rem;
+        gap: 8px;
         border-radius: 10px;
+        line-height: 1.2;
     }
 
-    #main-menu-container > .mid-col .menu-action-btn .icon {
-        width: 24px;
-        height: 24px;
-        font-size: 0.78rem;
+    #main-menu-container .sidebar-menu .menu-action-btn .icon {
+        width: 26px;
+        height: 26px;
+        font-size: 0.82rem;
     }
 }
 
 /* =========================================================
-   Main Menu Dashboard (Fix 75) -- Gaming Hub foot-traffic +
-   MarvsPCStufz incomplete-parts-releasing insights. Sits beside the
-   shrunk menu buttons on desktop, stacks full-width below them on
-   mobile (no media query needed for the stacked case -- it's just
-   normal block flow).
+   Main Menu layout (Fix 87) -- sidebar of menu buttons + a
+   full-width dashboard card grid. Mobile/base: just a full-width
+   stack (sidebar's buttons render full-size, one per row, same as
+   .main-menu always has; the dashboard grid below is a single
+   column) -- the narrow-sidebar-plus-grid layout above only applies
+   at the 900px+ breakpoint.
    ========================================================= */
-#menu-dashboard-col {
+.menu-dashboard-layout {
     display: flex;
     flex-direction: column;
     gap: 18px;
     width: 100%;
-    margin-top: 20px;
 }
 
-/* Fix 79: middle column wrapper (menu buttons + Warranty Aging card below
-   them). Mobile/base: just a full-width stack, same as .main-menu used to be
-   on its own -- the flex-basis that narrows it to ~300px only applies at the
-   900px+ breakpoint above. */
-.mid-col {
+.dashboard-grid {
     display: flex;
     flex-direction: column;
     gap: 18px;
     width: 100%;
+    min-width: 0;
 }
 
 @media (min-width: 900px) {
-    #menu-dashboard-col {
-        flex: 1 1 420px;
-        min-width: 320px;
-        margin-top: 0;
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        align-content: start;
+    }
+}
+
+@media (min-width: 900px) and (max-width: 1300px) {
+    /* Medium desktop widths: keep cards full-width/stacked (big and
+       readable) rather than cramming 2 narrow columns -- the 2-column
+       grid above only kicks in once there's real room for it. */
+    .dashboard-grid {
+        grid-template-columns: 1fr;
     }
 }
 
