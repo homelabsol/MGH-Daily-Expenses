@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=4">
+    <link rel="stylesheet" href="style.css?v=5">
     <!-- Fix 48: html2pdf.bundle.min.js, chart.js, and xlsx.full.min.js used to be
          loaded here as plain blocking <script> tags -- meaning every page open,
          even the login screen, waited on all three heavy libraries before the
@@ -1071,6 +1071,79 @@
         </div>
     </div>
 
+    <!-- Daily Parts Inventory Modify Modal (Fix 83) -- Owner-only, opened from
+         a "Modify" button per row on the Daily Parts Inventory Records list.
+         Full form, every field editable (Date/Branch/Category/Item
+         Description/Qty/Missing/RMA -- Total recomputes live, read-only) --
+         same plain darker-overlay (no blur) pattern as the other modals
+         stacked over a heavy table (gotcha #7). Approved By stays a
+         read-only auto-fill from the CURRENTLY logged-in session (same
+         "who approved this, provably, right now" design already used on the
+         original Daily Parts Inventory entry form -- see
+         dpiUpdateApprovedByFromSession), not a free-pick dropdown, since
+         only an Owner can ever open this modal in the first place. -->
+    <div id="dpi-modify-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:20000; justify-content:center; align-items:center;">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:28px; width:100%; max-width:520px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.5); margin:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="margin:0; color:#f1f5f9; font-size:1.1em; font-weight:600;"><i class="fas fa-boxes-stacked" style="margin-right:8px; color:#3b82f6;"></i>Modify Parts Inventory Item</h3>
+                <button id="close-dpi-modify-modal" style="background:none; border:none; color:#94a3b8; font-size:1.2em; cursor:pointer; padding:4px;"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="dpi-modify-date">Date</label>
+                    <input type="date" id="dpi-modify-date">
+                </div>
+                <div class="form-group">
+                    <label for="dpi-modify-branch">Branch</label>
+                    <select id="dpi-modify-branch">
+                        <option value="MarvsPCStufz QC Main">MarvsPCStufz QC Main</option>
+                        <option value="MarvsPCStufz Marikina">MarvsPCStufz Marikina</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label for="dpi-modify-category">Category</label>
+                <select id="dpi-modify-category"></select>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label for="dpi-modify-desc">Item Description</label>
+                <textarea id="dpi-modify-desc" rows="2" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 8px 10px; color: var(--text-light); font-family: inherit; font-size: 0.9em;"></textarea>
+            </div>
+            <div class="form-row" style="margin-top: 10px;">
+                <div class="form-group">
+                    <label for="dpi-modify-qty">Qty</label>
+                    <input type="number" id="dpi-modify-qty" min="0" step="1">
+                </div>
+                <div class="form-group">
+                    <label for="dpi-modify-missing">Missing</label>
+                    <input type="number" id="dpi-modify-missing" min="0" step="1">
+                </div>
+                <div class="form-group">
+                    <label for="dpi-modify-rma">RMA</label>
+                    <input type="number" id="dpi-modify-rma" min="0" step="1">
+                </div>
+            </div>
+            <div style="margin-top: 8px; font-size: 0.85em; color: var(--text-muted);">Total (Accounted): <span id="dpi-modify-total" style="color: #10b981; font-weight: 700;">0</span></div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label for="dpi-modify-counted-by">Counted By <span style="color: var(--text-muted); font-weight: 400;">(RMA Admin)</span></label>
+                <select id="dpi-modify-counted-by">
+                    <option value="">-- Select RMA Admin --</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-top: 10px; margin-bottom: 0;">
+                <label for="dpi-modify-approved-by">Approved By <span style="color: var(--text-muted); font-weight: 400;">(auto-filled -- current Owner)</span></label>
+                <input type="text" id="dpi-modify-approved-by" readonly style="background-color: rgba(255,255,255,0.05); color: #aaa; cursor: not-allowed;">
+            </div>
+            <div id="dpi-modify-status-message" class="hidden" style="margin-top: 10px; font-size: 0.85em;"></div>
+            <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:22px;">
+                <button type="button" id="close-dpi-modify-btn" style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.15); color:#94a3b8; border-radius:6px; padding:8px 18px; font-size:0.85em; cursor:pointer;">Close</button>
+                <button type="button" id="btn-save-dpi-modify" style="background:#10b981; border:none; color:#fff; border-radius:6px; padding:8px 18px; font-size:0.85em; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+                    <i class="fas fa-save"></i> Modify
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Delivery Receipt Modal (Fix 29) -- collects the handful of fields that
          only exist at print time (Sales Invoice #, Invoice Balance, Installation/
          Service Fee Amount, Delivery Rider) and aren't stored in the Customer
@@ -1597,6 +1670,10 @@
                         <option value="MarvsPCStufz Marikina">MarvsPCStufz Marikina</option>
                     </select>
                 </div>
+                <div class="form-group" style="flex: 1; min-width: 180px;">
+                    <label for="dpi-list-desc-filter">Item Description</label>
+                    <input type="text" id="dpi-list-desc-filter" placeholder="Search item description...">
+                </div>
                 <button type="button" id="dpi-btn-load-records" class="submit-btn" style="margin: 0; width: auto; flex: 0 0 auto; padding: 10px 18px;">
                     <span class="btn-text"><i class="fas fa-search"></i> Search</span>
                     <div class="spinner hidden"></div>
@@ -1617,10 +1694,11 @@
                             <th style="padding: 10px; text-align: left;">Total</th>
                             <th style="padding: 10px; text-align: left;">Counted By</th>
                             <th style="padding: 10px; text-align: left;">Approved By</th>
+                            <th style="padding: 10px; text-align: left;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="dpi-list-table-body">
-                        <tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Search" to view records.</td></tr>
+                        <tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Search" to view records.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -4969,7 +5047,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=107"></script>
+    <script src="app.js?v=109"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

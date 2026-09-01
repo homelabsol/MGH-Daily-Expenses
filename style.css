@@ -96,6 +96,35 @@ body {
     66% { transform: translate(-20px, 20px) scale(0.9); }
 }
 
+/* Fix 85: pause the animated background blobs whenever the app is showing
+   anything other than the Login screen or Main Menu -- follow-up to the
+   Fix 49 comment above .blob (that fix cut the blur radius/animation speed,
+   but the blobs still animate `infinite`, everywhere, all the time). The
+   blobs sit fixed behind EVERY screen (.background-blobs is position:fixed,
+   z-index:-1, outside every .container), so as long as they keep moving,
+   the browser has to keep recomputing the backdrop-filter blur on every
+   glass-panel drawn on top of them -- every animation frame, for as long as
+   the tab stays open. That recompute cost scales with the AREA being
+   blurred, so it's small on compact form pages but large on tall,
+   viewport-filling list-view pages (Deliveries List, Build Status, Daily
+   Parts Inventory Records, etc.) -- exactly what the user reported: other
+   apps (typing in Facebook, opening a new browser window) visibly stutter
+   specifically while a big list-view page is open here, because the
+   GPU/compositor thread doing that continuous recompute is shared
+   system-wide, not scoped to this browser tab. Freezing the blobs (the last
+   animated frame just stays put -- still visible, just not moving) on every
+   screen except the two where they're actually meant to be a decorative
+   welcome touch removes that ongoing cost almost everywhere the user
+   actually works, without touching a single one of the many page-navigation
+   call sites in app.js -- this ties directly into the SAME .hidden class
+   every container already uses (see hideAllContainers(), gotcha #10), so it
+   automatically covers any future new page too. Uses :has(), supported by
+   every Chromium build this app targets; a browser without :has() support
+   just keeps the pre-Fix-85 always-animating behavior (no worse than today). */
+body:not(:has(#login-container:not(.hidden))):not(:has(#main-menu-container:not(.hidden))) .blob {
+    animation-play-state: paused;
+}
+
 /* ===== Container & Layout ===== */
 .container {
     width: 100%;

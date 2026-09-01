@@ -2032,6 +2032,79 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ======= Daily Parts Inventory Records List =======
+    // Fix 83: Owner-only "Modify" button per row, added to the Actions column
+    // -- same role-gated per-row-action convention as the Deliveries List's
+    // "Modified" button (Fix 19: `canModifyDeliveries = currentRole ===
+    // 'Owner'`, button omitted entirely -- not just disabled -- for anyone
+    // else). Reuses the existing generic `updateExpenseRecord` action (no new
+    // backend action, no redeploy) -- same "reuse, don't rebuild" pattern as
+    // every other per-row edit modal in this app (gotcha #11).
+    let currentDpiRecords = [];
+    // Split out from dpiLoadRecords so a post-Modify refresh can re-render
+    // straight from the already-updated in-memory currentDpiRecords array,
+    // without a fresh getExpenseRecords round-trip -- that action has a 60s
+    // server-side cache (see gotcha #2), so re-fetching right after a save
+    // could silently show the OLD values for up to a minute.
+    function dpiRenderList(rows) {
+        const tbody = document.getElementById('dpi-list-table-body');
+        if (!tbody) return;
+        if (!rows || rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            return;
+        }
+        // Fix 69: same overlapping-text bug fixed on the Deliveries list
+        // (and previously Item Replacement/Fix 61, MarvsPCStufz
+        // Warranty/Fix 63) -- long unbroken values in a fixed-width
+        // table cell have no natural place to wrap, so they overflow
+        // into the next column instead. word-break/overflow-wrap force
+        // a break even mid-word so every cell wraps within its own
+        // column.
+        const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+        const currentRole = sessionStorage.getItem('userRole');
+        const canModifyDpi = currentRole === 'Owner';
+        tbody.innerHTML = rows.map(row => {
+            const modifyBtnHtml = canModifyDpi
+                ? `<button type="button" class="btn-dpi-modify" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Modify</button>`
+                : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
+            return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="${cellStyle}">${row[0] || ''}</td>
+                    <td style="${cellStyle}">${row[1] || ''}</td>
+                    <td style="${cellStyle}">${row[2] || ''}</td>
+                    <td style="${cellStyle}">${row[3] || ''}</td>
+                    <td style="${cellStyle}">${row[4] || 0}</td>
+                    <td style="${cellStyle} color: #ef4444;">${row[5] || 0}</td>
+                    <td style="${cellStyle} color: #f59e0b;">${row[6] || 0}</td>
+                    <td style="${cellStyle} color: #10b981; font-weight: 600;">${row[7] || 0}</td>
+                    <td style="${cellStyle}">${row[8] || ''}</td>
+                    <td style="${cellStyle}">${row[9] || ''}</td>
+                    <td style="${cellStyle}">${modifyBtnHtml}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // Fix 84: Item Description filter -- free-text, case-insensitive
+    // substring, applied CLIENT-SIDE against the already-fetched
+    // currentDpiRecords (same "no server round-trip on every keystroke"
+    // convention as Deliveries List's Fix 41 Customer Name filter and Build
+    // Status's Fix 81 Customer Name filter). Column 3 is "Item Description"
+    // in the Daily Parts Inventory row shape (Date/Branch/Category/Item
+    // Description/Qty/Missing/RMA/Total/Counted By/Approved By).
+    function dpiApplyDescFilter() {
+        const filterEl = document.getElementById('dpi-list-desc-filter');
+        const term = filterEl ? filterEl.value.trim().toLowerCase() : '';
+        const filtered = term
+            ? currentDpiRecords.filter(row => (row[3] || '').toString().toLowerCase().includes(term))
+            : currentDpiRecords;
+        dpiRenderList(filtered);
+    }
+
+    const dpiListDescFilterEl = document.getElementById('dpi-list-desc-filter');
+    if (dpiListDescFilterEl) {
+        dpiListDescFilterEl.addEventListener('input', dpiApplyDescFilter);
+    }
+
     async function dpiLoadRecords() {
         const tbody = document.getElementById('dpi-list-table-body');
         if (!tbody) return;
@@ -2039,7 +2112,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const endDate = document.getElementById('dpi-list-end-date').value;
         const branch = document.getElementById('dpi-list-branch').value;
 
-        tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 
         try {
             const response = await fetch(SCRIPT_URL, {
@@ -2053,36 +2126,188 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             const rows = (result.status === 'success' && result.data) ? result.data : [];
-            if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
-                return;
-            }
-            // Fix 69: same overlapping-text bug fixed on the Deliveries list
-            // (and previously Item Replacement/Fix 61, MarvsPCStufz
-            // Warranty/Fix 63) -- long unbroken values in a fixed-width
-            // table cell have no natural place to wrap, so they overflow
-            // into the next column instead. word-break/overflow-wrap force
-            // a break even mid-word so every cell wraps within its own
-            // column.
-            const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
-            tbody.innerHTML = rows.map(row => `
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                    <td style="${cellStyle}">${row[0] || ''}</td>
-                    <td style="${cellStyle}">${row[1] || ''}</td>
-                    <td style="${cellStyle}">${row[2] || ''}</td>
-                    <td style="${cellStyle}">${row[3] || ''}</td>
-                    <td style="${cellStyle}">${row[4] || 0}</td>
-                    <td style="${cellStyle} color: #ef4444;">${row[5] || 0}</td>
-                    <td style="${cellStyle} color: #f59e0b;">${row[6] || 0}</td>
-                    <td style="${cellStyle} color: #10b981; font-weight: 600;">${row[7] || 0}</td>
-                    <td style="${cellStyle}">${row[8] || ''}</td>
-                    <td style="${cellStyle}">${row[9] || ''}</td>
-                </tr>
-            `).join('');
+            currentDpiRecords = rows;
+            dpiApplyDescFilter();
         } catch (err) {
             console.error(err);
-            tbody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: #ef4444;">Failed to load records.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #ef4444;">Failed to load records.</td></tr>';
         }
+    }
+
+    function dpiModifyRecompute() {
+        const qty = parseFloat(document.getElementById('dpi-modify-qty').value) || 0;
+        const missing = parseFloat(document.getElementById('dpi-modify-missing').value) || 0;
+        const rma = parseFloat(document.getElementById('dpi-modify-rma').value) || 0;
+        const totalEl = document.getElementById('dpi-modify-total');
+        if (totalEl) totalEl.textContent = qty - missing - rma;
+    }
+    ['dpi-modify-qty', 'dpi-modify-missing', 'dpi-modify-rma'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', dpiModifyRecompute);
+    });
+
+    async function dpiModifyLoadRmaAdmins(selectedValue) {
+        const el = document.getElementById('dpi-modify-counted-by');
+        if (!el) return;
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getRmaAdminAccounts' })
+            });
+            const result = await response.json();
+            if (result.status === 'success' && Array.isArray(result.data)) {
+                el.innerHTML = '<option value="">-- Select RMA Admin --</option>' +
+                    result.data.map(name => `<option value="${name}">${name}</option>`).join('');
+                el.value = selectedValue || '';
+            }
+        } catch (err) {
+            console.error('Error loading RMA Admin accounts for Modify modal.', err);
+        }
+    }
+
+    let currentDpiModifyRow = null;
+    function dpiOpenModifyModal(row) {
+        currentDpiModifyRow = row;
+
+        const dateEl = document.getElementById('dpi-modify-date');
+        const branchEl = document.getElementById('dpi-modify-branch');
+        const categoryEl = document.getElementById('dpi-modify-category');
+        const descEl = document.getElementById('dpi-modify-desc');
+        const qtyEl = document.getElementById('dpi-modify-qty');
+        const missingEl = document.getElementById('dpi-modify-missing');
+        const rmaEl = document.getElementById('dpi-modify-rma');
+        const approvedByEl = document.getElementById('dpi-modify-approved-by');
+        const statusMsg = document.getElementById('dpi-modify-status-message');
+
+        if (categoryEl) categoryEl.innerHTML = dpiCategoryOptionsHtml(row[2] || DPI_CATEGORIES[0]);
+        if (dateEl) dateEl.value = (row[0] || '').toString().split(/[T ]/)[0];
+        if (branchEl) branchEl.value = row[1] || 'MarvsPCStufz QC Main';
+        if (descEl) descEl.value = row[3] || '';
+        if (qtyEl) qtyEl.value = row[4] || 0;
+        if (missingEl) missingEl.value = row[5] || 0;
+        if (rmaEl) rmaEl.value = row[6] || 0;
+        dpiModifyRecompute();
+        dpiModifyLoadRmaAdmins(row[8] || '');
+        // Approved By: always re-stamped to whoever is opening this modal right
+        // now, not the originally-saved value -- same "who's provably present"
+        // binding as the original entry form (dpiUpdateApprovedByFromSession).
+        // Only an Owner can reach this modal at all (see canModifyDpi above),
+        // so this is always a valid Owner name.
+        if (approvedByEl) approvedByEl.value = sessionStorage.getItem('loggedInUser') || '';
+
+        if (statusMsg) statusMsg.classList.add('hidden');
+        document.getElementById('dpi-modify-modal').style.display = 'flex';
+    }
+
+    const dpiListTableBody = document.getElementById('dpi-list-table-body');
+    if (dpiListTableBody) {
+        dpiListTableBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-dpi-modify');
+            if (!btn) return;
+            // Defense-in-depth -- the button itself is only ever rendered for
+            // Owner (see dpiLoadRecords), but re-check the role here too in
+            // case the table markup is stale from before a role change.
+            if (sessionStorage.getItem('userRole') !== 'Owner') return;
+            const idx = btn.getAttribute('data-row-index');
+            const matchedRow = currentDpiRecords.find(r => String(r[r.length - 1]) === String(idx));
+            if (matchedRow) dpiOpenModifyModal(matchedRow);
+        });
+    }
+
+    const closeDpiModifyModalBtn = document.getElementById('close-dpi-modify-modal');
+    const closeDpiModifyBtn = document.getElementById('close-dpi-modify-btn');
+    [closeDpiModifyModalBtn, closeDpiModifyBtn].forEach(btn => {
+        if (btn) btn.addEventListener('click', () => {
+            document.getElementById('dpi-modify-modal').style.display = 'none';
+            currentDpiModifyRow = null;
+        });
+    });
+
+    const btnSaveDpiModify = document.getElementById('btn-save-dpi-modify');
+    if (btnSaveDpiModify) {
+        btnSaveDpiModify.addEventListener('click', async () => {
+            if (!currentDpiModifyRow) return;
+            // Defense-in-depth: re-check the role right before the write too.
+            if (sessionStorage.getItem('userRole') !== 'Owner') return;
+
+            const statusMsg = document.getElementById('dpi-modify-status-message');
+            const newDate = document.getElementById('dpi-modify-date').value;
+            const newBranch = document.getElementById('dpi-modify-branch').value;
+            const newCategory = document.getElementById('dpi-modify-category').value;
+            const newDesc = document.getElementById('dpi-modify-desc').value.trim();
+            const newQty = parseFloat(document.getElementById('dpi-modify-qty').value) || 0;
+            const newMissing = parseFloat(document.getElementById('dpi-modify-missing').value) || 0;
+            const newRma = parseFloat(document.getElementById('dpi-modify-rma').value) || 0;
+            const newCountedBy = document.getElementById('dpi-modify-counted-by').value;
+            const newApprovedBy = document.getElementById('dpi-modify-approved-by').value;
+            const newTotal = newQty - newMissing - newRma;
+
+            if (!newDate || !newDesc || newQty <= 0) {
+                if (statusMsg) showMessage(statusMsg, 'Date, Item Description, and a Qty greater than 0 are required.', 'error');
+                return;
+            }
+            if (!newCountedBy) {
+                if (statusMsg) showMessage(statusMsg, 'Select who Counted By (RMA Admin) before saving.', 'error');
+                return;
+            }
+
+            const rowIndex = currentDpiModifyRow[currentDpiModifyRow.length - 1];
+            btnSaveDpiModify.disabled = true;
+            const originalHtml = btnSaveDpiModify.innerHTML;
+            btnSaveDpiModify.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+            try {
+                // Columns 1-10 of "Daily Parts Inventory" (Date, Branch, Category,
+                // Item Description, Qty, Missing, RMA, Total, Counted By, Approved
+                // By) -- Timestamp (column 11) is left untouched since
+                // updateExpenseRecord only overwrites as many columns as
+                // updatedData has entries.
+                const updatedData = [newDate, newBranch, newCategory, newDesc, newQty, newMissing, newRma, newTotal, newCountedBy, newApprovedBy];
+
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'updateExpenseRecord',
+                        sheetName: 'Daily Parts Inventory',
+                        rowIndex: rowIndex,
+                        updatedData: updatedData,
+                        encodedBy: newApprovedBy
+                    })
+                });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    for (let i = 0; i < updatedData.length; i++) {
+                        currentDpiModifyRow[i] = updatedData[i];
+                    }
+                    const rec = currentDpiRecords.find(r => String(r[r.length - 1]) === String(rowIndex));
+                    if (rec) {
+                        for (let i = 0; i < updatedData.length; i++) {
+                            rec[i] = updatedData[i];
+                        }
+                    }
+                    dpiApplyDescFilter();
+
+                    if (statusMsg) showMessage(statusMsg, 'Saved successfully!', 'success');
+                    showToast('Parts inventory item updated!', 'success');
+
+                    setTimeout(() => {
+                        document.getElementById('dpi-modify-modal').style.display = 'none';
+                        currentDpiModifyRow = null;
+                    }, 700);
+                } else {
+                    if (statusMsg) showMessage(statusMsg, result.message || 'Error saving changes.', 'error');
+                }
+            } catch (err) {
+                console.error(err);
+                if (statusMsg) showMessage(statusMsg, 'Failed to save. Please check your connection and try again.', 'error');
+            } finally {
+                btnSaveDpiModify.disabled = false;
+                btnSaveDpiModify.innerHTML = originalHtml;
+            }
+        });
     }
 
     const dpiBtnViewRecords = document.getElementById('dpi-btn-view-records');
