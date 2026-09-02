@@ -10342,6 +10342,346 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Fix 88: Client Support Requests. Any logged-in account can log a new
+    // request via the form. The Manage/View Records list (Claim/Mark
+    // Resolved) lives on its OWN separate page (Fix 88 follow-up,
+    // 2026-09-02, user's explicit request: "diba dapat separate form yung
+    // view list ng mga recorded support? ... paano if madami ng records?" --
+    // same "form page + separate View Records list page" pattern as Manual
+    // Quotation, Fix 21), reached via the "View Records" button which is
+    // itself gated to Technician/Manager/Owner (the backend re-checks that
+    // role independently on every claim/resolve call -- this client-side
+    // hide is a UX convenience, never the real security boundary -- same
+    // defense-in-depth pattern as OT Requests above). Claiming is NOT a
+    // manual assignment picker: whichever Technician/Manager/Owner clicks
+    // "Claim" gets auto-assigned to it, since they're the one logged in
+    // doing the claiming (explicit user instruction). Log form placed inside
+    // the MarvsPCStufz submenu, not top-level.
+    const menuMarvsPcClientSupportBtn = document.getElementById('menu-marvspc-client-support-btn');
+    const csRequestForm = document.getElementById('cs-request-form');
+    const csRequestDateInput = document.getElementById('cs-request-date');
+    const csRequestBranchInput = document.getElementById('cs-request-branch');
+    const csRequestCustomerNameInput = document.getElementById('cs-request-customer-name');
+    const csRequestContactInput = document.getElementById('cs-request-contact');
+    const csRequestInvoiceInput = document.getElementById('cs-request-invoice');
+    const csRequestDatePurchasedInput = document.getElementById('cs-request-date-purchased');
+    const csRequestIssueInput = document.getElementById('cs-request-issue');
+    const csRequestUrgencyInput = document.getElementById('cs-request-urgency');
+    const csRequestStatusMessage = document.getElementById('cs-request-status-message');
+    const csBtnViewRecords = document.getElementById('cs-btn-view-records');
+    const csListStartDateInput = document.getElementById('cs-list-start-date');
+    const csListEndDateInput = document.getElementById('cs-list-end-date');
+    const csListCustomerFilterInput = document.getElementById('cs-list-customer-filter');
+    const csListStatusFilterInput = document.getElementById('cs-list-status-filter');
+    const csManageTableBody = document.getElementById('cs-manage-table-body');
+    const csManageStatusMessage = document.getElementById('cs-manage-status-message');
+    const btnCsRefresh = document.getElementById('btn-cs-refresh');
+    const csResolveModal = document.getElementById('cs-resolve-modal');
+    const csResolveRowIndexInput = document.getElementById('cs-resolve-row-index');
+    const csResolveNotesInput = document.getElementById('cs-resolve-notes');
+    const csResolveStatusMessage = document.getElementById('cs-resolve-status-message');
+
+    // Raw, unfiltered fetch result -- Date From/To, Customer Name, and
+    // Status are all applied CLIENT-SIDE against this one full fetch
+    // (same convention as Manual Quotation's customer/quotation# filters),
+    // rather than round-tripping to the backend per filter change. No
+    // backend change needed for this: this feature's expected volume is an
+    // operational queue, not a years-deep archive.
+    let currentClientSupportRequests = [];
+
+    function csIsManagerRole() {
+        const role = sessionStorage.getItem('userRole') || '';
+        return role === 'Technician' || role === 'Manager' || role === 'Owner';
+    }
+
+    function csEscapeHtml(str) {
+        return (str || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function renderClientSupportRequestsTable(requestsList) {
+        if (!csManageTableBody) return;
+        if (requestsList.length === 0) {
+            csManageTableBody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">Walang tumugma na client support request.</td></tr>';
+            return;
+        }
+        const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
+        csManageTableBody.innerHTML = requestsList.map(reqRow => {
+            const rowIndex = reqRow.rowIndex;
+            const isUrgent = reqRow.urgency === 'Urgent';
+            const rowStyle = isUrgent
+                ? 'border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(239,68,68,0.12);'
+                : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
+            const statusBadge = reqRow.status === 'Resolved'
+                ? '<span style="color: #22c55e;">Resolved</span>'
+                : (reqRow.status === 'In Progress'
+                    ? '<span style="color: #f59e0b;">In Progress</span>'
+                    : `<span style="color: ${isUrgent ? '#ef4444' : '#94a3b8'}; font-weight: ${isUrgent ? '700' : '400'};">${isUrgent ? 'Open (URGENT)' : 'Open'}</span>`);
+            let actionHtml = '';
+            if (reqRow.status === 'Open' && !reqRow.assignedTechnician) {
+                actionHtml = `<button type="button" class="btn-cs-claim" data-row-index="${rowIndex}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-hand"></i> Claim</button>`;
+            } else if (reqRow.status === 'In Progress') {
+                actionHtml = `<button type="button" class="btn-cs-resolve" data-row-index="${rowIndex}" style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-check"></i> Mark Resolved</button>`;
+            }
+            return `
+                <tr style="${rowStyle}" data-row-index="${rowIndex}">
+                    <td style="${cellStyle}">${csEscapeHtml(reqRow.date)}</td>
+                    <td style="${cellStyle} font-weight: 500;">${csEscapeHtml(reqRow.customerName)}</td>
+                    <td style="${cellStyle}">${csEscapeHtml(reqRow.branch)}</td>
+                    <td style="${cellStyle}">${csEscapeHtml(reqRow.salesInvoiceNumber) || '&mdash;'}</td>
+                    <td style="${cellStyle}">${csEscapeHtml(reqRow.datePurchased) || '&mdash;'}</td>
+                    <td style="${cellStyle}">${csEscapeHtml(reqRow.issueDescription)}</td>
+                    <td style="padding: 8px 10px; white-space: nowrap;">${statusBadge}</td>
+                    <td style="${cellStyle}">${csEscapeHtml(reqRow.assignedTechnician) || '&mdash;'}</td>
+                    <td style="padding: 8px 10px; white-space: nowrap;">${actionHtml || '&mdash;'}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function applyClientSupportListFilter() {
+        const startDate = csListStartDateInput ? csListStartDateInput.value : '';
+        const endDate = csListEndDateInput ? csListEndDateInput.value : '';
+        const customerFilter = (csListCustomerFilterInput ? csListCustomerFilterInput.value : '').trim().toLowerCase();
+        const statusFilter = csListStatusFilterInput ? csListStatusFilterInput.value : '';
+        let filtered = currentClientSupportRequests;
+        if (startDate) {
+            filtered = filtered.filter(row => (row.date || '') >= startDate);
+        }
+        if (endDate) {
+            filtered = filtered.filter(row => (row.date || '') <= endDate);
+        }
+        if (customerFilter) {
+            filtered = filtered.filter(row => (row.customerName || '').toLowerCase().includes(customerFilter));
+        }
+        if (statusFilter) {
+            filtered = filtered.filter(row => row.status === statusFilter);
+        }
+        renderClientSupportRequestsTable(filtered);
+    }
+
+    async function loadClientSupportRequests() {
+        if (!csManageTableBody) return;
+        csManageTableBody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getClientSupportRequests' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                csManageTableBody.innerHTML = `<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${csEscapeHtml(result.message) || 'Failed to load requests.'}</td></tr>`;
+                return;
+            }
+            currentClientSupportRequests = result.data || [];
+            applyClientSupportListFilter();
+        } catch (error) {
+            console.error('Error loading client support requests:', error);
+            csManageTableBody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        }
+    }
+
+    if (menuMarvsPcClientSupportBtn) {
+        menuMarvsPcClientSupportBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const container = document.getElementById('marvspc-client-support-container');
+            if (container) container.classList.remove('hidden');
+            if (csRequestForm) csRequestForm.reset();
+            if (csRequestDateInput) csRequestDateInput.value = todayDateStr();
+            if (csRequestStatusMessage) csRequestStatusMessage.classList.add('hidden');
+            if (csBtnViewRecords) csBtnViewRecords.classList.toggle('hidden', !csIsManagerRole());
+        });
+    }
+
+    if (csBtnViewRecords) {
+        csBtnViewRecords.addEventListener('click', () => {
+            hideAllContainers();
+            const listContainer = document.getElementById('marvspc-client-support-list-container');
+            if (listContainer) listContainer.classList.remove('hidden');
+            loadClientSupportRequests();
+        });
+    }
+
+    if (csListStartDateInput) csListStartDateInput.addEventListener('change', applyClientSupportListFilter);
+    if (csListEndDateInput) csListEndDateInput.addEventListener('change', applyClientSupportListFilter);
+    if (csListCustomerFilterInput) csListCustomerFilterInput.addEventListener('input', applyClientSupportListFilter);
+    if (csListStatusFilterInput) csListStatusFilterInput.addEventListener('change', applyClientSupportListFilter);
+
+    if (btnCsRefresh) {
+        btnCsRefresh.addEventListener('click', loadClientSupportRequests);
+    }
+
+    if (csRequestForm) {
+        csRequestForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = document.getElementById('cs-request-submit-btn');
+            const btnText = submitBtn ? submitBtn.querySelector('.btn-text') : null;
+            const spinner = submitBtn ? submitBtn.querySelector('.spinner') : null;
+
+            const loggedBy = sessionStorage.getItem('loggedInUser') || '';
+            const date = csRequestDateInput ? csRequestDateInput.value : '';
+            const branch = csRequestBranchInput ? csRequestBranchInput.value : '';
+            const customerName = csRequestCustomerNameInput ? csRequestCustomerNameInput.value.trim() : '';
+            const contactNumber = csRequestContactInput ? csRequestContactInput.value.trim() : '';
+            const salesInvoiceNumber = csRequestInvoiceInput ? csRequestInvoiceInput.value.trim() : '';
+            const datePurchased = csRequestDatePurchasedInput ? csRequestDatePurchasedInput.value : '';
+            const issueDescription = csRequestIssueInput ? csRequestIssueInput.value.trim() : '';
+            const urgency = csRequestUrgencyInput ? csRequestUrgencyInput.value : 'Normal';
+
+            if (!loggedBy) {
+                showMessage(csRequestStatusMessage, 'Kailangan naka-login para maka-log ng support request.', 'error');
+                return;
+            }
+            if (!date) {
+                showMessage(csRequestStatusMessage, 'Piliin ang Date.', 'error');
+                return;
+            }
+            if (!branch) {
+                showMessage(csRequestStatusMessage, 'Piliin ang Branch.', 'error');
+                return;
+            }
+            if (!customerName) {
+                showMessage(csRequestStatusMessage, 'Ilagay ang Customer Name.', 'error');
+                return;
+            }
+            if (!contactNumber) {
+                showMessage(csRequestStatusMessage, 'Ilagay ang Contact Number.', 'error');
+                return;
+            }
+            if (!salesInvoiceNumber) {
+                showMessage(csRequestStatusMessage, 'Ilagay ang Sales Invoice #.', 'error');
+                return;
+            }
+            if (!issueDescription) {
+                showMessage(csRequestStatusMessage, 'Ilagay ang Issue Description.', 'error');
+                return;
+            }
+
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            if (submitBtn) submitBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'submitClientSupportRequest', date, branch, customerName, contactNumber, salesInvoiceNumber, datePurchased, issueDescription, urgency, loggedBy })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(csRequestStatusMessage, urgency === 'Urgent' ? 'Na-log na ang URGENT na request. Aabisuhan agad ang mga tech/manager sa Telegram.' : 'Na-log na ang support request.', 'success');
+                    if (csRequestForm) csRequestForm.reset();
+                    if (csRequestDateInput) csRequestDateInput.value = todayDateStr();
+                    if (csIsManagerRole()) loadClientSupportRequests();
+                } else {
+                    showMessage(csRequestStatusMessage, `Error: ${result.message || 'Hindi na-submit ang request.'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error submitting client support request:', error);
+                showMessage(csRequestStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                if (submitBtn) submitBtn.disabled = false;
+            }
+        });
+    }
+
+    if (csManageTableBody) {
+        csManageTableBody.addEventListener('click', async (e) => {
+            const claimBtn = e.target.closest('.btn-cs-claim');
+            if (claimBtn) {
+                const rowIndex = claimBtn.getAttribute('data-row-index');
+                const technicianName = sessionStorage.getItem('loggedInUser') || '';
+                const originalHtml = claimBtn.innerHTML;
+                claimBtn.disabled = true;
+                claimBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                try {
+                    const response = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'claimClientSupportRequest', rowIndex, technicianName })
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        showMessage(csManageStatusMessage, 'Na-claim mo na ang request na ito.', 'success');
+                        loadClientSupportRequests();
+                    } else {
+                        showMessage(csManageStatusMessage, `Error: ${result.message || 'Hindi na-claim ang request.'}`, 'error');
+                        claimBtn.disabled = false;
+                        claimBtn.innerHTML = originalHtml;
+                    }
+                } catch (error) {
+                    console.error('Error claiming client support request:', error);
+                    showMessage(csManageStatusMessage, 'Network error. Please try again.', 'error');
+                    claimBtn.disabled = false;
+                    claimBtn.innerHTML = originalHtml;
+                }
+                return;
+            }
+
+            const resolveBtn = e.target.closest('.btn-cs-resolve');
+            if (resolveBtn) {
+                const rowIndex = resolveBtn.getAttribute('data-row-index');
+                if (csResolveRowIndexInput) csResolveRowIndexInput.value = rowIndex;
+                if (csResolveNotesInput) csResolveNotesInput.value = '';
+                if (csResolveStatusMessage) csResolveStatusMessage.classList.add('hidden');
+                if (csResolveModal) csResolveModal.classList.remove('hidden');
+            }
+        });
+    }
+
+    const csResolveConfirmBtn = document.getElementById('cs-resolve-confirm-btn');
+    if (csResolveConfirmBtn) {
+        csResolveConfirmBtn.addEventListener('click', async () => {
+            const rowIndex = csResolveRowIndexInput ? csResolveRowIndexInput.value : '';
+            const resolutionNotes = csResolveNotesInput ? csResolveNotesInput.value.trim() : '';
+            const resolvedBy = sessionStorage.getItem('loggedInUser') || '';
+
+            if (!resolutionNotes) {
+                showMessage(csResolveStatusMessage, 'Ilagay ang Resolution Notes.', 'error');
+                return;
+            }
+
+            const btnText = csResolveConfirmBtn.querySelector('.btn-text');
+            const spinner = csResolveConfirmBtn.querySelector('.spinner');
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            csResolveConfirmBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'resolveClientSupportRequest', rowIndex, resolvedBy, resolutionNotes })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    if (csResolveModal) csResolveModal.classList.add('hidden');
+                    showMessage(csManageStatusMessage, 'Na-mark na Resolved ang request.', 'success');
+                    loadClientSupportRequests();
+                } else {
+                    showMessage(csResolveStatusMessage, `Error: ${result.message || 'Hindi na-resolve ang request.'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error resolving client support request:', error);
+                showMessage(csResolveStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                csResolveConfirmBtn.disabled = false;
+            }
+        });
+    }
+
+    const csResolveCancelBtn = document.getElementById('cs-resolve-cancel-btn');
+    if (csResolveCancelBtn) {
+        csResolveCancelBtn.addEventListener('click', () => {
+            if (csResolveModal) csResolveModal.classList.add('hidden');
+            if (csResolveNotesInput) csResolveNotesInput.value = '';
+        });
+    }
+
     // Fix 73 (Payroll/Payslip project, Phase 3): Holiday Pay marking. The
     // "Holiday Pay" menu button itself is hidden unless the session's role is
     // Owner or Payroll (see showApp()) -- this whole page only ever needs to be
