@@ -205,6 +205,17 @@ document.addEventListener('DOMContentLoaded', () => {
     let menuDashboardRefreshInterval = null;
     const MENU_DASHBOARD_REFRESH_MS = 3 * 60 * 1000;
 
+    // Fix 88 follow-up (2026-09-03, fifth round): global urgent Client
+    // Support alert (sound + popup) poll timer state -- same
+    // above-the-auto-login-check placement as menuDashboardRefreshInterval
+    // right above, and for the exact same reason (showApp() can run
+    // synchronously during initial page load, before code further down this
+    // file has executed). Unlike the dashboard refresh timer, this one is
+    // deliberately NOT gated to "only while the Main Menu is visible" --
+    // per the user's explicit choice, it must be able to alert on ANY page.
+    let csUrgentAlertPollInterval = null;
+    const CS_URGENT_ALERT_POLL_MS = 60 * 1000;
+
     // Check if user is already logged in
     const sessionUser = sessionStorage.getItem('loggedInUser');
     if (sessionUser) {
@@ -360,6 +371,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadMenuDashboard();
             }
         }, MENU_DASHBOARD_REFRESH_MS);
+
+        // Fix 88 follow-up (2026-09-03, fifth round): global urgent Client
+        // Support alert -- polls from EVERY page (deliberately not gated to
+        // "only while the Main Menu is visible", unlike the dashboard
+        // refresh above), for every logged-in role. Checks immediately on
+        // login (so an already-open urgent request is surfaced right away,
+        // not just ones that arrive later), then every
+        // CS_URGENT_ALERT_POLL_MS afterward.
+        pollUrgentClientSupportAlerts();
+        if (csUrgentAlertPollInterval) {
+            clearInterval(csUrgentAlertPollInterval);
+        }
+        csUrgentAlertPollInterval = setInterval(pollUrgentClientSupportAlerts, CS_URGENT_ALERT_POLL_MS);
     }
 
     // ===== Main Menu Dashboard (Fix 75) =====
@@ -427,6 +451,13 @@ document.addEventListener('DOMContentLoaded', () => {
             pendingDeliveriesCard.style.display = isAllowedMarvsStore ? '' : 'none';
         }
 
+        // Fix 88 dashboard card: Client Support Requests -- same store gate,
+        // since Client Support itself lives inside the MarvsPCStufz submenu.
+        const clientSupportCard = document.getElementById('dash-client-support-card');
+        if (clientSupportCard) {
+            clientSupportCard.style.display = isAllowedMarvsStore ? '' : 'none';
+        }
+
         loadMenuDashboardCombined(isAllowedMarvsStore);
     }
 
@@ -450,12 +481,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const warrantyListEl = document.getElementById('dash-warranty-list');
         const warrantyInsightEl = document.getElementById('dash-warranty-insight');
         const trafficInsightEl = document.getElementById('dash-traffic-insight');
+        const csListEl = document.getElementById('dash-cs-list');
+        const csInsightEl = document.getElementById('dash-cs-insight');
 
         if (includeMarvsPcData) {
             if (marvsListEl) marvsListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
             if (deliveryListEl) deliveryListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
             if (warrantyListEl) warrantyListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
             if (warrantyInsightEl) warrantyInsightEl.style.display = 'none';
+            if (csListEl) csListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
+            if (csInsightEl) csInsightEl.style.display = 'none';
         }
 
         const end = new Date();
@@ -476,6 +511,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (includeMarvsPcData) {
                 renderReleaseStatusAndDeliveryDashboards(data.customerInfo || []);
                 renderWarrantyAgingDashboard(data.warranty || []);
+                renderClientSupportDashboard(data.clientSupport || []);
             }
         } catch (error) {
             console.error('Error loading Main Menu Dashboard:', error);
@@ -484,6 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (marvsListEl) marvsListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
                 if (deliveryListEl) deliveryListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
                 if (warrantyListEl) warrantyListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+                if (csListEl) csListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
             }
         }
     }
@@ -897,6 +934,141 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Fix 88 dashboard card (2026-09-02): Client Support Requests still
+    // Open/In Progress. Rows are the RAW "Client Support Requests" sheet
+    // rows (fetched via the combined getMenuDashboardData action, Fix 86 --
+    // NOT the object-shaped getClientSupportRequests action, which stays
+    // dedicated to the Manage/View Records list page), same column order as
+    // CLIENT_SUPPORT_HEADERS in google_apps_script.js: 0 Timestamp, 1 Date,
+    // 2 Branch, 3 CustomerName, 4 ContactNumber, 5 IssueDescription,
+    // 6 Urgency, 7 Status, 8 AssignedTechnician, 9 LoggedBy,
+    // 10 ResolutionNotes, 11 ResolvedBy, 12 ResolvedTimestamp,
+    // 13 SalesInvoiceNumber, 14 DatePurchased.
+    function renderClientSupportDashboard(rows) {
+        const listEl = document.getElementById('dash-cs-list');
+        const openCountEl = document.getElementById('dash-cs-open-count');
+        const inProgressCountEl = document.getElementById('dash-cs-in-progress-count');
+        const urgentCountEl = document.getElementById('dash-cs-urgent-count');
+        const insightEl = document.getElementById('dash-cs-insight');
+        if (!listEl) return;
+
+        try {
+            // "Active" = not yet Resolved (blank Status defensively treated
+            // as Open, though a real row's Status is always set on save).
+            const active = rows
+                .map(row => ({
+                    date: row[1] || '',
+                    branch: row[2] || '',
+                    customerName: row[3] || '(no name)',
+                    issue: row[5] || 'Issue not specified',
+                    urgency: row[6] || 'Normal',
+                    status: row[7] || 'Open',
+                    assignedTechnician: row[8] || ''
+                }))
+                .filter(r => r.status !== 'Resolved');
+
+            const openCount = active.filter(r => r.status === 'Open').length;
+            const inProgressCount = active.filter(r => r.status === 'In Progress').length;
+            const urgentCount = active.filter(r => r.urgency === 'Urgent').length;
+            if (openCountEl) openCountEl.textContent = openCount;
+            if (inProgressCountEl) inProgressCountEl.textContent = inProgressCount;
+            if (urgentCountEl) urgentCountEl.textContent = urgentCount;
+
+            // Urgent first, then oldest date first (longest-waiting first) --
+            // same "most-in-need-of-attention first" convention as the
+            // Warranty Aging card's oldest-first sort above.
+            active.sort((a, b) => {
+                if (a.urgency === 'Urgent' && b.urgency !== 'Urgent') return -1;
+                if (b.urgency === 'Urgent' && a.urgency !== 'Urgent') return 1;
+                return (a.date || '').localeCompare(b.date || '');
+            });
+
+            if (insightEl) {
+                if (urgentCount > 0) {
+                    const oldestUrgent = active.find(r => r.urgency === 'Urgent');
+                    insightEl.className = 'insight-bar negative';
+                    insightEl.style.display = 'flex';
+                    insightEl.innerHTML = '';
+                    const arrowEl = document.createElement('span');
+                    arrowEl.className = 'arrow';
+                    arrowEl.textContent = '▲';
+                    const textEl = document.createElement('span');
+                    // Built with textContent, not innerHTML string interpolation --
+                    // customerName/issue/assignedTechnician are free-text sheet
+                    // fields, same defensive pattern as the Warranty Aging card.
+                    const plural = urgentCount === 1 ? '' : 's';
+                    const verb = urgentCount === 1 ? 'needs' : 'need';
+                    const assignPhrase = oldestUrgent && oldestUrgent.assignedTechnician
+                        ? `already claimed by ${oldestUrgent.assignedTechnician}`
+                        : 'not yet claimed';
+                    textEl.textContent = oldestUrgent
+                        ? `${urgentCount} urgent request${plural} ${verb} attention — oldest is ${oldestUrgent.customerName}'s "${oldestUrgent.issue}" (${oldestUrgent.branch}), ${assignPhrase}.`
+                        : `${urgentCount} urgent request${plural} ${verb} attention.`;
+                    insightEl.appendChild(arrowEl);
+                    insightEl.appendChild(textEl);
+                } else {
+                    insightEl.style.display = 'none';
+                }
+            }
+
+            if (active.length === 0) {
+                listEl.innerHTML = '<div class="dash-empty">🎉 Walang open na client support request.</div>';
+                return;
+            }
+
+            listEl.innerHTML = '';
+            active.forEach(r => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'cust-row-compact';
+
+                const whoEl = document.createElement('div');
+                whoEl.className = 'ccr-who';
+                const nameEl = document.createElement('span');
+                nameEl.className = 'ccr-name';
+                nameEl.textContent = r.customerName;
+                const metaEl = document.createElement('span');
+                metaEl.className = 'ccr-meta';
+                metaEl.textContent = `${r.issue} · ${r.branch}${r.date ? ' · ' + r.date : ''}`;
+                const assignEl = document.createElement('span');
+                assignEl.className = 'ccr-meta';
+                assignEl.textContent = r.assignedTechnician ? `Assigned: ${r.assignedTechnician}` : 'Not yet claimed';
+                whoEl.appendChild(nameEl);
+                whoEl.appendChild(metaEl);
+                whoEl.appendChild(assignEl);
+
+                // Fix 88 follow-up (2026-09-03, fourth round): "Sent to
+                // Store" and "Converted to Warranty" are two new non-final
+                // statuses -- must be checked explicitly here, or they'd
+                // otherwise fall into the `else` branch and misleadingly
+                // render as a plain "Open" pill.
+                const pillEl = document.createElement('span');
+                if (r.urgency === 'Urgent') {
+                    pillEl.className = 'status-pill pending';
+                    pillEl.textContent = 'URGENT';
+                } else if (r.status === 'In Progress') {
+                    pillEl.className = 'status-pill partial';
+                    pillEl.textContent = 'In Progress';
+                } else if (r.status === 'Sent to Store') {
+                    pillEl.className = 'status-pill sent-to-store';
+                    pillEl.textContent = 'Sent to Store';
+                } else if (r.status === 'Converted to Warranty') {
+                    pillEl.className = 'status-pill converted-warranty';
+                    pillEl.textContent = 'Warranty';
+                } else {
+                    pillEl.className = 'status-pill open';
+                    pillEl.textContent = 'Open';
+                }
+
+                rowEl.appendChild(whoEl);
+                rowEl.appendChild(pillEl);
+                listEl.appendChild(rowEl);
+            });
+        } catch (error) {
+            console.error('Error loading client support dashboard:', error);
+            listEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+        }
+    }
+
     function showLogin() {
         hideAllContainers();
         loginContainer.classList.remove('hidden');
@@ -916,6 +1088,22 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(menuDashboardRefreshInterval);
             menuDashboardRefreshInterval = null;
         }
+
+        // Fix 88 follow-up (2026-09-03, fifth round): stop the urgent
+        // Client Support alert poll on logout too, for the same reason as
+        // the dashboard refresh timer above -- and clear the "already
+        // alerted this session" memory, since this app runs on shared
+        // branch computers across shifts: whoever logs in NEXT should get
+        // a fresh alert for whatever urgent requests are still open, not
+        // silently skip them because a PREVIOUS user's session already saw
+        // them.
+        if (csUrgentAlertPollInterval) {
+            clearInterval(csUrgentAlertPollInterval);
+            csUrgentAlertPollInterval = null;
+        }
+        sessionStorage.removeItem('csAlertedUrgentRowIndexes');
+        const csUrgentAlertModalEl = document.getElementById('cs-urgent-alert-modal');
+        if (csUrgentAlertModalEl) csUrgentAlertModalEl.classList.add('hidden');
     }
 
     // Navigation Listeners
@@ -10378,8 +10566,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnCsRefresh = document.getElementById('btn-cs-refresh');
     const csResolveModal = document.getElementById('cs-resolve-modal');
     const csResolveRowIndexInput = document.getElementById('cs-resolve-row-index');
+    const csResolveTypeInput = document.getElementById('cs-resolve-type');
     const csResolveNotesInput = document.getElementById('cs-resolve-notes');
     const csResolveStatusMessage = document.getElementById('cs-resolve-status-message');
+    const csResolveModalTitle = document.getElementById('cs-resolve-modal-title');
 
     // Raw, unfiltered fetch result -- Date From/To, Customer Name, and
     // Status are all applied CLIENT-SIDE against this one full fetch
@@ -10389,9 +10579,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // operational queue, not a years-deep archive.
     let currentClientSupportRequests = [];
 
-    function csIsManagerRole() {
+    // Fix 88 follow-up (2026-09-03): Claim/Mark Resolved briefly had no role
+    // restriction at all, then the user asked for it back with one more
+    // role added -- "dito sa claim dapat technician, manager saka owner
+    // saka Rma admin". "RMA Admin" is an existing Account role (see the
+    // Create Account role dropdown). "View Records" itself stays open to
+    // EVERY logged-in role (that part of the 2026-09-03 fix was NOT
+    // reverted) -- this function is only consulted for the Claim/Mark
+    // Resolved buttons below now.
+    function csIsClaimResolveAllowedRole() {
         const role = sessionStorage.getItem('userRole') || '';
-        return role === 'Technician' || role === 'Manager' || role === 'Owner';
+        return role === 'Technician' || role === 'Manager' || role === 'Owner' || role === 'RMA Admin';
+    }
+
+    // Fix 88 follow-up (2026-09-03, fourth round): editing a "Sent to
+    // Store"/"Converted to Warranty" request (i.e. resolving it again once
+    // the item comes back) is gated NARROWER than the initial Claim/Update
+    // Status action -- Manager/Owner/RMA Admin only, NOT Technician, per
+    // the user's explicit instruction.
+    function csIsEditAllowedRole() {
+        const role = sessionStorage.getItem('userRole') || '';
+        return role === 'Manager' || role === 'Owner' || role === 'RMA Admin';
     }
 
     function csEscapeHtml(str) {
@@ -10411,16 +10619,45 @@ document.addEventListener('DOMContentLoaded', () => {
             const rowStyle = isUrgent
                 ? 'border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(239,68,68,0.12);'
                 : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
+            // Fix 88 follow-up (2026-09-03, fourth round): "Sent to Store"
+            // and "Converted to Warranty" are two new non-final outcomes
+            // (see the Resolution Type dropdown) alongside the original
+            // Open/In Progress/Resolved statuses.
             const statusBadge = reqRow.status === 'Resolved'
                 ? '<span style="color: #22c55e;">Resolved</span>'
-                : (reqRow.status === 'In Progress'
-                    ? '<span style="color: #f59e0b;">In Progress</span>'
-                    : `<span style="color: ${isUrgent ? '#ef4444' : '#94a3b8'}; font-weight: ${isUrgent ? '700' : '400'};">${isUrgent ? 'Open (URGENT)' : 'Open'}</span>`);
+                : (reqRow.status === 'Sent to Store'
+                    ? '<span style="color: #fb923c;">Sent to Store</span>'
+                    : (reqRow.status === 'Converted to Warranty'
+                        ? '<span style="color: #a78bfa;">Converted to Warranty</span>'
+                        : (reqRow.status === 'In Progress'
+                            ? '<span style="color: #f59e0b;">In Progress</span>'
+                            : `<span style="color: ${isUrgent ? '#ef4444' : '#94a3b8'}; font-weight: ${isUrgent ? '700' : '400'};">${isUrgent ? 'Open (URGENT)' : 'Open'}</span>`)));
+            // "View Records" stays open to EVERY logged-in role. Claim and
+            // the FIRST "Update Status" (from In Progress) use the 4-role
+            // csIsClaimResolveAllowedRole() gate (Technician/Manager/Owner/
+            // RMA Admin). "Sent to Store"/"Converted to Warranty" rows are
+            // NOT final -- an "Edit" button lets them be resolved again
+            // later (e.g. once the item comes back), but per the user's
+            // explicit request that Edit is gated to a NARROWER role set
+            // (csIsEditAllowedRole() -- Manager/Owner/RMA Admin, NOT
+            // Technician). The backend independently re-validates both
+            // gates too (isClaimResolveAllowedAccount/isEditAllowedAccount
+            // in google_apps_script.js), so hiding a button a viewer isn't
+            // allowed to use is a UX improvement, not a new security
+            // boundary.
             let actionHtml = '';
             if (reqRow.status === 'Open' && !reqRow.assignedTechnician) {
-                actionHtml = `<button type="button" class="btn-cs-claim" data-row-index="${rowIndex}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-hand"></i> Claim</button>`;
+                if (csIsClaimResolveAllowedRole()) {
+                    actionHtml = `<button type="button" class="btn-cs-claim" data-row-index="${rowIndex}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-hand"></i> Claim</button>`;
+                }
             } else if (reqRow.status === 'In Progress') {
-                actionHtml = `<button type="button" class="btn-cs-resolve" data-row-index="${rowIndex}" style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-check"></i> Mark Resolved</button>`;
+                if (csIsClaimResolveAllowedRole()) {
+                    actionHtml = `<button type="button" class="btn-cs-resolve" data-row-index="${rowIndex}" style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-check"></i> Update Status</button>`;
+                }
+            } else if (reqRow.status === 'Sent to Store' || reqRow.status === 'Converted to Warranty') {
+                if (csIsEditAllowedRole()) {
+                    actionHtml = `<button type="button" class="btn-cs-edit-status" data-row-index="${rowIndex}" style="background: rgba(167,139,250,0.2); color: #a78bfa; border: 1px solid rgba(167,139,250,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Edit</button>`;
+                }
             }
             return `
                 <tr style="${rowStyle}" data-row-index="${rowIndex}">
@@ -10489,12 +10726,168 @@ document.addEventListener('DOMContentLoaded', () => {
             if (csRequestForm) csRequestForm.reset();
             if (csRequestDateInput) csRequestDateInput.value = todayDateStr();
             if (csRequestStatusMessage) csRequestStatusMessage.classList.add('hidden');
-            if (csBtnViewRecords) csBtnViewRecords.classList.toggle('hidden', !csIsManagerRole());
+            // Fix 88 dashboard-card follow-up (2026-09-03): "View Records" is
+            // now shown to EVERY logged-in role, not just
+            // Technician/Manager/Owner -- the user wants any staff member
+            // who logs a request to also be able to check its status.
+            // Claim/Resolve stays gated (see renderClientSupportRequestsTable
+            // above) until the user decides whether to broaden that too.
+            if (csBtnViewRecords) csBtnViewRecords.classList.remove('hidden');
         });
     }
 
     if (csBtnViewRecords) {
         csBtnViewRecords.addEventListener('click', () => {
+            hideAllContainers();
+            const listContainer = document.getElementById('marvspc-client-support-list-container');
+            if (listContainer) listContainer.classList.remove('hidden');
+            loadClientSupportRequests();
+        });
+    }
+
+    // ============================================================
+    // Fix 88 follow-up (2026-09-03, fifth round): global urgent Client
+    // Support alert -- sound + center-screen popup, on ANY page, for every
+    // logged-in role. Locked in via AskUserQuestion: (1) every logged-in
+    // role gets the alert, not just Technician/Manager/Owner/RMA Admin --
+    // even a non-manager viewer can relay the info to the right person;
+    // (2) works from any page, not just the Main Menu dashboard -- a
+    // dedicated poll timer (started in showApp(), stopped in showLogin())
+    // runs independently of Fix 78's Main-Menu-only dashboard refresh;
+    // (3) alerts ONCE per urgent request per session, not repeatedly --
+    // tracked via a sessionStorage "seen" set of rowIndexes, cleared on
+    // logout (see showLogin() above) since this app runs on shared branch
+    // computers across shifts.
+    //
+    // Uses the dedicated, lightweight getUrgentClientSupportAlerts backend
+    // action (NOT the full getClientSupportRequests, which returns every
+    // row regardless of status and would only grow heavier over time; NOT
+    // the combined getMenuDashboardData, which also reads Daily Survey/
+    // Customer Info/Warranty every call) -- this needs to poll cheaply from
+    // every page, every minute.
+    const csUrgentAlertModal = document.getElementById('cs-urgent-alert-modal');
+    const csUrgentAlertSubtitle = document.getElementById('cs-urgent-alert-subtitle');
+    const csUrgentAlertList = document.getElementById('cs-urgent-alert-list');
+    const csUrgentAlertDismissBtn = document.getElementById('cs-urgent-alert-dismiss-btn');
+    const csUrgentAlertViewBtn = document.getElementById('cs-urgent-alert-view-btn');
+
+    function csGetAlertedUrgentRowIndexes() {
+        try {
+            return new Set(JSON.parse(sessionStorage.getItem('csAlertedUrgentRowIndexes') || '[]'));
+        } catch (e) {
+            return new Set();
+        }
+    }
+
+    function csSaveAlertedUrgentRowIndexes(setObj) {
+        sessionStorage.setItem('csAlertedUrgentRowIndexes', JSON.stringify(Array.from(setObj)));
+    }
+
+    // Generates 2 short attention beeps via the Web Audio API -- no
+    // external audio file/CDN dependency at all (deliberately, after
+    // finding the × close-button icon font silently fail to load in a
+    // network-restricted environment earlier this same round -- a sound
+    // this important shouldn't depend on any network fetch succeeding).
+    // Best-effort: many browsers block audio that isn't tied to a recent
+    // user gesture (autoplay policy) -- if that happens, this silently
+    // does nothing and the popup still shows visually, which is fine.
+    function csPlayUrgentAlertSound() {
+        try {
+            const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtxClass) return;
+            const ctx = new AudioCtxClass();
+            const now = ctx.currentTime;
+            [0, 0.22].forEach((offset) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 880;
+                gain.gain.setValueAtTime(0.0001, now + offset);
+                gain.gain.exponentialRampToValueAtTime(0.35, now + offset + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.18);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(now + offset);
+                osc.stop(now + offset + 0.2);
+            });
+            setTimeout(() => { try { ctx.close(); } catch (e) { /* ignore */ } }, 600);
+        } catch (e) {
+            console.warn('Unable to play urgent alert sound:', e);
+        }
+    }
+
+    function csShowUrgentAlertPopup(items) {
+        if (!csUrgentAlertModal || !csUrgentAlertList) return;
+        const plural = items.length === 1 ? '' : 's';
+        if (csUrgentAlertSubtitle) {
+            csUrgentAlertSubtitle.textContent = `${items.length} urgent na client support request${plural} ang kailangan ng agarang atensyon.`;
+        }
+        csUrgentAlertList.innerHTML = '';
+        items.forEach((item) => {
+            const rowEl = document.createElement('div');
+            rowEl.style.cssText = 'background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 12px;';
+
+            const nameEl = document.createElement('div');
+            nameEl.style.cssText = 'font-weight: 600;';
+            nameEl.textContent = item.customerName;
+
+            const issueEl = document.createElement('div');
+            issueEl.style.cssText = 'font-size: 0.88em; color: var(--text-muted); margin-top: 2px;';
+            issueEl.textContent = `${item.issueDescription} · ${item.branch}`;
+
+            const statusEl = document.createElement('div');
+            statusEl.style.cssText = 'font-size: 0.85em; margin-top: 4px; color: #ef4444;';
+            statusEl.textContent = item.assignedTechnician
+                ? `Na-claim na ni ${item.assignedTechnician}, hindi pa resolved.`
+                : 'Hindi pa na-claim.';
+
+            rowEl.appendChild(nameEl);
+            rowEl.appendChild(issueEl);
+            rowEl.appendChild(statusEl);
+            csUrgentAlertList.appendChild(rowEl);
+        });
+        csUrgentAlertModal.classList.remove('hidden');
+        csPlayUrgentAlertSound();
+    }
+
+    async function pollUrgentClientSupportAlerts() {
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getUrgentClientSupportAlerts' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success' || !Array.isArray(result.data)) return;
+
+            const alerted = csGetAlertedUrgentRowIndexes();
+            const newOnes = result.data.filter(item => !alerted.has(item.rowIndex));
+            // Mark every currently-open urgent request as seen (not just the
+            // new ones) -- guarantees nothing gets re-added to the "already
+            // alerted" set redundantly on the next poll.
+            result.data.forEach(item => alerted.add(item.rowIndex));
+            csSaveAlertedUrgentRowIndexes(alerted);
+
+            if (newOnes.length > 0) {
+                csShowUrgentAlertPopup(newOnes);
+            }
+        } catch (error) {
+            // Silent -- this is a background poll; a network hiccup shouldn't
+            // interrupt whatever the user is doing on whatever page they're
+            // on. It'll just try again on the next tick.
+            console.warn('Urgent Client Support alert poll failed:', error);
+        }
+    }
+
+    if (csUrgentAlertDismissBtn) {
+        csUrgentAlertDismissBtn.addEventListener('click', () => {
+            if (csUrgentAlertModal) csUrgentAlertModal.classList.add('hidden');
+        });
+    }
+
+    if (csUrgentAlertViewBtn) {
+        csUrgentAlertViewBtn.addEventListener('click', () => {
+            if (csUrgentAlertModal) csUrgentAlertModal.classList.add('hidden');
             hideAllContainers();
             const listContainer = document.getElementById('marvspc-client-support-list-container');
             if (listContainer) listContainer.classList.remove('hidden');
@@ -10572,7 +10965,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     showMessage(csRequestStatusMessage, urgency === 'Urgent' ? 'Na-log na ang URGENT na request. Aabisuhan agad ang mga tech/manager sa Telegram.' : 'Na-log na ang support request.', 'success');
                     if (csRequestForm) csRequestForm.reset();
                     if (csRequestDateInput) csRequestDateInput.value = todayDateStr();
-                    if (csIsManagerRole()) loadClientSupportRequests();
+                    if (csIsClaimResolveAllowedRole()) loadClientSupportRequests();
                 } else {
                     showMessage(csRequestStatusMessage, `Error: ${result.message || 'Hindi na-submit ang request.'}`, 'error');
                 }
@@ -10624,17 +11017,45 @@ document.addEventListener('DOMContentLoaded', () => {
             if (resolveBtn) {
                 const rowIndex = resolveBtn.getAttribute('data-row-index');
                 if (csResolveRowIndexInput) csResolveRowIndexInput.value = rowIndex;
+                if (csResolveTypeInput) csResolveTypeInput.value = 'Resolved';
                 if (csResolveNotesInput) csResolveNotesInput.value = '';
                 if (csResolveStatusMessage) csResolveStatusMessage.classList.add('hidden');
+                if (csResolveModalTitle) csResolveModalTitle.textContent = 'Update Request Status';
+                if (csResolveModal) csResolveModal.classList.remove('hidden');
+                return;
+            }
+
+            // Fix 88 follow-up (2026-09-03, fourth round): "Edit" re-opens
+            // the SAME modal for a "Sent to Store"/"Converted to Warranty"
+            // row, letting it be resolved again (e.g. once the item comes
+            // back) -- gated to csIsEditAllowedRole() at render time above.
+            const editStatusBtn = e.target.closest('.btn-cs-edit-status');
+            if (editStatusBtn) {
+                const rowIndex = editStatusBtn.getAttribute('data-row-index');
+                if (csResolveRowIndexInput) csResolveRowIndexInput.value = rowIndex;
+                if (csResolveTypeInput) csResolveTypeInput.value = 'Resolved';
+                if (csResolveNotesInput) csResolveNotesInput.value = '';
+                if (csResolveStatusMessage) csResolveStatusMessage.classList.add('hidden');
+                if (csResolveModalTitle) csResolveModalTitle.textContent = 'Update Request Status';
                 if (csResolveModal) csResolveModal.classList.remove('hidden');
             }
         });
     }
 
+    // Fix 88 follow-up (2026-09-03, fourth round): success message now
+    // depends on which Resolution Type was actually saved, since "Save"
+    // no longer always means "Resolved".
+    const CS_RESOLUTION_TYPE_SUCCESS_MESSAGES = {
+        'Resolved': 'Na-mark na Resolved ang request.',
+        'Sent to Store': 'Na-mark na "Sent to Store" ang request.',
+        'Converted to Warranty': 'Na-convert na sa Warranty ang request -- may bagong Warranty record na nagawa.'
+    };
+
     const csResolveConfirmBtn = document.getElementById('cs-resolve-confirm-btn');
     if (csResolveConfirmBtn) {
         csResolveConfirmBtn.addEventListener('click', async () => {
             const rowIndex = csResolveRowIndexInput ? csResolveRowIndexInput.value : '';
+            const resolutionType = csResolveTypeInput ? csResolveTypeInput.value : 'Resolved';
             const resolutionNotes = csResolveNotesInput ? csResolveNotesInput.value.trim() : '';
             const resolvedBy = sessionStorage.getItem('loggedInUser') || '';
 
@@ -10653,15 +11074,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: 'resolveClientSupportRequest', rowIndex, resolvedBy, resolutionNotes })
+                    body: JSON.stringify({ action: 'resolveClientSupportRequest', rowIndex, resolvedBy, resolutionNotes, resolutionType })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
                     if (csResolveModal) csResolveModal.classList.add('hidden');
-                    showMessage(csManageStatusMessage, 'Na-mark na Resolved ang request.', 'success');
+                    showMessage(csManageStatusMessage, CS_RESOLUTION_TYPE_SUCCESS_MESSAGES[resolutionType] || 'Na-update ang request.', 'success');
                     loadClientSupportRequests();
                 } else {
-                    showMessage(csResolveStatusMessage, `Error: ${result.message || 'Hindi na-resolve ang request.'}`, 'error');
+                    showMessage(csResolveStatusMessage, `Error: ${result.message || 'Hindi na-update ang request.'}`, 'error');
                 }
             } catch (error) {
                 console.error('Error resolving client support request:', error);
@@ -10674,9 +11095,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const csResolveCancelBtn = document.getElementById('cs-resolve-cancel-btn');
-    if (csResolveCancelBtn) {
-        csResolveCancelBtn.addEventListener('click', () => {
+    // Fix 88 follow-up (2026-09-03, fourth round): the text "Cancel" button
+    // was removed per the user's explicit request (replaced by "Save"
+    // above) -- this small × close icon is just a standard modal escape
+    // hatch, not a reintroduction of Cancel.
+    const csResolveCloseBtn = document.getElementById('cs-resolve-close-btn');
+    if (csResolveCloseBtn) {
+        csResolveCloseBtn.addEventListener('click', () => {
             if (csResolveModal) csResolveModal.classList.add('hidden');
             if (csResolveNotesInput) csResolveNotesInput.value = '';
         });

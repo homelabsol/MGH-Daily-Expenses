@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=8">
     <!-- Fix 48: html2pdf.bundle.min.js, chart.js, and xlsx.full.min.js used to be
          loaded here as plain blocking <script> tags -- meaning every page open,
          even the login screen, waited on all three heavy libraries before the
@@ -276,6 +276,53 @@
                 </div>
 
                 <div class="cust-list-scroll" id="dash-pending-deliveries-list">
+                    <div class="dash-empty">Loading...</div>
+                </div>
+            </div>
+
+            <!-- Fix 88 dashboard card (2026-09-02, requested right after Fix
+                 88 v3 was delivered: "pwede mo din ba gawan ng dashboard yan
+                 kasama nung ibang dashboard natin?"). Client Support
+                 Requests still Open/In Progress (i.e. not yet Resolved),
+                 Urgent ones called out separately. Same store gate as the
+                 MarvsPCStufz/Warranty Aging/Pending Deliveries cards above,
+                 since Client Support itself lives inside the MarvsPCStufz
+                 submenu and is reachable only by those stores. Populated by
+                 renderClientSupportDashboard() inside loadMenuDashboardCombined()
+                 in app.js, via the same combined getMenuDashboardData action
+                 (Fix 86) -- one extra raw sheet read added to that one
+                 existing call, no new round trip. Purely informational (no
+                 Claim/Resolve here) -- use the Client Support menu item's
+                 View Records page for that. -->
+            <div class="glass-panel dash-card" id="dash-client-support-card">
+                <div class="dash-head">
+                    <div class="titlewrap">
+                        <div class="dash-icon">🆘</div>
+                        <div>
+                            <h3>Client Support</h3>
+                            <p class="sub">Requests still Open or In Progress</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-grid cols-3">
+                    <div class="metric-card">
+                        <div class="lbl">Open</div>
+                        <div class="val" id="dash-cs-open-count">--</div>
+                    </div>
+                    <div class="metric-card mid">
+                        <div class="lbl">In Progress</div>
+                        <div class="val" id="dash-cs-in-progress-count">--</div>
+                    </div>
+                    <div class="metric-card warn">
+                        <div class="lbl">Urgent</div>
+                        <div class="val" id="dash-cs-urgent-count">--</div>
+                    </div>
+                </div>
+
+                <div class="insight-bar" id="dash-cs-insight" style="display:none;"></div>
+
+                <div class="cust-list-scroll" id="dash-cs-list">
                     <div class="dash-empty">Loading...</div>
                 </div>
             </div>
@@ -1586,19 +1633,37 @@
          pattern established for deliveries-list-update-modal/build-tracker-
          update-modal (see gotcha #7). -->
     <div class="hidden" id="cs-resolve-modal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9997; display: flex; align-items: center; justify-content: center;">
-        <div class="glass-panel" style="width: 90%; max-width: 480px; padding: 24px;">
-            <h2 style="margin-top: 0;">Mark as Resolved</h2>
+        <div class="glass-panel" style="width: 90%; max-width: 480px; padding: 24px; position: relative;">
+            <!-- No text "Cancel" button per the user's explicit request (removed,
+                 replaced by "Save" below) -- this small × in the corner is just a
+                 standard modal escape hatch so an accidental open isn't a dead
+                 end, not a reintroduction of the Cancel button. -->
+            <button type="button" id="cs-resolve-close-btn" aria-label="Close" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #94a3b8; font-size: 1.1em; cursor: pointer; line-height: 1; padding: 8px; min-width: 24px; min-height: 24px; display: flex; align-items: center; justify-content: center;"><i class="fas fa-times" aria-hidden="true"></i></button>
+            <h2 style="margin-top: 0;" id="cs-resolve-modal-title">Update Request Status</h2>
             <input type="hidden" id="cs-resolve-row-index">
+            <!-- Fix 88 follow-up (2026-09-03): what used to be a single
+                 "Confirm Resolved" action is now a 3-outcome dropdown --
+                 Confirmed Resolved / Sent to Store / Converted to Warranty
+                 (label text kept exactly as the user specified). The
+                 option VALUE is the resulting Status value the backend
+                 writes. -->
+            <div class="form-group">
+                <label for="cs-resolve-type">Resolution Type</label>
+                <select id="cs-resolve-type" required>
+                    <option value="Resolved">Confirmed Resolved</option>
+                    <option value="Sent to Store">Unable to Resolve - Need to send the unit/item to store</option>
+                    <option value="Converted to Warranty">For Warranty</option>
+                </select>
+            </div>
             <div class="form-group">
                 <label for="cs-resolve-notes">Resolution Notes</label>
                 <textarea id="cs-resolve-notes" rows="3" placeholder="Paano na-resolve ang isyu?" required></textarea>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 10px;">
                 <button type="button" id="cs-resolve-confirm-btn" class="submit-btn" style="margin-top: 0;">
-                    <span class="btn-text"><i class="fas fa-check"></i> Confirm Resolved</span>
+                    <span class="btn-text"><i class="fas fa-save"></i> Save</span>
                     <div class="spinner hidden"></div>
                 </button>
-                <button type="button" id="cs-resolve-cancel-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 8px; padding: 0 18px; cursor: pointer; font-weight: 500;">Cancel</button>
             </div>
             <div id="cs-resolve-status-message" class="hidden" style="margin-top: 15px;"></div>
         </div>
@@ -5246,7 +5311,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=113"></script>
+    <script src="app.js?v=119"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -5721,6 +5786,34 @@
             <button type="button" id="ai-chat-mic-btn" title="Mag-mic ng tanong" style="width: 38px; height: 38px; border-radius: 50%; border: none; background: rgba(255,255,255,0.1); color: inherit; cursor: pointer; flex-shrink: 0;"><i class="fas fa-microphone"></i></button>
             <button type="submit" id="ai-chat-send-btn" style="width: 38px; height: 38px; border-radius: 50%; border: none; background: var(--primary); color: #fff; cursor: pointer; flex-shrink: 0;"><i class="fas fa-paper-plane"></i></button>
         </form>
+    </div>
+
+    <!-- Fix 88 follow-up (2026-09-03, fifth round): global urgent Client
+         Support alert -- sound + center-screen popup, works on ANY page (not
+         just the Main Menu dashboard), for every logged-in role. Not inside
+         a .container div on purpose (same reasoning as the AI chat button
+         right above -- hideAllContainers() must never hide this), and given
+         a higher z-index than every other modal in the app (9999) since it
+         can legitimately need to appear on top of another modal that's
+         already open (e.g. the Resolve modal) if a new urgent request comes
+         in while staff are mid-workflow. Plain dark overlay, no
+         backdrop-filter blur, since it can appear over a heavy list-view
+         table page (gotcha #7). -->
+    <div class="hidden" id="cs-urgent-alert-modal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 16px;">
+        <div class="glass-panel" style="width: 100%; max-width: 440px; padding: 24px; border: 1px solid rgba(239,68,68,0.4);">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                <span style="font-size: 1.4em;">🚨</span>
+                <h2 style="margin: 0; color: #ef4444;">Urgent Client Support</h2>
+            </div>
+            <p id="cs-urgent-alert-subtitle" style="color: var(--text-muted); margin: 4px 0 14px;"></p>
+            <div id="cs-urgent-alert-list" style="max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;"></div>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" id="cs-urgent-alert-dismiss-btn" class="submit-btn" style="margin-top: 0; background: rgba(255,255,255,0.1);">Dismiss</button>
+                <button type="button" id="cs-urgent-alert-view-btn" class="submit-btn" style="margin-top: 0; background: #ef4444;">
+                    <i class="fas fa-arrow-right"></i> Buksan ang Client Support
+                </button>
+            </div>
+        </div>
     </div>
 
 </body>

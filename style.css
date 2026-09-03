@@ -918,6 +918,33 @@ textarea {
     border: 1px solid rgba(245, 158, 11, 0.4);
 }
 
+/* Fix 88 dashboard card: Client Support's plain "Open, not urgent" pill --
+   the other statuses reuse existing pill colors (partial=amber for In
+   Progress, pending=red for Urgent) but neither of those fits a calm,
+   non-urgent Open request, so this adds the missing neutral/blue variant. */
+.status-pill.open {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+/* Fix 88 follow-up (2026-09-03, fourth round): two new non-final Client
+   Support Request outcomes -- Sent to Store (orange, matches the Manage
+   table's own #fb923c) and Converted to Warranty (purple, distinct from
+   every other pill so it reads as "different kind of open", not just
+   another shade of pending/in-progress). */
+.status-pill.sent-to-store {
+    background: rgba(251, 146, 60, 0.15);
+    color: #fb923c;
+    border: 1px solid rgba(251, 146, 60, 0.4);
+}
+
+.status-pill.converted-warranty {
+    background: rgba(167, 139, 250, 0.15);
+    color: #a78bfa;
+    border: 1px solid rgba(167, 139, 250, 0.4);
+}
+
 /* Fix 79: Warranty Aging's per-claim age pill -- 3 buckets, green/amber/red
    matching the metric-card bucket colors above it. */
 .status-pill.fresh {
