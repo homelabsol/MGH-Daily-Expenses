@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=9">
+    <link rel="stylesheet" href="style.css?v=10">
     <!-- Fix 48: html2pdf.bundle.min.js, chart.js, and xlsx.full.min.js used to be
          loaded here as plain blocking <script> tags -- meaning every page open,
          even the login screen, waited on all three heavy libraries before the
@@ -225,6 +225,13 @@
                             <p class="sub">Open MarvsPCStufz warranty claims, by days since filed</p>
                         </div>
                     </div>
+                    <!-- User request (2026-09-04): up/down arrow to flip the
+                         Date sort direction, same fa-sort-up/fa-sort-down
+                         icon-flip convention as the Build Status page's Date
+                         sort header. Default (unclicked) matches this card's
+                         existing oldest-first order, so nothing changes for
+                         anyone who never clicks it. -->
+                    <button type="button" class="dash-sort-btn" id="dash-warranty-sort-btn" title="I-toggle ang pagkakasunod-sunod ng petsa">Date <i class="fas fa-sort-up" id="dash-warranty-sort-icon"></i></button>
                 </div>
 
                 <div class="card-grid cols-3">
@@ -262,6 +269,10 @@
                             <p class="sub">Customer Information Sheet, Delivery Status still Pending</p>
                         </div>
                     </div>
+                    <!-- User request (2026-09-04): same Date sort toggle as
+                         the Warranty Aging card above. Default matches this
+                         card's existing soonest-due-first order. -->
+                    <button type="button" class="dash-sort-btn" id="dash-delivery-sort-btn" title="I-toggle ang pagkakasunod-sunod ng petsa">Date <i class="fas fa-sort-up" id="dash-delivery-sort-icon"></i></button>
                 </div>
 
                 <div class="card-grid">
@@ -303,6 +314,12 @@
                             <p class="sub">Requests still Open or In Progress</p>
                         </div>
                     </div>
+                    <!-- User request (2026-09-04): same Date sort toggle as
+                         the two cards above. Urgent requests stay grouped
+                         first no matter what -- this only flips the date
+                         order WITHIN each urgency group. Default matches
+                         this card's existing oldest-first order. -->
+                    <button type="button" class="dash-sort-btn" id="dash-cs-sort-btn" title="I-toggle ang pagkakasunod-sunod ng petsa">Date <i class="fas fa-sort-up" id="dash-cs-sort-icon"></i></button>
                 </div>
 
                 <div class="card-grid cols-3">
@@ -766,17 +783,25 @@
                     <h2 style="margin: 0;">Cash Advance Balances</h2>
                     <button type="button" id="btn-payslip-show-add-ca" style="background: rgba(79,70,229,0.15); border: 1px solid rgba(79,70,229,0.4); color: var(--primary); border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 600; cursor: pointer;">+ Bagong Cash Advance</button>
                 </div>
-                <div style="overflow-x: auto; margin-top: 12px; border: 1px solid var(--glass-border); border-radius: 10px;">
+                <!-- 2026-09-04: a chevron column was added so each employee row can
+                     expand to show their raw Cash Advance history (individual "Bagong
+                     Cash Advance" entries + the auto-generated payslip Deduction rows),
+                     with Edit/Delete on the Advance entries -- lets Marvin fix a typo'd
+                     amount/weekly installment, or remove one recorded in error, instead
+                     of having no way to correct it at all. -->
+                <p style="color: var(--text-muted); font-size: 0.78em; margin: 8px 0 0;">I-click ang isang row para makita ang history ng Cash Advance niya (at ma-edit/matanggal kung may mali).</p>
+                <div style="overflow-x: auto; margin-top: 8px; border: 1px solid var(--glass-border); border-radius: 10px;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
                         <thead>
                             <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="width: 28px; padding: 9px 4px;"></th>
                                 <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Employee</th>
                                 <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Natitirang Balance</th>
                                 <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Weekly Installment</th>
                             </tr>
                         </thead>
                         <tbody id="cash-advance-balances-table-body">
-                            <tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                            <tr><td colspan="4" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -811,6 +836,38 @@
                     </button>
                 </form>
                 <div id="ca-status-message" class="hidden" style="margin-top: 12px;"></div>
+            </div>
+
+            <!-- 2026-09-04: Edit modal for a single "Advance" Cash Advance entry --
+                 fixes a typo'd Amount/Weekly Installment/Note. Owner/Payroll gate is
+                 re-checked server-side (isPayrollOrOwnerAccount); no separate
+                 username/password re-auth here since this whole Payslip page is
+                 already menu-gated to Owner/Payroll only (same lighter-weight
+                 pattern as the "+ Bagong Cash Advance" form above it). -->
+            <div class="hidden" id="ca-edit-modal" style="position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9997; display: flex; align-items: center; justify-content: center; padding: 16px;">
+                <div class="glass-panel" style="width: 100%; max-width: 420px; padding: 24px; position: relative;">
+                    <button type="button" id="ca-edit-close-btn" aria-label="Close" style="position: absolute; top: 10px; right: 10px; background: none; border: none; color: #94a3b8; font-size: 1.1em; cursor: pointer; line-height: 1; padding: 8px; min-width: 24px; min-height: 24px; display: flex; align-items: center; justify-content: center;"><i class="fas fa-times" aria-hidden="true"></i></button>
+                    <h2 style="margin-top: 0;">I-edit ang Cash Advance Entry</h2>
+                    <p id="ca-edit-employee-label" style="color: var(--text-muted); font-size: 0.85em; margin-top: -8px;"></p>
+                    <input type="hidden" id="ca-edit-row-index">
+                    <div class="form-group">
+                        <label for="ca-edit-amount">Halaga</label>
+                        <input type="number" id="ca-edit-amount" min="0.01" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ca-edit-weekly-installment">Weekly Installment</label>
+                        <input type="number" id="ca-edit-weekly-installment" min="0.01" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="ca-edit-note">Note (opsyonal)</label>
+                        <input type="text" id="ca-edit-note">
+                    </div>
+                    <button type="button" id="ca-edit-save-btn" class="submit-btn" style="margin-top: 10px;">
+                        <span class="btn-text"><i class="fas fa-save"></i> I-save</span>
+                        <div class="spinner hidden"></div>
+                    </button>
+                    <div id="ca-edit-status-message" class="hidden" style="margin-top: 12px;"></div>
+                </div>
             </div>
 
             <h2 style="margin-top: 0;">1. Piliin ang Employee at Cutoff Range</h2>
@@ -1608,6 +1665,7 @@
                 <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
                     <thead>
                         <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                            <th style="width: 28px; padding: 9px 4px;"></th>
                             <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Date</th>
                             <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Customer</th>
                             <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Branch</th>
@@ -1620,7 +1678,7 @@
                         </tr>
                     </thead>
                     <tbody id="cs-manage-table-body">
-                        <tr><td colspan="9" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        <tr><td colspan="10" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -1642,17 +1700,22 @@
             <h2 style="margin-top: 0;" id="cs-resolve-modal-title">Update Request Status</h2>
             <input type="hidden" id="cs-resolve-row-index">
             <!-- Fix 88 follow-up (2026-09-03): what used to be a single
-                 "Confirm Resolved" action is now a 3-outcome dropdown --
+                 "Confirm Resolved" action is now a multi-outcome dropdown --
                  Confirmed Resolved / Sent to Store / Converted to Warranty
                  (label text kept exactly as the user specified). The
                  option VALUE is the resulting Status value the backend
-                 writes. -->
+                 writes. 2026-09-04: added a 4th outcome, "Closed - Not
+                 Resolved," for a customer who doesn't answer the tech's
+                 call -- like Sent to Store/Converted to Warranty, this is
+                 NOT final: a Manager/Owner/RMA Admin can still Edit/
+                 re-resolve it later if the customer eventually calls back. -->
             <div class="form-group">
                 <label for="cs-resolve-type">Resolution Type</label>
                 <select id="cs-resolve-type" required>
                     <option value="Resolved">Confirmed Resolved</option>
                     <option value="Sent to Store">Unable to Resolve - Need to send the unit/item to store</option>
                     <option value="Converted to Warranty">For Warranty</option>
+                    <option value="Closed - Not Resolved">Closed - Not Resolved (customer hindi sumasagot)</option>
                 </select>
             </div>
             <div class="form-group">
@@ -5311,7 +5374,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=119"></script>
+    <script src="app.js?v=124"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

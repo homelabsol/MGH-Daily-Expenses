@@ -726,6 +726,38 @@ textarea {
     color: var(--text-muted);
 }
 
+/* User request (2026-09-04): up/down date-sort toggle on the Warranty
+   Aging / Pending Deliveries / Client Support Main Menu Dashboard cards.
+   Styled like .chip below but clickable -- .dash-head's existing
+   `justify-content: space-between` puts this at the right edge, next to
+   .titlewrap, with no extra markup needed. */
+.dash-sort-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+}
+
+.dash-sort-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+}
+
+.dash-sort-btn i {
+    font-size: 0.7rem;
+}
+
 .branch-toggle {
     display: flex;
     gap: 6px;

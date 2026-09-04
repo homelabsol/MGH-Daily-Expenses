@@ -673,6 +673,32 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // User request (2026-09-04): "pwede ba magkaroon ng up and down arrow
+    // para sa ascending or descending ng date?" on the Warranty Aging /
+    // Pending Deliveries / Client Support Main Menu Dashboard cards (NOT
+    // the Parts Releasing/MarvsPCStufz card above them, which the user
+    // didn't ask about and still uses its own fixed newest-first sort).
+    // Same "true = descending (newest first), icon flips fa-sort-up/
+    // fa-sort-down" convention as the Build Status page's Date sort toggle
+    // (buildStatusSortDesc). Each card's default direction matches its
+    // EXISTING default render order from before this fix, so toggling
+    // Refresh/auto-refresh (Fix 78) without ever touching the button
+    // reproduces the exact same list as before. The raw `rows` each
+    // render function receives are cached here so the toggle can just
+    // re-sort + re-render in memory -- no backend refetch needed, same
+    // principle as applyBuildStatusFilter().
+    let dashWarrantySortDesc = false; // false = oldest-first (existing default)
+    let dashDeliverySortDesc = false; // false = soonest-due-first (existing default)
+    let dashClientSupportSortDesc = false; // false = oldest-first within each urgency group (existing default)
+    let lastDashWarrantyRows = [];
+    let lastDashDeliveryAndReleaseRows = [];
+    let lastDashClientSupportRows = [];
+
+    function updateDashSortIcon(iconId, sortDesc) {
+        const iconEl = document.getElementById(iconId);
+        if (iconEl) iconEl.className = sortDesc ? 'fas fa-sort-down' : 'fas fa-sort-up';
+    }
+
     // Fix 82: renamed from loadReleaseStatusDashboard() -- now also computes
     // the Pending Deliveries card from the SAME fetched rows (both cards
     // read the "Customer Information Sheet", so there's no reason to hit
@@ -684,6 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // renders. The "Loading..." placeholder is set by the caller before the
     // fetch starts, same as before.
     function renderReleaseStatusAndDeliveryDashboards(rows) {
+        lastDashDeliveryAndReleaseRows = rows || [];
         const listEl = document.getElementById('dash-marvspc-list');
         const pendingCountEl = document.getElementById('dash-pending-count');
         const partialCountEl = document.getElementById('dash-partial-count');
@@ -748,24 +775,46 @@ document.addEventListener('DOMContentLoaded', () => {
             // fallback convention as the Deliveries List page elsewhere in
             // this file). Per the user's explicit confirmation: Pending
             // status ONLY (no Walk-in), sorted by soonest Delivery Date
-            // (column 6) first -- different sort convention than the
-            // "newest record first" the other dashboard cards use, since
+            // (column 6) first by default -- different sort convention than
+            // the "newest record first" the other dashboard cards use, since
             // for a pending-delivery list "which one's due next" is the
-            // actionable question.
+            // actionable question. User request (2026-09-04): the
+            // dashSortDeliveryBtn toggle can flip this to furthest-due-first;
+            // a row with no delivery date at all always sorts last either
+            // way, since it can't be placed in a due-date ordering it
+            // doesn't have.
             if (deliveryListEl) {
                 const pendingDeliveries = rows.filter(row => (row[20] || 'Pending').toString().trim() === 'Pending');
 
                 pendingDeliveries.sort((a, b) => {
                     const dateA = new Date((a[6] || '').toString().split(/[T ]/)[0]).getTime();
                     const dateB = new Date((b[6] || '').toString().split(/[T ]/)[0]).getTime();
-                    const safeA = isNaN(dateA) ? Infinity : dateA;
-                    const safeB = isNaN(dateB) ? Infinity : dateB;
-                    return safeA - safeB;
+                    const hasA = !isNaN(dateA);
+                    const hasB = !isNaN(dateB);
+                    if (!hasA && !hasB) return 0;
+                    if (!hasA) return 1;
+                    if (!hasB) return -1;
+                    const diff = dateA - dateB;
+                    return dashDeliverySortDesc ? -diff : diff;
                 });
+                updateDashSortIcon('dash-delivery-sort-icon', dashDeliverySortDesc);
 
                 if (deliveryCountEl) deliveryCountEl.textContent = pendingDeliveries.length;
                 if (soonestDueEl) {
-                    const soonestRaw = pendingDeliveries.length ? (pendingDeliveries[0][6] || '').toString().split(/[T ]/)[0] : '';
+                    // Always the TRUE soonest due date, independent of the
+                    // toggle above -- otherwise flipping to furthest-due-
+                    // first would make this metric card show the furthest
+                    // date instead, which would be misleading.
+                    let soonestRow = null;
+                    let soonestMs = Infinity;
+                    pendingDeliveries.forEach(row => {
+                        const ms = new Date((row[6] || '').toString().split(/[T ]/)[0]).getTime();
+                        if (!isNaN(ms) && ms < soonestMs) {
+                            soonestMs = ms;
+                            soonestRow = row;
+                        }
+                    });
+                    const soonestRaw = soonestRow ? (soonestRow[6] || '').toString().split(/[T ]/)[0] : '';
                     soonestDueEl.textContent = soonestRaw || '--';
                 }
 
@@ -826,6 +875,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // renders. The "Loading..." placeholder is set by the caller before the
     // fetch starts, same as before.
     function renderWarrantyAgingDashboard(rows) {
+        lastDashWarrantyRows = rows || [];
         const listEl = document.getElementById('dash-warranty-list');
         const freshCountEl = document.getElementById('dash-warranty-fresh-count');
         const midCountEl = document.getElementById('dash-warranty-mid-count');
@@ -858,9 +908,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
             });
 
-            // Oldest (most urgent) first -- same convention as the
-            // MarvsPCStufz card's Pending/Partial list above.
-            aged.sort((a, b) => b.days - a.days);
+            // Oldest (most urgent) first by default -- same convention as
+            // the MarvsPCStufz card's Pending/Partial list above. User
+            // request (2026-09-04): the dash-warranty-sort-btn toggle can
+            // flip this to newest-filed-first. `days` is monotonic with the
+            // Warranty Date (more days elapsed == an older/earlier date), so
+            // sorting by days descending IS sorting by date ascending
+            // (oldest first) -- just flip the sign for the other direction.
+            aged.sort((a, b) => dashWarrantySortDesc ? (a.days - b.days) : (b.days - a.days));
+            updateDashSortIcon('dash-warranty-sort-icon', dashWarrantySortDesc);
 
             const freshCount = aged.filter(r => r.bucket === 'fresh').length;
             const midCount = aged.filter(r => r.bucket === 'mid').length;
@@ -945,6 +1001,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 10 ResolutionNotes, 11 ResolvedBy, 12 ResolvedTimestamp,
     // 13 SalesInvoiceNumber, 14 DatePurchased.
     function renderClientSupportDashboard(rows) {
+        lastDashClientSupportRows = rows || [];
         const listEl = document.getElementById('dash-cs-list');
         const openCountEl = document.getElementById('dash-cs-open-count');
         const inProgressCountEl = document.getElementById('dash-cs-in-progress-count');
@@ -974,14 +1031,23 @@ document.addEventListener('DOMContentLoaded', () => {
             if (inProgressCountEl) inProgressCountEl.textContent = inProgressCount;
             if (urgentCountEl) urgentCountEl.textContent = urgentCount;
 
-            // Urgent first, then oldest date first (longest-waiting first) --
-            // same "most-in-need-of-attention first" convention as the
-            // Warranty Aging card's oldest-first sort above.
+            // Urgent requests are always grouped first regardless of the
+            // date-sort toggle below -- that grouping is a triage aid, not
+            // the "date" the user is asking to flip, so changing the sort
+            // direction shouldn't be able to bury an Urgent request under a
+            // pile of Normal ones. Within each group (Urgent / not-Urgent),
+            // oldest-first (longest-waiting first) by default, same
+            // "most-in-need-of-attention first" convention as the Warranty
+            // Aging card's oldest-first sort above. User request
+            // (2026-09-04): the dash-cs-sort-btn toggle flips that
+            // within-group direction to newest-first.
             active.sort((a, b) => {
                 if (a.urgency === 'Urgent' && b.urgency !== 'Urgent') return -1;
                 if (b.urgency === 'Urgent' && a.urgency !== 'Urgent') return 1;
-                return (a.date || '').localeCompare(b.date || '');
+                const diff = (a.date || '').localeCompare(b.date || '');
+                return dashClientSupportSortDesc ? -diff : diff;
             });
+            updateDashSortIcon('dash-cs-sort-icon', dashClientSupportSortDesc);
 
             if (insightEl) {
                 if (urgentCount > 0) {
@@ -4297,6 +4363,32 @@ document.addEventListener('DOMContentLoaded', () => {
         sortBuildStatusDateBtn.addEventListener('click', () => {
             buildStatusSortDesc = !buildStatusSortDesc;
             applyBuildStatusFilter();
+        });
+    }
+
+    // User request (2026-09-04): up/down date-sort arrow on the Main Menu
+    // Dashboard's Warranty Aging / Pending Deliveries / Client Support
+    // cards, same "click flips direction, re-render from the already-cached
+    // rows, no refetch" pattern as the Build Status toggle right above.
+    const dashWarrantySortBtn = document.getElementById('dash-warranty-sort-btn');
+    if (dashWarrantySortBtn) {
+        dashWarrantySortBtn.addEventListener('click', () => {
+            dashWarrantySortDesc = !dashWarrantySortDesc;
+            renderWarrantyAgingDashboard(lastDashWarrantyRows);
+        });
+    }
+    const dashDeliverySortBtn = document.getElementById('dash-delivery-sort-btn');
+    if (dashDeliverySortBtn) {
+        dashDeliverySortBtn.addEventListener('click', () => {
+            dashDeliverySortDesc = !dashDeliverySortDesc;
+            renderReleaseStatusAndDeliveryDashboards(lastDashDeliveryAndReleaseRows);
+        });
+    }
+    const dashClientSupportSortBtn = document.getElementById('dash-cs-sort-btn');
+    if (dashClientSupportSortBtn) {
+        dashClientSupportSortBtn.addEventListener('click', () => {
+            dashClientSupportSortDesc = !dashClientSupportSortDesc;
+            renderClientSupportDashboard(lastDashClientSupportRows);
         });
     }
 
@@ -10609,7 +10701,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderClientSupportRequestsTable(requestsList) {
         if (!csManageTableBody) return;
         if (requestsList.length === 0) {
-            csManageTableBody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">Walang tumugma na client support request.</td></tr>';
+            csManageTableBody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);">Walang tumugma na client support request.</td></tr>';
             return;
         }
         const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
@@ -10620,31 +10712,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? 'border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(239,68,68,0.12);'
                 : 'border-bottom: 1px solid rgba(255,255,255,0.05);';
             // Fix 88 follow-up (2026-09-03, fourth round): "Sent to Store"
-            // and "Converted to Warranty" are two new non-final outcomes
-            // (see the Resolution Type dropdown) alongside the original
-            // Open/In Progress/Resolved statuses.
+            // and "Converted to Warranty" are non-final outcomes (see the
+            // Resolution Type dropdown) alongside the original Open/In
+            // Progress/Resolved statuses. 2026-09-04: added a 4th outcome,
+            // "Closed - Not Resolved" (customer didn't answer the tech's
+            // call) -- also non-final, same muted/slate treatment as a
+            // plain "Open" row (deliberately NOT red/urgent-looking -- this
+            // is a closed/inactive state, not something needing attention)
+            // but italicized to visually set it apart from an actual open
+            // request.
             const statusBadge = reqRow.status === 'Resolved'
                 ? '<span style="color: #22c55e;">Resolved</span>'
                 : (reqRow.status === 'Sent to Store'
                     ? '<span style="color: #fb923c;">Sent to Store</span>'
                     : (reqRow.status === 'Converted to Warranty'
                         ? '<span style="color: #a78bfa;">Converted to Warranty</span>'
-                        : (reqRow.status === 'In Progress'
-                            ? '<span style="color: #f59e0b;">In Progress</span>'
-                            : `<span style="color: ${isUrgent ? '#ef4444' : '#94a3b8'}; font-weight: ${isUrgent ? '700' : '400'};">${isUrgent ? 'Open (URGENT)' : 'Open'}</span>`)));
+                        : (reqRow.status === 'Closed - Not Resolved'
+                            ? '<span style="color: #94a3b8; font-style: italic;">Closed - Not Resolved</span>'
+                            : (reqRow.status === 'In Progress'
+                                ? '<span style="color: #f59e0b;">In Progress</span>'
+                                : `<span style="color: ${isUrgent ? '#ef4444' : '#94a3b8'}; font-weight: ${isUrgent ? '700' : '400'};">${isUrgent ? 'Open (URGENT)' : 'Open'}</span>`))));
             // "View Records" stays open to EVERY logged-in role. Claim and
             // the FIRST "Update Status" (from In Progress) use the 4-role
             // csIsClaimResolveAllowedRole() gate (Technician/Manager/Owner/
-            // RMA Admin). "Sent to Store"/"Converted to Warranty" rows are
-            // NOT final -- an "Edit" button lets them be resolved again
-            // later (e.g. once the item comes back), but per the user's
-            // explicit request that Edit is gated to a NARROWER role set
-            // (csIsEditAllowedRole() -- Manager/Owner/RMA Admin, NOT
-            // Technician). The backend independently re-validates both
-            // gates too (isClaimResolveAllowedAccount/isEditAllowedAccount
-            // in google_apps_script.js), so hiding a button a viewer isn't
-            // allowed to use is a UX improvement, not a new security
-            // boundary.
+            // RMA Admin). "Sent to Store"/"Converted to Warranty"/"Closed -
+            // Not Resolved" rows are NOT final -- an "Edit" button lets them
+            // be resolved again later (e.g. once the item comes back, or
+            // the customer finally answers -- confirmed with the user via
+            // AskUserQuestion on 2026-09-04 for this 3rd non-final status),
+            // but per the user's explicit request that Edit is gated to a
+            // NARROWER role set (csIsEditAllowedRole() -- Manager/Owner/RMA
+            // Admin, NOT Technician). The backend independently re-
+            // validates both gates too (isClaimResolveAllowedAccount/
+            // isEditAllowedAccount in google_apps_script.js), so hiding a
+            // button a viewer isn't allowed to use is a UX improvement, not
+            // a new security boundary.
             let actionHtml = '';
             if (reqRow.status === 'Open' && !reqRow.assignedTechnician) {
                 if (csIsClaimResolveAllowedRole()) {
@@ -10654,13 +10756,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (csIsClaimResolveAllowedRole()) {
                     actionHtml = `<button type="button" class="btn-cs-resolve" data-row-index="${rowIndex}" style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-check"></i> Update Status</button>`;
                 }
-            } else if (reqRow.status === 'Sent to Store' || reqRow.status === 'Converted to Warranty') {
+            } else if (reqRow.status === 'Sent to Store' || reqRow.status === 'Converted to Warranty' || reqRow.status === 'Closed - Not Resolved') {
                 if (csIsEditAllowedRole()) {
                     actionHtml = `<button type="button" class="btn-cs-edit-status" data-row-index="${rowIndex}" style="background: rgba(167,139,250,0.2); color: #a78bfa; border: 1px solid rgba(167,139,250,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Edit</button>`;
                 }
             }
+            // 2026-09-04: the user asked for a "sub arrow" on this table so
+            // fields not worth showing in the main scan-view (Mobile #,
+            // Logged By, Resolution Notes, Resolved By, Resolved Timestamp
+            // -- all already returned by getClientSupportRequests, just
+            // never rendered anywhere) become viewable without permanently
+            // widening the table. Same expand/collapse pattern as the
+            // Deliveries List report and Payroll Report: a chevron cell
+            // toggles a hidden detail row underneath. Unlike the Deliveries
+            // version, no existing columns move out of the main row here --
+            // this table wasn't overly wide to begin with, so the detail
+            // row is purely additive.
+            const detailId = `cs-manage-detail-${rowIndex}`;
             return `
-                <tr style="${rowStyle}" data-row-index="${rowIndex}">
+                <tr style="${rowStyle} cursor: pointer;" class="cs-manage-row" data-row-index="${rowIndex}" data-detail-target="${detailId}">
+                    <td style="padding: 8px 4px; text-align: center;"><i class="fas fa-chevron-right cs-manage-expand-icon" style="font-size: 0.8em; color: var(--text-muted);"></i></td>
                     <td style="${cellStyle}">${csEscapeHtml(reqRow.date)}</td>
                     <td style="${cellStyle} font-weight: 500;">${csEscapeHtml(reqRow.customerName)}</td>
                     <td style="${cellStyle}">${csEscapeHtml(reqRow.branch)}</td>
@@ -10671,8 +10786,44 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="${cellStyle}">${csEscapeHtml(reqRow.assignedTechnician) || '&mdash;'}</td>
                     <td style="padding: 8px 10px; white-space: nowrap;">${actionHtml || '&mdash;'}</td>
                 </tr>
+                <tr class="cs-manage-detail-row hidden" id="${detailId}">
+                    <td></td>
+                    <td colspan="9" style="padding: 10px 10px 16px 10px; background: rgba(0,0,0,0.15); word-break: break-word; overflow-wrap: break-word;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px 20px; font-size: 0.85em;">
+                            <div><span style="color: var(--text-muted);">Mobile #</span><br>${csEscapeHtml(reqRow.contactNumber) || '&mdash;'}</div>
+                            <div><span style="color: var(--text-muted);">Logged By</span><br>${csEscapeHtml(reqRow.loggedBy) || '&mdash;'}</div>
+                            <div><span style="color: var(--text-muted);">Resolution Notes</span><br>${csEscapeHtml(reqRow.resolutionNotes) || '&mdash;'}</div>
+                            <div><span style="color: var(--text-muted);">Resolved By</span><br>${csEscapeHtml(reqRow.resolvedBy) || '&mdash;'}</div>
+                            <div><span style="color: var(--text-muted);">Resolved Timestamp</span><br>${csEscapeHtml(reqRow.resolvedTimestamp) || '&mdash;'}</div>
+                        </div>
+                    </td>
+                </tr>
             `;
         }).join('');
+    }
+
+    // Expand/collapse a Client Support row to reveal Mobile #/Logged By/
+    // Resolution Notes/Resolved By/Resolved Timestamp. This listener is
+    // registered separately (right after render) from the existing
+    // Claim/Update Status/Edit delegated click handler further below --
+    // deliberately checking `!e.target.closest('button')` FIRST and
+    // returning early on a non-button click, rather than the reverse
+    // (`if (e.target.closest('button')) return;`) used in the Deliveries
+    // List version -- both handlers share the same tbody, so bailing out
+    // here on a button click lets it fall through to the other listener
+    // undisturbed (no stopPropagation(), same rule as documented there).
+    if (csManageTableBody) {
+        csManageTableBody.addEventListener('click', (e) => {
+            if (e.target.closest('button')) return;
+            const row = e.target.closest('.cs-manage-row');
+            if (!row) return;
+            const targetId = row.getAttribute('data-detail-target');
+            const detailRow = targetId && document.getElementById(targetId);
+            if (!detailRow) return;
+            const icon = row.querySelector('.cs-manage-expand-icon');
+            const nowHidden = detailRow.classList.toggle('hidden');
+            if (icon) icon.className = nowHidden ? 'fas fa-chevron-right cs-manage-expand-icon' : 'fas fa-chevron-down cs-manage-expand-icon';
+        });
     }
 
     function applyClientSupportListFilter() {
@@ -10698,7 +10849,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadClientSupportRequests() {
         if (!csManageTableBody) return;
-        csManageTableBody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        csManageTableBody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
@@ -10707,14 +10858,14 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (result.status !== 'success') {
-                csManageTableBody.innerHTML = `<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${csEscapeHtml(result.message) || 'Failed to load requests.'}</td></tr>`;
+                csManageTableBody.innerHTML = `<tr><td colspan="10" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${csEscapeHtml(result.message) || 'Failed to load requests.'}</td></tr>`;
                 return;
             }
             currentClientSupportRequests = result.data || [];
             applyClientSupportListFilter();
         } catch (error) {
             console.error('Error loading client support requests:', error);
-            csManageTableBody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            csManageTableBody.innerHTML = '<tr><td colspan="10" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
         }
     }
 
@@ -11048,7 +11199,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const CS_RESOLUTION_TYPE_SUCCESS_MESSAGES = {
         'Resolved': 'Na-mark na Resolved ang request.',
         'Sent to Store': 'Na-mark na "Sent to Store" ang request.',
-        'Converted to Warranty': 'Na-convert na sa Warranty ang request -- may bagong Warranty record na nagawa.'
+        'Converted to Warranty': 'Na-convert na sa Warranty ang request -- may bagong Warranty record na nagawa.',
+        'Closed - Not Resolved': 'Na-mark na "Closed - Not Resolved" ang request.'
     };
 
     const csResolveConfirmBtn = document.getElementById('cs-resolve-confirm-btn');
@@ -11365,8 +11517,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const caSaveBtn = document.getElementById('ca-save-btn');
     const caStatusMessage = document.getElementById('ca-status-message');
 
+    // 2026-09-04: Edit/Delete for a single Cash Advance "Advance" entry --
+    // see the matching comment block above getCashAdvanceHistory() in
+    // google_apps_script.js for the full locked-in design (scoped via
+    // AskUserQuestion to Edit+Delete of Advance rows only, Owner/Payroll
+    // gate, no separate re-auth since this page is already menu-gated).
+    const caEditModal = document.getElementById('ca-edit-modal');
+    const caEditCloseBtn = document.getElementById('ca-edit-close-btn');
+    const caEditEmployeeLabel = document.getElementById('ca-edit-employee-label');
+    const caEditRowIndexInput = document.getElementById('ca-edit-row-index');
+    const caEditAmountInput = document.getElementById('ca-edit-amount');
+    const caEditWeeklyInstallmentInput = document.getElementById('ca-edit-weekly-installment');
+    const caEditNoteInput = document.getElementById('ca-edit-note');
+    const caEditSaveBtn = document.getElementById('ca-edit-save-btn');
+    const caEditStatusMessage = document.getElementById('ca-edit-status-message');
+    let caEditEmployee = null; // employee name of the entry currently open in the Edit modal
+
     let payslipCurrentPreview = null; // last computePayslipPreview() result, used to recompute Net Pay live and to gate Save
     let payslipEmployeesWithRates = []; // cached from loadPayslipEmployees(), reused for the Add-Cash-Advance form's dropdown so it doesn't need its own network round trip
+    const caHistoryCache = {}; // employee name -> last getCashAdvanceHistory() result, so re-expanding a row doesn't always re-fetch
 
     function payslipEscapeHtml(str) {
         return (str || '').toString().replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -11448,7 +11617,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadCashAdvanceBalances() {
         if (!cashAdvanceBalancesTableBody) return;
-        cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="4" style="padding: 14px 10px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
@@ -11457,7 +11626,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (result.status !== 'success') {
-                cashAdvanceBalancesTableBody.innerHTML = `<tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load.'}</td></tr>`;
+                cashAdvanceBalancesTableBody.innerHTML = `<tr><td colspan="4" style="padding: 14px 10px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load.'}</td></tr>`;
                 return;
             }
             const balances = result.data || [];
@@ -11465,21 +11634,257 @@ document.addEventListener('DOMContentLoaded', () => {
             // dropdown can prefill the existing Weekly Installment without a
             // second network call.
             cashAdvanceBalancesTableBody._balances = balances;
+            // A fresh balance reload means the ledger may have changed --
+            // drop any stale cached history so a re-expand always re-fetches.
+            Object.keys(caHistoryCache).forEach(k => delete caHistoryCache[k]);
             if (balances.length === 0) {
-                cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Walang natitirang Cash Advance balance.</td></tr>';
+                cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="4" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Walang natitirang Cash Advance balance.</td></tr>';
                 return;
             }
-            cashAdvanceBalancesTableBody.innerHTML = balances.map((b) => `
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            // 2026-09-04: a chevron toggles a detail row showing this
+            // employee's raw Cash Advance history (see loadCaHistoryInto
+            // below) -- same expand/collapse pattern used elsewhere in this
+            // app (Client Support Requests, Deliveries List, Payroll
+            // Report). detailId is index-based (not the employee name)
+            // since a name can contain characters that aren't safe as an
+            // HTML id.
+            cashAdvanceBalancesTableBody.innerHTML = balances.map((b, idx) => {
+                const detailId = `ca-history-detail-${idx}`;
+                return `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;" class="ca-balance-row" data-employee="${payslipEscapeHtml(b.employee)}" data-detail-target="${detailId}">
+                    <td style="padding: 8px 4px; text-align: center;"><i class="fas fa-chevron-right ca-balance-expand-icon" style="font-size: 0.8em; color: var(--text-muted);"></i></td>
                     <td style="padding: 8px 10px;">${payslipEscapeHtml(b.employee)}</td>
                     <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(b.balance)}</td>
                     <td style="padding: 8px 10px;">${payslipFormatPeso(b.weeklyInstallment)}/week</td>
                 </tr>
-            `).join('');
+                <tr class="ca-history-detail-row hidden" id="${detailId}">
+                    <td></td>
+                    <td colspan="3" style="padding: 10px 10px 16px 10px; background: rgba(0,0,0,0.15);">
+                        <div class="ca-history-body" style="font-size: 0.85em; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading history...</div>
+                    </td>
+                </tr>
+            `;
+            }).join('');
         } catch (error) {
             console.error('Error loading cash advance balances:', error);
-            cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="3" style="padding: 14px 10px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            cashAdvanceBalancesTableBody.innerHTML = '<tr><td colspan="4" style="padding: 14px 10px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
         }
+    }
+
+    function payslipFormatDateTime(str) {
+        return (str || '').toString() || '&mdash;';
+    }
+
+    // Renders one employee's Cash Advance ledger history (both "Advance"
+    // and "Deduction" rows) inside their already-expanded detail row.
+    // Only "Advance" rows get Edit/Delete controls -- a "Deduction" row is
+    // auto-generated by savePayslip and isn't editable here (see the
+    // comment above getCashAdvanceHistory in google_apps_script.js).
+    function renderCaHistoryInto(bodyEl, entries) {
+        if (!bodyEl) return;
+        if (!entries || entries.length === 0) {
+            bodyEl.innerHTML = 'Walang history.';
+            return;
+        }
+        bodyEl.innerHTML = `
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="text-align: left; color: var(--text-muted);">
+                        <th style="padding: 4px 6px; font-weight: 600;">Petsa</th>
+                        <th style="padding: 4px 6px; font-weight: 600;">Uri</th>
+                        <th style="padding: 4px 6px; font-weight: 600;">Halaga</th>
+                        <th style="padding: 4px 6px; font-weight: 600;">Weekly</th>
+                        <th style="padding: 4px 6px; font-weight: 600;">Note</th>
+                        <th style="padding: 4px 6px; font-weight: 600;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${entries.map(en => {
+                        const isAdvance = en.type === 'Advance';
+                        const typeColor = isAdvance ? '#22c55e' : '#f59e0b';
+                        const actionButtons = isAdvance
+                            ? `<button type="button" class="btn-ca-edit" data-row-index="${en.rowIndex}" style="background: rgba(59,130,246,0.15); border: none; color: #3b82f6; width: 24px; height: 24px; border-radius: 5px; cursor: pointer;" title="I-edit"><i class="fas fa-pen" style="font-size: 0.8em;"></i></button>
+                               <button type="button" class="btn-ca-delete" data-row-index="${en.rowIndex}" style="background: rgba(239,68,68,0.15); border: none; color: #ef4444; width: 24px; height: 24px; border-radius: 5px; cursor: pointer; margin-left: 4px;" title="Tanggalin"><i class="fas fa-trash" style="font-size: 0.8em;"></i></button>`
+                            : '&mdash;';
+                        return `
+                        <tr style="border-top: 1px solid rgba(255,255,255,0.06);">
+                            <td style="padding: 5px 6px; white-space: nowrap;">${payslipFormatDateTime(en.timestamp)}</td>
+                            <td style="padding: 5px 6px; color: ${typeColor};">${payslipEscapeHtml(en.type)}</td>
+                            <td style="padding: 5px 6px;">${payslipFormatPeso(en.amount)}</td>
+                            <td style="padding: 5px 6px;">${en.weeklyInstallment === null ? '&mdash;' : payslipFormatPeso(en.weeklyInstallment)}</td>
+                            <td style="padding: 5px 6px; word-break: break-word;">${payslipEscapeHtml(en.note) || '&mdash;'}</td>
+                            <td style="padding: 5px 6px; white-space: nowrap;">${actionButtons}</td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+    }
+
+    async function loadCaHistoryInto(bodyEl, employee, forceRefresh) {
+        if (!bodyEl) return;
+        if (!forceRefresh && caHistoryCache[employee]) {
+            renderCaHistoryInto(bodyEl, caHistoryCache[employee]);
+            return;
+        }
+        bodyEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading history...';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getCashAdvanceHistory', employee })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                bodyEl.innerHTML = `<span style="color: #ef4444;">Error: ${payslipEscapeHtml(result.message) || 'Failed to load history.'}</span>`;
+                return;
+            }
+            caHistoryCache[employee] = result.data || [];
+            renderCaHistoryInto(bodyEl, caHistoryCache[employee]);
+        } catch (error) {
+            console.error('Error loading cash advance history:', error);
+            bodyEl.innerHTML = '<span style="color: #ef4444;">Network error.</span>';
+        }
+    }
+
+    // Expand/collapse a Cash Advance Balances row to reveal that employee's
+    // history. Same "check closest('button') FIRST, bail without toggling"
+    // gotcha as the Client Support Requests / Deliveries List expand rows
+    // -- Edit/Delete buttons inside the expanded history are handled by the
+    // SEPARATE delegated listener below, so this one must not
+    // stopPropagation() or it would silently break that sibling listener.
+    if (cashAdvanceBalancesTableBody) {
+        cashAdvanceBalancesTableBody.addEventListener('click', (e) => {
+            if (e.target.closest('button')) return;
+            const row = e.target.closest('.ca-balance-row');
+            if (!row) return;
+            const targetId = row.getAttribute('data-detail-target');
+            const detailRow = targetId && document.getElementById(targetId);
+            if (!detailRow) return;
+            const icon = row.querySelector('.ca-balance-expand-icon');
+            const nowHidden = detailRow.classList.toggle('hidden');
+            if (icon) icon.className = nowHidden ? 'fas fa-chevron-right ca-balance-expand-icon' : 'fas fa-chevron-down ca-balance-expand-icon';
+            if (!nowHidden) {
+                const employee = row.getAttribute('data-employee');
+                const bodyEl = detailRow.querySelector('.ca-history-body');
+                loadCaHistoryInto(bodyEl, employee, false);
+            }
+        });
+
+        // Edit/Delete buttons inside an expanded history table -- delegated
+        // separately (not inside the toggle listener above) so a button
+        // click never also toggles the row.
+        cashAdvanceBalancesTableBody.addEventListener('click', async (e) => {
+            const editBtn = e.target.closest('.btn-ca-edit');
+            if (editBtn) {
+                const rowIndex = editBtn.getAttribute('data-row-index');
+                const row = editBtn.closest('.ca-history-detail-row');
+                const balanceRow = row && row.previousElementSibling;
+                const employee = balanceRow ? balanceRow.getAttribute('data-employee') : null;
+                const entries = employee ? (caHistoryCache[employee] || []) : [];
+                const entry = entries.find(en => String(en.rowIndex) === String(rowIndex));
+                if (!entry) {
+                    showToast('Entry not found. I-refresh muna.', 'error');
+                    return;
+                }
+                caEditEmployee = employee;
+                if (caEditRowIndexInput) caEditRowIndexInput.value = rowIndex;
+                if (caEditEmployeeLabel) caEditEmployeeLabel.textContent = employee || '';
+                if (caEditAmountInput) caEditAmountInput.value = entry.amount;
+                if (caEditWeeklyInstallmentInput) caEditWeeklyInstallmentInput.value = entry.weeklyInstallment;
+                if (caEditNoteInput) caEditNoteInput.value = entry.note || '';
+                if (caEditStatusMessage) caEditStatusMessage.classList.add('hidden');
+                if (caEditModal) caEditModal.classList.remove('hidden');
+                return;
+            }
+
+            const deleteBtn = e.target.closest('.btn-ca-delete');
+            if (deleteBtn) {
+                const rowIndex = deleteBtn.getAttribute('data-row-index');
+                if (!confirm('Sigurado ka bang tatanggalin ang Cash Advance entry na ito?')) return;
+                const deletedBy = sessionStorage.getItem('loggedInUser') || '';
+                const originalHtml = deleteBtn.innerHTML;
+                deleteBtn.disabled = true;
+                deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin" style="font-size: 0.8em;"></i>';
+                try {
+                    const response = await fetch(SCRIPT_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ action: 'deleteCashAdvance', rowIndex, deletedBy })
+                    });
+                    const result = await response.json();
+                    if (result.status === 'success') {
+                        showToast('Natanggal ang Cash Advance entry.', 'success');
+                        await loadCashAdvanceBalances();
+                    } else {
+                        showToast(result.message || 'Error deleting entry.', 'error');
+                        deleteBtn.disabled = false;
+                        deleteBtn.innerHTML = originalHtml;
+                    }
+                } catch (error) {
+                    console.error('Error deleting cash advance entry:', error);
+                    showToast('Network error. Please try again.', 'error');
+                    deleteBtn.disabled = false;
+                    deleteBtn.innerHTML = originalHtml;
+                }
+            }
+        });
+    }
+
+    if (caEditCloseBtn) {
+        caEditCloseBtn.addEventListener('click', () => {
+            if (caEditModal) caEditModal.classList.add('hidden');
+            caEditEmployee = null;
+        });
+    }
+
+    if (caEditSaveBtn) {
+        caEditSaveBtn.addEventListener('click', async () => {
+            const rowIndex = caEditRowIndexInput ? caEditRowIndexInput.value : '';
+            const amount = caEditAmountInput ? caEditAmountInput.value : '';
+            const weeklyInstallment = caEditWeeklyInstallmentInput ? caEditWeeklyInstallmentInput.value : '';
+            const note = caEditNoteInput ? caEditNoteInput.value.trim() : '';
+            const editedBy = sessionStorage.getItem('loggedInUser') || '';
+
+            if (!amount || Number(amount) <= 0) {
+                showMessage(caEditStatusMessage, 'Ilagay ang tamang Halaga (higit sa 0).', 'error');
+                return;
+            }
+            if (!weeklyInstallment || Number(weeklyInstallment) <= 0) {
+                showMessage(caEditStatusMessage, 'Ilagay ang tamang Weekly Installment (higit sa 0).', 'error');
+                return;
+            }
+
+            const btnText = caEditSaveBtn.querySelector('.btn-text');
+            const spinner = caEditSaveBtn.querySelector('.spinner');
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            caEditSaveBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'editCashAdvance', rowIndex, amount, weeklyInstallment, note, editedBy })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    if (caEditModal) caEditModal.classList.add('hidden');
+                    showToast('Na-update ang Cash Advance entry.', 'success');
+                    caEditEmployee = null;
+                    await loadCashAdvanceBalances();
+                } else {
+                    showMessage(caEditStatusMessage, `Error: ${result.message || 'Hindi na-update ang entry.'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving cash advance edit:', error);
+                showMessage(caEditStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                caEditSaveBtn.disabled = false;
+            }
+        });
     }
 
     if (btnPayslipShowAddCa) {
@@ -11782,7 +12187,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(rec.netPay)}</td>
                     <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.generatedBy)}</td>
                     <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.timestamp)}</td>
-                    <td style="padding: 8px 10px;"><button type="button" class="btn-payslip-reprint" data-record-index="${idx}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Reprint</button></td>
+                    <td style="padding: 8px 10px; white-space: nowrap;">
+                        <button type="button" class="btn-payslip-reprint" data-record-index="${idx}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Reprint</button>
+                        <button type="button" class="btn-payslip-delete" data-record-index="${idx}" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-trash"></i> Delete</button>
+                    </td>
                 </tr>
             `).join('');
             // Stashed on the element itself (not re-fetched) so Reprint can
@@ -11814,6 +12222,61 @@ document.addEventListener('DOMContentLoaded', () => {
                 commission: rec.commission, cashAdvanceRemainingBalance: rec.cashAdvanceRemainingBalance,
                 foodAllowance: rec.foodAllowance, daysPresent: rec.daysPresent, daysAbsent: rec.daysAbsent
             });
+        });
+
+        // 2026-09-04: lets Owner/Payroll delete a fully-saved payslip (e.g.
+        // generated with a wrong Commission/Deduction and only noticed
+        // afterward). If this payslip had a Cash Advance deduction, the
+        // backend (deletePayslip) automatically rolls that back too -- see
+        // the matching comment above deletePayslip in
+        // google_apps_script.js for how it finds the right ledger row to
+        // reverse. Separate listener (not folded into the Reprint one
+        // above) so a Delete click never risks also triggering Reprint's
+        // logic -- same "each button family gets its own delegated
+        // listener" pattern as the Cash Advance Edit/Delete buttons.
+        payslipRecordsTableBody.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.btn-payslip-delete');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-record-index'), 10);
+            const records = payslipRecordsTableBody._records || [];
+            const rec = records[idx];
+            if (!rec) return;
+
+            const hasCashAdvance = Number(rec.cashAdvance) > 0;
+            const confirmMsg = hasCashAdvance
+                ? `Sigurado ka bang tatanggalin ang payslip na ito ni ${rec.employee} (${rec.startDate} - ${rec.endDate})? Kasama nito, ire-rollback ang Cash Advance deduction na ₱${Number(rec.cashAdvance).toFixed(2)} -- babalik ito sa natitirang utang niya.`
+                : `Sigurado ka bang tatanggalin ang payslip na ito ni ${rec.employee} (${rec.startDate} - ${rec.endDate})?`;
+            if (!confirm(confirmMsg)) return;
+
+            const deletedBy = sessionStorage.getItem('loggedInUser') || '';
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'deletePayslip', rowIndex: rec.rowIndex, deletedBy })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast(result.message || 'Natanggal ang payslip.', 'success');
+                    await loadPayrollRecords();
+                    // The rollback (if any) changes the employee's Cash
+                    // Advance balance -- refresh that panel too so it's
+                    // never stale after a delete.
+                    await loadCashAdvanceBalances();
+                } else {
+                    showToast(result.message || 'Error deleting payslip.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
+            } catch (error) {
+                console.error('Error deleting payslip:', error);
+                showToast('Network error. Please try again.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
         });
     }
 
