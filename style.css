@@ -135,6 +135,19 @@ body:not(:has(#login-container:not(.hidden))) .blob {
     animation-play-state: paused;
 }
 
+/* User request (2026-09-06): "alisin na yun blue na design na circle saka
+   yung purple dun sa baba na circle" -- once Main Menu's left column +
+   dashboard cards stretch to use the full available width (see
+   #main-menu-container below), the decorative blobs no longer sit
+   unobtrusively in empty corner gutters -- they show up right behind the
+   header/buttons and cards instead, which looked out of place. Hide them
+   specifically on Main Menu; Login and every other screen keep them
+   (animation-play-state above is unaffected by display:none, so Fix 85's
+   pause/resume behavior for those other screens is unchanged). */
+body:has(#main-menu-container:not(.hidden)) .blob {
+    display: none;
+}
+
 /* ===== Container & Layout ===== */
 .container {
     width: 100%;
@@ -560,21 +573,44 @@ textarea {
            Fix 87: widened again -- the menu-button sidebar shrank from
            ~300px to ~148px, and that freed-up width now goes to the
            dashboard card grid instead, per the user's "mas malaking
-           dashboard" ask. */
-        max-width: 1500px;
+           dashboard" ask.
+           2026-09-06: the 1500px cap removed entirely -- on a wide monitor
+           it left a big empty gutter on both sides ("panget", per the
+           user), with the left column not reaching the left edge and the
+           dashboard cards not reaching the right edge. Main Menu now uses
+           the full available width at every breakpoint (see the
+           .container override below for sub-900px too). */
+        max-width: none;
         display: flex;
         align-items: flex-start;
         gap: 28px;
         padding: 40px 24px;
-        margin: 0 auto;
+        margin: 0;
     }
 
-    /* Left sidebar: logo + welcome + logout */
-    #main-menu-container > header {
+    /* 2026-09-06: Welcome/Logout header + the menu-button sidebar now
+       share ONE sticky left-hand column (header on top, buttons directly
+       underneath -- "ilagay sa ilalim ng welcome ang mga buttons"), so the
+       dashboard grid gets the width that used to go to a 3rd column. */
+    #main-menu-container > .left-column {
         flex: 0 0 var(--sidebar-width);
         width: var(--sidebar-width);
         position: sticky;
         top: 40px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        /* Welcome/Logout + all menu buttons can together be taller than a
+           short desktop viewport (e.g. a 700px-tall window). Cap the whole
+           sticky column to the visible height and let the button list
+           scroll internally (see .sidebar-menu below) so every button
+           stays reachable, instead of the lower buttons getting stuck just
+           past the bottom edge with no way to scroll them into view. */
+        max-height: calc(100vh - 80px);
+    }
+
+    #main-menu-container > .left-column > header {
+        flex-shrink: 0;
         text-align: left;
         margin-bottom: 0;
         background: rgba(30, 41, 59, 0.7);
@@ -586,45 +622,38 @@ textarea {
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
     }
 
-    #main-menu-container > header h1 {
+    #main-menu-container > .left-column > header h1 {
         font-size: 1.7rem;
     }
 
-    #main-menu-container > header p {
+    #main-menu-container > .left-column > header p {
         margin-top: 4px;
     }
 
-    #main-menu-container > header .logout-btn {
+    #main-menu-container > .left-column > header .logout-btn {
         display: block;
         width: 100%;
         margin-top: 20px;
         text-align: center;
     }
 
-    /* Fix 87: menu buttons now live in their own narrow left-hand sidebar
-       (icon + small always-visible label, single column) with ALL 4
-       dashboard cards filling the remaining width in a responsive grid,
-       instead of the old split between a "mid-col" (buttons + 2 cards) and
-       a separate "menu-dashboard-col" (2 more cards). */
-    #main-menu-container > .menu-dashboard-layout {
-        flex: 1 1 auto;
-        display: flex;
-        flex-direction: row;
-        align-items: flex-start;
-        gap: 22px;
-        min-width: 0;
-    }
-
+    /* Fix 87 (2026-09-06: moved underneath the header, into the same
+       left column): menu buttons keep their compact icon+label style,
+       with ALL 4 dashboard cards still filling the remaining width in a
+       responsive grid, instead of the old 3-column split. */
     #main-menu-container .sidebar-menu {
-        flex: 0 0 148px;
-        width: 148px;
+        width: 100%;
         display: flex;
         flex-direction: column;
         gap: 6px;
         align-content: start;
         padding: 4px;
-        position: sticky;
-        top: 40px;
+        /* Scrolls internally, independent of the header above it, once the
+           button list is taller than the left column's capped height (see
+           .left-column's max-height) -- keeps every button reachable on a
+           short viewport instead of some sitting past the visible edge. */
+        min-height: 0;
+        overflow-y: auto;
     }
 
     #main-menu-container .sidebar-menu .menu-action-btn {
@@ -633,6 +662,10 @@ textarea {
         gap: 8px;
         border-radius: 10px;
         line-height: 1.2;
+        /* Keep every button at its natural height when the list is taller
+           than .sidebar-menu's available space -- without this, flexbox
+           would squish each button instead of just scrolling past them. */
+        flex-shrink: 0;
     }
 
     #main-menu-container .sidebar-menu .menu-action-btn .icon {
@@ -643,14 +676,49 @@ textarea {
 }
 
 /* =========================================================
-   Main Menu layout (Fix 87) -- sidebar of menu buttons + a
-   full-width dashboard card grid. Mobile/base: just a full-width
-   stack (sidebar's buttons render full-size, one per row, same as
-   .main-menu always has; the dashboard grid below is a single
-   column) -- the narrow-sidebar-plus-grid layout above only applies
-   at the 900px+ breakpoint.
+   Main Menu layout (Fix 87; 2026-09-06 update: header + the menu
+   button sidebar merged into one left column) -- Welcome/Logout +
+   menu buttons in a single left-hand column, dashboard cards fill
+   the rest. Mobile/base: just a full-width stack (buttons render
+   full-size, one per row, same as .main-menu always has; the
+   dashboard grid below is a single column) -- the sticky
+   left-column-plus-grid layout above only applies at the 900px+
+   breakpoint.
    ========================================================= */
-.menu-dashboard-layout {
+#main-menu-container {
+    /* 2026-09-06: override .container's generic 500px max-width -- Main
+       Menu should use the full available width at every breakpoint (not
+       just 900px+), so the left column reaches the left edge and the
+       dashboard cards reach the right edge instead of both sitting in a
+       narrow centered box with dead space on both sides. Applies
+       unconditionally (mobile AND desktop) -- unlike flex-direction right
+       below, there's no competing desktop declaration for max-width, so
+       this one's safe to leave unscoped. */
+    max-width: none;
+}
+
+/* 2026-09-06 bug fix: this used to be an unscoped "#main-menu-container {
+   display:flex; flex-direction:column }" rule with no max-width guard.
+   Because it's the exact same selector (equal specificity) as the 900px+
+   desktop rule above -- which never explicitly sets flex-direction back
+   to "row", just relying on the flex default -- and this rule sits LATER
+   in the file, its flex-direction:column was silently winning at EVERY
+   width, including desktop: the left column and dashboard cards were
+   actually stacking vertically instead of sitting side by side, no
+   matter how wide the window was. That's the real cause of the "bumaba
+   ang mga dashboard, panget" report -- not just a spacing/blob issue.
+   Scoping this to sub-900px only (matching its actual intent: mobile
+   stacking) fixes it -- the desktop rule above now applies cleanly at
+   900px+ again. */
+@media (max-width: 899px) {
+    #main-menu-container {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+    }
+}
+
+.left-column {
     display: flex;
     flex-direction: column;
     gap: 18px;
@@ -1002,6 +1070,16 @@ textarea {
 }
 
 .status-pill.overdue {
+    background: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+/* 2026-09-06 dashboard card: Purchase Requests -- Rejected is the one bad-
+   news status here (e.g. no stock), same red as .pending/.overdue above but
+   its own dedicated class name for clarity (neither existing name fits
+   "Rejected" semantically). */
+.status-pill.rejected {
     background: rgba(239, 68, 68, 0.15);
     color: #f87171;
     border: 1px solid rgba(239, 68, 68, 0.4);

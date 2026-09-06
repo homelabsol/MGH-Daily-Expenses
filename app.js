@@ -321,11 +321,25 @@ document.addEventListener('DOMContentLoaded', () => {
             menuManualQuotationBtnApp.style.display = isAllowedQuotationStore ? '' : 'none';
         }
 
+        // Hide/Show the "Payroll" hub button (2026-09-06) -- same Owner/Payroll
+        // gate as the 3 sub-buttons now living inside it (Holiday Pay/Payslip/
+        // Rider Payslip, all gated identically right below). Gating the hub
+        // itself is technically redundant with each sub-page's own gate, but
+        // kept anyway as defense-in-depth (same reasoning the backend already
+        // applies by independently re-checking role on every write).
+        const menuPayrollBtnApp = document.getElementById('menu-payroll-btn');
+        if (menuPayrollBtnApp) {
+            const isAllowedPayrollHubRole = (role === 'Owner' || role === 'Payroll');
+            menuPayrollBtnApp.style.display = isAllowedPayrollHubRole ? '' : 'none';
+        }
+
         // Hide/Show Holiday Pay based on Role (Fix 73, Payroll Phase 3) -- ONLY
         // Owner or the new Payroll role should ever see this button. The user
         // explicitly confirmed this new role gates ONLY Holiday Pay -- Employee
         // Rates stays Owner/Manager, OT Approvals stays Supervisor/Manager/Owner,
-        // both unchanged by this.
+        // both unchanged by this. (2026-09-06: this button now lives inside the
+        // "Payroll" hub container instead of the top-level sidebar, but its
+        // role-gating logic and target element are completely unchanged.)
         const menuHolidayPayBtnApp = document.getElementById('menu-holiday-pay-btn');
         if (menuHolidayPayBtnApp) {
             const isAllowedHolidayPayRole = (role === 'Owner' || role === 'Payroll');
@@ -340,6 +354,69 @@ document.addEventListener('DOMContentLoaded', () => {
             menuPayslipBtnApp.style.display = isAllowedPayslipRole ? '' : 'none';
         }
 
+        // Hide/Show Rider Payslip based on Role (2026-09-06) -- same gate as
+        // Payslip: Owner or Payroll only (they generate a rider's payslip,
+        // not the Rider themselves).
+        const menuRiderPayslipBtnApp = document.getElementById('menu-rider-payslip-btn');
+        if (menuRiderPayslipBtnApp) {
+            const isAllowedRiderPayslipRole = (role === 'Owner' || role === 'Payroll');
+            menuRiderPayslipBtnApp.style.display = isAllowedRiderPayslipRole ? '' : 'none';
+        }
+
+        // Hide/Show Riders Payroll based on Role (2026-09-05, user request) --
+        // originally Owner/Payroll only ("ang meron lang access dyan Owner at
+        // Payroll"). 2026-09-05 follow-up #5: widened to also include the new
+        // "Rider" role (riders logging their own deliveries -- the whole
+        // point of "i o-open ko sa everyone") and "Manager" (so Manager can
+        // actually reach the page far enough to use the "View Delivery
+        // Records" button below, which Manager was explicitly granted
+        // access to). Saving is separately re-checked server-side in
+        // saveRidersPayroll via isRidersPayrollSaveAllowed (Owner/Payroll/
+        // Rider only, NOT Manager) -- so a Manager who opens this page can
+        // view records but a save attempt is still rejected, same
+        // "never trust the client alone" principle as everywhere else in
+        // this feature.
+        const menuRidersPayrollBtnApp = document.getElementById('menu-riders-payroll-btn');
+        if (menuRidersPayrollBtnApp) {
+            const isAllowedRidersPayrollRole = (role === 'Owner' || role === 'Payroll' || role === 'Rider' || role === 'Manager');
+            menuRidersPayrollBtnApp.style.display = isAllowedRidersPayrollRole ? '' : 'none';
+        }
+
+        // "View Delivery Records" button (2026-09-05 follow-up #5): kept as
+        // its own explicit check per the user's own framing of this as a
+        // separate permission -- "gagawa ako ng role na Rider role para
+        // sila lang ang meron access dun saka manager and owner", then
+        // confirmed via AskUserQuestion that Payroll keeps access too
+        // (nobody loses what they already had, Rider is purely additive).
+        // Currently the same 4 roles as the page-level gate above, but kept
+        // separate in case that ever needs to diverge (e.g. a future role
+        // gets page access to save without seeing every rider's records).
+        const rpViewRecordsBtnApp = document.getElementById('btn-riders-payroll-view-records');
+        if (rpViewRecordsBtnApp) {
+            const isAllowedRidersPayrollViewRole = (role === 'Rider' || role === 'Manager' || role === 'Owner' || role === 'Payroll');
+            rpViewRecordsBtnApp.style.display = isAllowedRidersPayrollViewRole ? '' : 'none';
+        }
+
+        // 2026-09-05 follow-up #10: "Status ng Mga Isinumite Ko" -- Rider-only,
+        // since only a Rider's own saves go through the approval queue at
+        // all (Owner/Payroll saves are direct, nothing to check status on).
+        const rpMySubmissionsWrapApp = document.getElementById('btn-riders-payroll-my-submissions-wrap');
+        if (rpMySubmissionsWrapApp) {
+            rpMySubmissionsWrapApp.style.display = (role === 'Rider') ? '' : 'none';
+        }
+
+        // Delivery Approval (2026-09-05 follow-up #10) -- Owner/Manager only,
+        // per the user's own words: "ako lang at si manager ang makaka kita
+        // at access". Also automatically covered by the Rider sidebar
+        // lockdown sweep further below (Rider never sees ANY sidebar button
+        // except Riders Payroll), but this is the actual gate that governs
+        // every other role (Payroll, Technician, etc. must not see it either).
+        const menuDeliveryApprovalBtnApp = document.getElementById('menu-delivery-approval-btn');
+        if (menuDeliveryApprovalBtnApp) {
+            const isAllowedDeliveryApprovalRole = (role === 'Owner' || role === 'Manager');
+            menuDeliveryApprovalBtnApp.style.display = isAllowedDeliveryApprovalRole ? '' : 'none';
+        }
+
         // Hide/Show Sheet Health Check based on Role (Fix 35) -- per the user's
         // explicit request, ONLY the Owner role should ever see this button;
         // everyone else (Manager, Supervisor, RMA Admin, Technician, etc.) must
@@ -349,12 +426,49 @@ document.addEventListener('DOMContentLoaded', () => {
             menuMarvsPcSheetHealthBtnApp.style.display = (role === 'Owner') ? '' : 'none';
         }
 
+        // 2026-09-05 follow-up #9: "kapag rider role dapat wala silang access
+        // sa lahat ng buttons dyan pati dashboard wala dapat sila access...
+        // except dun sa riders payroll" -- the Rider role must be locked
+        // down to ONLY the Riders Payroll button; nothing else on the Main
+        // Menu. Several sidebar buttons above (Admin, MarvsPCStufz, Gaming
+        // Hub, Reports, Warranty Records, Purchased Items, Attendance, OT
+        // Requests) have NO individual role gate at all -- they default to
+        // visible for every role, which is exactly the gap the user was
+        // worried about. Rather than bolt a Rider exception onto each of
+        // those individually (easy to forget one, and easy to forget again
+        // the next time a brand-new button is added with no gate of its
+        // own), this is one blanket sweep over every button in the sidebar,
+        // run LAST so it always wins over anything set above regardless of
+        // order: hide everything, then re-show only Riders Payroll. This
+        // also means any FUTURE sidebar button that ships with no gate of
+        // its own is automatically hidden from Rider too, not just today's
+        // buttons.
+        // 2026-09-06 follow-up #2: "My Payslip" is a deliberate, narrow
+        // exception to this lockdown -- confirmed via AskUserQuestion --
+        // so a Rider account can still look up their OWN past Rider
+        // Payslips. Every other sidebar button remains hidden for Rider
+        // exactly as before.
+        if (role === 'Rider') {
+            document.querySelectorAll('#sidebar-menu > button').forEach(function(btn) {
+                btn.style.display = (btn.id === 'menu-riders-payroll-btn' || btn.id === 'menu-my-payslip-btn') ? '' : 'none';
+            });
+        }
+
         // Fix 75: Main Menu Dashboard -- Gaming Hub foot-traffic + MarvsPCStufz
         // incomplete-parts-releasing insights. Loaded every time the menu
         // screen is shown (same "refresh on showApp()" timing as everything
         // else above) so it reflects whatever's been logged since the last
-        // login/menu visit.
-        loadMenuDashboard();
+        // login/menu visit. A Rider account gets NONE of this (see the
+        // lockdown right above) -- the dashboard grid itself is hidden and
+        // its data is never even fetched, no point loading numbers that
+        // will never be shown.
+        const dashboardGridEl = document.getElementById('dashboard-grid');
+        if (role === 'Rider') {
+            if (dashboardGridEl) dashboardGridEl.style.display = 'none';
+        } else {
+            if (dashboardGridEl) dashboardGridEl.style.display = '';
+            loadMenuDashboard();
+        }
 
         // Fix 78: auto-refresh the Main Menu Dashboard every 3 minutes so it
         // doesn't go stale if another user edits the Daily Survey / Customer
@@ -379,11 +493,30 @@ document.addEventListener('DOMContentLoaded', () => {
         // login (so an already-open urgent request is surfaced right away,
         // not just ones that arrive later), then every
         // CS_URGENT_ALERT_POLL_MS afterward.
-        pollUrgentClientSupportAlerts();
-        if (csUrgentAlertPollInterval) {
+        //
+        // 2026-09-05 follow-up #12: "kapag naka rider role dapat walang
+        // popup sa kanya yung client support" -- a Rider account gets NONE
+        // of this, matching the follow-up #9 lockdown (Rider is locked to
+        // ONLY Riders Payroll, nothing else on the Main Menu or Dashboard).
+        // This poll timer/popup is a separate mechanism from the sidebar
+        // sweep above (it isn't a sidebar button -- it fires from any page
+        // via its own interval), so it needs its own explicit Rider
+        // exclusion here; simply never starting it for Rider is enough,
+        // since there's nothing else that would trigger it.
+        if (role !== 'Rider') {
+            pollUrgentClientSupportAlerts();
+            if (csUrgentAlertPollInterval) {
+                clearInterval(csUrgentAlertPollInterval);
+            }
+            csUrgentAlertPollInterval = setInterval(pollUrgentClientSupportAlerts, CS_URGENT_ALERT_POLL_MS);
+        } else if (csUrgentAlertPollInterval) {
+            // Defensive: if a poll timer somehow survived from a PREVIOUS
+            // non-Rider login in this same browser tab/session, make sure
+            // logging in as Rider actually stops it rather than leaving it
+            // running in the background.
             clearInterval(csUrgentAlertPollInterval);
+            csUrgentAlertPollInterval = null;
         }
-        csUrgentAlertPollInterval = setInterval(pollUrgentClientSupportAlerts, CS_URGENT_ALERT_POLL_MS);
     }
 
     // ===== Main Menu Dashboard (Fix 75) =====
@@ -458,6 +591,19 @@ document.addEventListener('DOMContentLoaded', () => {
             clientSupportCard.style.display = isAllowedMarvsStore ? '' : 'none';
         }
 
+        // User request (2026-09-06) dashboard card: Purchase Requests --
+        // data is still fetched behind the same store gate as the cards
+        // above (see loadMenuDashboardCombined), but VISIBILITY additionally
+        // requires the same role gate as the "Purchased Items" menu button
+        // itself (RMA Admin/Manager/Owner only) -- this is procurement data,
+        // not something every store employee should see on their dashboard.
+        const purchaseRequestsCard = document.getElementById('dash-purchase-requests-card');
+        if (purchaseRequestsCard) {
+            const currentRole = sessionStorage.getItem('userRole');
+            const isAllowedPurchaseRole = (currentRole === 'RMA Admin' || currentRole === 'Manager' || currentRole === 'Owner');
+            purchaseRequestsCard.style.display = (isAllowedMarvsStore && isAllowedPurchaseRole) ? '' : 'none';
+        }
+
         loadMenuDashboardCombined(isAllowedMarvsStore);
     }
 
@@ -483,6 +629,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const trafficInsightEl = document.getElementById('dash-traffic-insight');
         const csListEl = document.getElementById('dash-cs-list');
         const csInsightEl = document.getElementById('dash-cs-insight');
+        const prListEl = document.getElementById('dash-pr-list');
 
         if (includeMarvsPcData) {
             if (marvsListEl) marvsListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
@@ -491,6 +638,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (warrantyInsightEl) warrantyInsightEl.style.display = 'none';
             if (csListEl) csListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
             if (csInsightEl) csInsightEl.style.display = 'none';
+            if (prListEl) prListEl.innerHTML = '<div class="dash-empty">Loading...</div>';
         }
 
         const end = new Date();
@@ -512,6 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderReleaseStatusAndDeliveryDashboards(data.customerInfo || []);
                 renderWarrantyAgingDashboard(data.warranty || []);
                 renderClientSupportDashboard(data.clientSupport || []);
+                renderPurchaseRequestsDashboard(data.purchaseRequests || []);
             }
         } catch (error) {
             console.error('Error loading Main Menu Dashboard:', error);
@@ -521,6 +670,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (deliveryListEl) deliveryListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
                 if (warrantyListEl) warrantyListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
                 if (csListEl) csListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+                if (prListEl) prListEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
             }
         }
     }
@@ -690,9 +840,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let dashWarrantySortDesc = false; // false = oldest-first (existing default)
     let dashDeliverySortDesc = false; // false = soonest-due-first (existing default)
     let dashClientSupportSortDesc = false; // false = oldest-first within each urgency group (existing default)
+    let dashPurchaseRequestsSortDesc = false; // false = oldest-first (existing default, matches the other cards)
     let lastDashWarrantyRows = [];
     let lastDashDeliveryAndReleaseRows = [];
     let lastDashClientSupportRows = [];
+    let lastDashPurchaseRequestsRows = [];
 
     function updateDashSortIcon(iconId, sortDesc) {
         const iconEl = document.getElementById(iconId);
@@ -1135,6 +1287,96 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // User request (2026-09-06) dashboard card: Purchase Requests -- rows
+    // are the RAW "Purchased Order" sheet rows (fetched via the combined
+    // getMenuDashboardData action, same convention as customerInfo/
+    // warranty/clientSupport above), column order per PURCHASED ORDER's own
+    // header array in google_apps_script.js: 0 Date Requested,
+    // 1 Admin Requested, 2 Item Description, 3 Qty, 4 Status (plus a
+    // trailing sheet row index appended by fetchExpenseRecordsRows, unused
+    // here since this card is read-only). "Still needs attention" =
+    // Pending, Partially Purchased, or Rejected -- Completed is done,
+    // excluded, same convention as Client Support's Open/In Progress
+    // (Resolved excluded).
+    function renderPurchaseRequestsDashboard(rows) {
+        lastDashPurchaseRequestsRows = rows || [];
+        const listEl = document.getElementById('dash-pr-list');
+        const pendingCountEl = document.getElementById('dash-pr-pending-count');
+        const partialCountEl = document.getElementById('dash-pr-partial-count');
+        const rejectedCountEl = document.getElementById('dash-pr-rejected-count');
+        if (!listEl) return;
+
+        try {
+            const active = rows
+                .map(row => ({
+                    date: (row[0] || '').toString().split(/[T ]/)[0],
+                    requestedBy: row[1] || '(unknown)',
+                    item: row[2] || 'Item not specified',
+                    qty: row[3] || '',
+                    status: (row[4] || 'Pending').toString().trim() || 'Pending'
+                }))
+                .filter(r => r.status !== 'Completed');
+
+            const pendingCount = active.filter(r => r.status === 'Pending').length;
+            const partialCount = active.filter(r => r.status === 'Partially Purchased').length;
+            const rejectedCount = active.filter(r => r.status === 'Rejected').length;
+            if (pendingCountEl) pendingCountEl.textContent = pendingCount;
+            if (partialCountEl) partialCountEl.textContent = partialCount;
+            if (rejectedCountEl) rejectedCountEl.textContent = rejectedCount;
+
+            // Oldest-first by default (longest-waiting request first), same
+            // convention as the other cards' default sort. The
+            // dash-pr-sort-btn toggle flips this to newest-first.
+            active.sort((a, b) => {
+                const diff = (a.date || '').localeCompare(b.date || '');
+                return dashPurchaseRequestsSortDesc ? -diff : diff;
+            });
+            updateDashSortIcon('dash-pr-sort-icon', dashPurchaseRequestsSortDesc);
+
+            if (active.length === 0) {
+                listEl.innerHTML = '<div class="dash-empty">🎉 Walang naghihintay na purchase request.</div>';
+                return;
+            }
+
+            listEl.innerHTML = '';
+            active.forEach(r => {
+                const rowEl = document.createElement('div');
+                rowEl.className = 'cust-row-compact';
+
+                const whoEl = document.createElement('div');
+                whoEl.className = 'ccr-who';
+                const nameEl = document.createElement('span');
+                nameEl.className = 'ccr-name';
+                nameEl.textContent = r.item;
+                const metaEl = document.createElement('span');
+                metaEl.className = 'ccr-meta';
+                const qtyPhrase = r.qty ? `Qty ${r.qty} · ` : '';
+                metaEl.textContent = `${qtyPhrase}${r.requestedBy}${r.date ? ' · ' + r.date : ''}`;
+                whoEl.appendChild(nameEl);
+                whoEl.appendChild(metaEl);
+
+                const pillEl = document.createElement('span');
+                if (r.status === 'Rejected') {
+                    pillEl.className = 'status-pill rejected';
+                    pillEl.textContent = 'Rejected';
+                } else if (r.status === 'Partially Purchased') {
+                    pillEl.className = 'status-pill partial';
+                    pillEl.textContent = 'Partially Purchased';
+                } else {
+                    pillEl.className = 'status-pill mid';
+                    pillEl.textContent = 'Pending';
+                }
+
+                rowEl.appendChild(whoEl);
+                rowEl.appendChild(pillEl);
+                listEl.appendChild(rowEl);
+            });
+        } catch (error) {
+            console.error('Error loading purchase requests dashboard:', error);
+            listEl.innerHTML = '<div class="dash-empty">Unable to load data.</div>';
+        }
+    }
+
     function showLogin() {
         hideAllContainers();
         loginContainer.classList.remove('hidden');
@@ -1173,6 +1415,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Navigation Listeners
+    // "Payroll" hub button (2026-09-06) -- same plain hub-navigation pattern
+    // as "MarvsPCStufz" below: just hides everything and reveals the hub
+    // container, which itself holds the (unchanged) Holiday Pay/Payslip/
+    // Rider Payslip buttons -- their own click handlers/logic are untouched.
+    const menuPayrollBtn = document.getElementById('menu-payroll-btn');
+    if (menuPayrollBtn) {
+        menuPayrollBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const payrollHubContainer = document.getElementById('payroll-menu-container');
+            if (payrollHubContainer) payrollHubContainer.classList.remove('hidden');
+        });
+    }
+
+    // "My Payslip" (2026-09-06 follow-up #2): visible to every logged-in
+    // role, opens a plain container (not a hub submenu -- this is its own
+    // standalone read-only page), then loads the account's own records.
+    // loadMyPayrollRecords() is defined further below alongside the rest of
+    // the Payslip/Rider Payslip logic -- safe to call from here since it's
+    // a hoisted function declaration in this same scope.
+    const menuMyPayslipBtn = document.getElementById('menu-my-payslip-btn');
+    if (menuMyPayslipBtn) {
+        menuMyPayslipBtn.addEventListener('click', () => {
+            hideAllContainers();
+            const myPayslipContainer = document.getElementById('my-payslip-container');
+            if (myPayslipContainer) myPayslipContainer.classList.remove('hidden');
+            loadMyPayrollRecords();
+        });
+    }
+
     const menuMarvsPcBtn = document.getElementById('menu-marvspc-btn');
     if (menuMarvsPcBtn) {
         menuMarvsPcBtn.addEventListener('click', () => {
@@ -4389,6 +4660,13 @@ document.addEventListener('DOMContentLoaded', () => {
         dashClientSupportSortBtn.addEventListener('click', () => {
             dashClientSupportSortDesc = !dashClientSupportSortDesc;
             renderClientSupportDashboard(lastDashClientSupportRows);
+        });
+    }
+    const dashPurchaseRequestsSortBtn = document.getElementById('dash-pr-sort-btn');
+    if (dashPurchaseRequestsSortBtn) {
+        dashPurchaseRequestsSortBtn.addEventListener('click', () => {
+            dashPurchaseRequestsSortDesc = !dashPurchaseRequestsSortDesc;
+            renderPurchaseRequestsDashboard(lastDashPurchaseRequestsRows);
         });
     }
 
@@ -10679,9 +10957,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // EVERY logged-in role (that part of the 2026-09-03 fix was NOT
     // reverted) -- this function is only consulted for the Claim/Mark
     // Resolved buttons below now.
+    //
+    // 2026-09-06 follow-up: the user asked to also allow Supervisor --
+    // added here to match the backend's isClaimResolveAllowedAccount.
+    // The separate, narrower "Edit" gate (csIsEditAllowedRole below,
+    // Manager/Owner/RMA Admin only) was NOT touched -- the user only asked
+    // about Claim access, not the stricter Edit-a-non-final-row path.
     function csIsClaimResolveAllowedRole() {
         const role = sessionStorage.getItem('userRole') || '';
-        return role === 'Technician' || role === 'Manager' || role === 'Owner' || role === 'RMA Admin';
+        return role === 'Technician' || role === 'Manager' || role === 'Owner' || role === 'RMA Admin' || role === 'Supervisor';
     }
 
     // Fix 88 follow-up (2026-09-03, fourth round): editing a "Sent to
@@ -11562,16 +11846,29 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${durationLabel} (${payslipFormatPeso(d.lateDeduction)})`;
     }
 
+    // 2026-09-06: Riders can now also have a Cash Advance recorded against
+    // them (same ledger, "Cash Advance lang" -- confirmed via
+    // AskUserQuestion for Rider Payslip) -- included here so they show up
+    // as selectable in the SAME "+ Bagong Cash Advance" dropdown as
+    // employees, instead of needing a separate widget. Note: addCashAdvance
+    // still requires an existing Account row whose Name exactly matches
+    // one of these (same established rule as the rest of the Riders
+    // Payroll feature) -- if a rider has no login account yet, adding a
+    // Cash Advance for them fails server-side with "Employee account not
+    // found" until one is created.
+    const RIDER_PAYSLIP_RIDER_NAMES = ['Zaldy Paraiso', 'Mark Briones'];
+
     function renderCaEmployeeOptions() {
         if (!caEmployeeSelect) return;
         const previousValue = caEmployeeSelect.value;
-        if (payslipEmployeesWithRates.length === 0) {
+        const names = payslipEmployeesWithRates.map(emp => emp.name).concat(RIDER_PAYSLIP_RIDER_NAMES);
+        if (names.length === 0) {
             caEmployeeSelect.innerHTML = '<option value="" disabled selected>Walang employee na may Daily Rate</option>';
             return;
         }
         caEmployeeSelect.innerHTML = '<option value="" disabled selected>Select Employee</option>' +
-            payslipEmployeesWithRates.map(emp => `<option value="${payslipEscapeHtml(emp.name)}">${payslipEscapeHtml(emp.name)}</option>`).join('');
-        if (previousValue && payslipEmployeesWithRates.some(emp => emp.name === previousValue)) {
+            names.map(name => `<option value="${payslipEscapeHtml(name)}">${payslipEscapeHtml(name)}</option>`).join('');
+        if (previousValue && names.includes(previousValue)) {
             caEmployeeSelect.value = previousValue;
         }
     }
@@ -12049,6 +12346,845 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Riders Payroll (2026-09-05 Phase 1: button/placeholder. Phase 2, same
+    // day: the real form + save + records table below, per the user's
+    // detailed spec after reviewing an interactive HTML mockup). The Back
+    // button is handled automatically by the generic backBtns/.back-btn
+    // listener above (data-target="main-menu-container"), same as every
+    // other page.
+    const menuRidersPayrollBtn = document.getElementById('menu-riders-payroll-btn');
+    const ridersPayrollContainer = document.getElementById('riders-payroll-container');
+    const ridersPayrollForm = document.getElementById('riders-payroll-form');
+    const rpDeliveryDateInput = document.getElementById('rp-delivery-date');
+    const rpRiderNameSelect = document.getElementById('rp-rider-name');
+    const rpDeliveryMethodSelect = document.getElementById('rp-delivery-method');
+    const rpTripTypeSelect = document.getElementById('rp-trip-type');
+    const rpCustomerNameWrap = document.getElementById('rp-customer-name-wrap');
+    const rpCustomerNameInput = document.getElementById('rp-customer-name');
+    const rpDistributorNameWrap = document.getElementById('rp-distributor-name-wrap');
+    const rpDistributorNameInput = document.getElementById('rp-distributor-name');
+    const rpSiWrap = document.getElementById('rp-si-wrap');
+    const rpSiRows = document.getElementById('rp-si-rows');
+    const rpBtnAddSi = document.getElementById('rp-btn-add-si');
+    const rpShippingFeeInput = document.getElementById('rp-shipping-fee');
+    const rpServicesFrame = document.getElementById('rp-services-frame');
+    const rpServicesBody = document.getElementById('rp-services-body');
+    const rpBtnAddService = document.getElementById('rp-btn-add-service');
+    const rpServicesTotalEl = document.getElementById('rp-services-total');
+    const rpGrandTotalEl = document.getElementById('rp-grand-total');
+    const rpStatusMessage = document.getElementById('rp-status-message');
+    const rpSaveBtn = document.getElementById('rp-save-btn');
+    const btnRidersPayrollViewRecords = document.getElementById('btn-riders-payroll-view-records');
+    // 2026-09-05 follow-up #6: "ang gusto ko kasi magkaroon ng view delivery
+    // button tapos kapag pinindot yun magkakaroon ng new form tapos dun
+    // lahat ng delivery makikita naka list view tapos pwede mag filter ng
+    // date then rider name din" -- the records table now lives on its own
+    // separate page/container, not collapsed inline on the Riders Payroll
+    // form anymore (that was the prior follow-up's approach).
+    const ridersPayrollDeliveryRecordsContainer = document.getElementById('riders-payroll-delivery-records-container');
+    const ridersPayrollRecordsTableBody = document.getElementById('riders-payroll-records-table-body');
+    const btnRidersPayrollRefresh = document.getElementById('btn-riders-payroll-refresh');
+    const rpRecordsFilterDateFrom = document.getElementById('rp-records-filter-date-from');
+    const rpRecordsFilterDateTo = document.getElementById('rp-records-filter-date-to');
+    const rpRecordsFilterRider = document.getElementById('rp-records-filter-rider');
+    const rpRecordsClearFiltersBtn = document.getElementById('rp-records-clear-filters-btn');
+    // Raw, unfiltered records from the last fetch -- filters below re-render
+    // from this cache instead of re-fetching, same "filter/sort without a
+    // fresh server round trip" pattern as other list pages in this app
+    // (e.g. the Main Menu Dashboard's date-sort toggle).
+    let rpAllRecords = [];
+
+    // 2026-09-05 follow-up #10 (Delivery Approval): a Rider's own "Status ng
+    // Mga Isinumite Ko" view (Pending/Approved/Rejected, own submissions
+    // only) and the Owner/Manager-only Delivery Approval queue itself.
+    const btnRidersPayrollMySubmissions = document.getElementById('btn-riders-payroll-my-submissions');
+    const ridersPayrollMySubmissionsContainer = document.getElementById('riders-payroll-my-submissions-container');
+    const rpMySubmissionsTableBody = document.getElementById('rp-my-submissions-table-body');
+    const btnRpMySubmissionsRefresh = document.getElementById('btn-rp-my-submissions-refresh');
+
+    const menuDeliveryApprovalBtn = document.getElementById('menu-delivery-approval-btn');
+    const deliveryApprovalContainer = document.getElementById('delivery-approval-container');
+    const deliveryApprovalTableBody = document.getElementById('delivery-approval-table-body');
+    const daStatusFilter = document.getElementById('da-status-filter');
+    const btnDeliveryApprovalRefresh = document.getElementById('btn-delivery-approval-refresh');
+    const daApproveModalOverlay = document.getElementById('da-approve-modal-overlay');
+    const daApproveModalSummary = document.getElementById('da-approve-modal-summary');
+    const daApproveExpensesTag = document.getElementById('da-approve-expenses-tag');
+    const daApproveNotes = document.getElementById('da-approve-notes');
+    const daApproveError = document.getElementById('da-approve-error');
+    const daApproveCancelBtn = document.getElementById('da-approve-cancel-btn');
+    const daApproveConfirmBtn = document.getElementById('da-approve-confirm-btn');
+    const daRejectModalOverlay = document.getElementById('da-reject-modal-overlay');
+    const daRejectModalSummary = document.getElementById('da-reject-modal-summary');
+    const daRejectNotes = document.getElementById('da-reject-notes');
+    const daRejectError = document.getElementById('da-reject-error');
+    const daRejectCancelBtn = document.getElementById('da-reject-cancel-btn');
+    const daRejectConfirmBtn = document.getElementById('da-reject-confirm-btn');
+    // Cached list from the last Delivery Approval fetch, same
+    // filter-over-cache pattern as rpAllRecords above; and the pending row
+    // currently open in the Approve/Reject modal (set when a row's button
+    // is clicked, read when Confirm is clicked).
+    let daAllSubmissions = [];
+    let daActiveReviewRowIndex = null;
+
+    // 2026-09-05 follow-up: "minsan hindi lang naman delivery sa customer
+    // minsan nagpapa pickup din naman ako sa distributor... pwede ba tayo
+    // mag lagay ng drop down button kapag ang pickup sa distributor or sa
+    // customer as backjob din". Confirmed via AskUserQuestion: a Backjob
+    // (redo delivery) still needs Customer Name, same as a normal Customer
+    // trip -- ONLY Distributor swaps in Distributor Name instead. Whichever
+    // field is hidden gets cleared, same "don't even offer the chance to
+    // send the wrong field" principle as rpUpdateServicesVisibility below.
+    // 2026-09-05 follow-up #3: "kapag pickup sa distributor dapat hindi na
+    // lilitaw yung sale invoice kasi pickup sa distributor yun" -- a
+    // Distributor pickup has no Sales Invoice # at all, so that whole
+    // section hides too, same clear-on-hide treatment as Customer/
+    // Distributor Name above (and Services on Rider Name change).
+    function rpUpdateTripType() {
+        const tripType = rpTripTypeSelect ? rpTripTypeSelect.value : 'Customer';
+        const showDistributor = tripType === 'Distributor';
+        if (rpCustomerNameWrap) rpCustomerNameWrap.classList.toggle('hidden', showDistributor);
+        if (rpDistributorNameWrap) rpDistributorNameWrap.classList.toggle('hidden', !showDistributor);
+        if (showDistributor && rpCustomerNameInput) rpCustomerNameInput.value = '';
+        if (!showDistributor && rpDistributorNameInput) rpDistributorNameInput.value = '';
+
+        const showSi = !showDistributor;
+        if (rpSiWrap) rpSiWrap.classList.toggle('hidden', !showSi);
+        if (!showSi && rpSiRows) rpSiRows.innerHTML = '';
+        if (showSi && rpSiRows && rpSiRows.children.length === 0) rpAddSiRow();
+    }
+
+    // 2026-09-05 follow-up #2: "dapat kapag ang trip type ay pickup sa
+    // distributor dapat magiging drop down button sya tapos lalabas lahat
+    // nung distributor galing dun sa Supplier Name tab column A" -- reuses
+    // the existing "Supplier Name" master list via the same
+    // `getItemSuppliers` action that already powers the Purchased Items
+    // (loadSupplierDropdown) and MarvsPCStufz Warranty
+    // (mwrLoadModifySuppliers) supplier dropdowns elsewhere in this file.
+    // No backend validation against this list is added here, matching
+    // those existing dropdowns -- e.g. savePurchasedItem accepts whatever
+    // supplierName came through without re-checking it against the
+    // "Supplier Name" sheet server-side.
+    async function rpLoadDistributorNames() {
+        const sel = rpDistributorNameInput;
+        if (!sel) return;
+        const previousValue = sel.value;
+        sel.innerHTML = '<option value="" disabled selected>Loading...</option>';
+        try {
+            const res = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getItemSuppliers' })
+            });
+            const data = await res.json();
+            sel.innerHTML = '<option value="" disabled selected>-- Piliin --</option>';
+            if (data.status === 'success' && data.data && data.data.length > 0) {
+                data.data.forEach(sup => {
+                    const opt = document.createElement('option');
+                    opt.value = sup;
+                    opt.textContent = sup;
+                    sel.appendChild(opt);
+                });
+                if (previousValue && [...sel.options].some(o => o.value === previousValue)) {
+                    sel.value = previousValue;
+                }
+            } else {
+                sel.innerHTML = '<option value="" disabled selected>Walang available na Distributor</option>';
+            }
+        } catch (e) {
+            sel.innerHTML = '<option value="" disabled selected>Failed to load</option>';
+        }
+    }
+
+    // Same "+ Add Row" dynamic-list pattern as Services below, just a
+    // single text input per row (no qty/cost/total) -- 2026-09-05 follow-up:
+    // "minsan maraming sales invoice sa isang tao dahil putol putol ang
+    // gawa kaya better sana if pwede makapag add ng sales invoice box".
+    function rpAddSiRow() {
+        if (!rpSiRows) return;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex; gap:8px; margin-bottom:8px; align-items:center;';
+        row.innerHTML = `
+            <input type="text" class="rp-si-input" placeholder="e.g. SI-00123" style="flex:1;">
+            <button type="button" class="rp-btn-remove-si" title="Remove" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #ef4444; border-radius: 6px; width: 38px; height: 38px; flex-shrink: 0; cursor: pointer; font-size: 0.85em;">✕</button>
+        `;
+        rpSiRows.appendChild(row);
+        row.querySelector('.rp-btn-remove-si').addEventListener('click', () => {
+            row.remove();
+            // Always keep at least 1 row visible, same convention as Services.
+            if (rpSiRows.children.length === 0) rpAddSiRow();
+        });
+    }
+
+    // Per the user's explicit rule ("visible lamang ang services para kay
+    // Mark Briones at hindi kay zaldy paraiso"): the Services frame (and
+    // everything inside it) only ever shows for Mark Briones. Switching
+    // back to Zaldy Paraiso (or to nothing) clears out any service rows
+    // already entered, so a stray row can't silently ride along on a save
+    // for the wrong rider (the backend also re-enforces this -- see
+    // saveRidersPayroll -- but the UI shouldn't even offer the chance).
+    function rpUpdateServicesVisibility() {
+        const showServices = rpRiderNameSelect && rpRiderNameSelect.value === 'Mark Briones';
+        if (rpServicesFrame) rpServicesFrame.style.display = showServices ? '' : 'none';
+        if (!showServices && rpServicesBody) {
+            rpServicesBody.innerHTML = '';
+        }
+        if (showServices && rpServicesBody && rpServicesBody.children.length === 0) {
+            rpAddServiceRow();
+        }
+        rpRecomputeTotals();
+    }
+
+    // Same "+ Add Row" dynamic-row / JSON-column-on-save pattern already
+    // used by Manual Quotation's Items list (see mqAddItemRow/mqRecompute
+    // above) -- each row is Service Type (Pisonet/Diskless)/Qty/Cost, with
+    // a live Total (qty x cost) and a Remove (✕) button.
+    function rpAddServiceRow() {
+        if (!rpServicesBody) return;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td style="padding: 4px 8px; vertical-align: top;">
+                <select class="rp-row-service-type" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-size: 0.88em;">
+                    <option value="">-- Piliin --</option>
+                    <option value="Pisonet">Pisonet</option>
+                    <option value="Diskless">Diskless</option>
+                </select>
+            </td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="rp-row-qty" min="0" step="1" value="1" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-size: 0.88em;"></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="rp-row-cost" min="0" step="0.01" value="0" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-size: 0.88em;"></td>
+            <td style="padding: 8px 8px; vertical-align: top; color: var(--success); font-weight: 600; font-size: 0.88em;" class="rp-row-total">₱0.00</td>
+            <td style="padding: 4px 8px; vertical-align: top; text-align: center;"><button type="button" class="rp-btn-remove-row" title="Remove" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #ef4444; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 0.85em;">✕</button></td>
+        `;
+        rpServicesBody.appendChild(tr);
+        tr.querySelector('.rp-row-service-type').addEventListener('change', rpRecomputeTotals);
+        tr.querySelector('.rp-row-qty').addEventListener('input', rpRecomputeTotals);
+        tr.querySelector('.rp-row-cost').addEventListener('input', rpRecomputeTotals);
+        tr.querySelector('.rp-btn-remove-row').addEventListener('click', () => {
+            tr.remove();
+            // Always keep at least one row visible while the Services frame
+            // is showing, same as Manual Quotation never leaves 0 rows.
+            if (rpServicesBody.children.length === 0) rpAddServiceRow();
+            rpRecomputeTotals();
+        });
+    }
+
+    function rpRecomputeTotals() {
+        let servicesTotal = 0;
+        if (rpServicesBody) {
+            rpServicesBody.querySelectorAll('tr').forEach(tr => {
+                const qty = parseFloat(tr.querySelector('.rp-row-qty').value) || 0;
+                const cost = parseFloat(tr.querySelector('.rp-row-cost').value) || 0;
+                const rowTotal = qty * cost;
+                tr.querySelector('.rp-row-total').textContent = '₱' + formatCurrency(rowTotal);
+                servicesTotal += rowTotal;
+            });
+        }
+        const showingServices = rpServicesFrame && rpServicesFrame.style.display !== 'none';
+        if (rpServicesTotalEl) rpServicesTotalEl.textContent = '₱' + formatCurrency(servicesTotal);
+        const shippingFee = parseFloat(rpShippingFeeInput && rpShippingFeeInput.value) || 0;
+        const grandTotal = shippingFee + (showingServices ? servicesTotal : 0);
+        if (rpGrandTotalEl) rpGrandTotalEl.textContent = '₱' + formatCurrency(grandTotal);
+    }
+
+    function rpShowStatus(message, isError) {
+        if (!rpStatusMessage) return;
+        rpStatusMessage.textContent = message;
+        rpStatusMessage.classList.remove('hidden');
+        rpStatusMessage.style.background = isError ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)';
+        rpStatusMessage.style.color = isError ? 'var(--error)' : 'var(--success)';
+        rpStatusMessage.style.border = '1px solid ' + (isError ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)');
+    }
+
+    function rpResetForm() {
+        if (ridersPayrollForm) ridersPayrollForm.reset();
+        if (rpServicesBody) rpServicesBody.innerHTML = '';
+        if (rpServicesFrame) rpServicesFrame.style.display = 'none';
+        if (rpSiRows) rpSiRows.innerHTML = '';
+        // rpUpdateTripType() now fully owns the SI# section's reset (shows/
+        // clears/re-adds a starter row based on Trip Type, same as it does
+        // for Customer Name/Distributor Name) -- form.reset() above already
+        // put Trip Type back to its default ("Customer"), so this leaves the
+        // SI# section showing with exactly 1 empty row, same as before.
+        rpUpdateTripType();
+        if (rpStatusMessage) rpStatusMessage.classList.add('hidden');
+        rpRecomputeTotals();
+    }
+
+    // e.g. "Distributor: XYZ Parts Distributor" / "Backjob: Juan Dela Cruz"
+    // -- lets Marvin tell trip type apart at a glance in the records table
+    // without needing a whole separate column for it.
+    function rpFormatWhoFor(rec) {
+        if (rec.tripType === 'Distributor') return { label: 'Distributor', name: rec.distributorName };
+        if (rec.tripType === 'Backjob') return { label: 'Backjob', name: rec.customerName };
+        return { label: '', name: rec.customerName };
+    }
+
+    // Renders a given array of records into the table -- pulled out as its
+    // own function so both the initial fetch AND the filter re-render (no
+    // fresh server round trip, see rpApplyRecordsFilters below) can reuse
+    // it. `noRecordsAtAll` distinguishes "no records exist yet" from "the
+    // current filter just doesn't match anything" so the empty-state
+    // message can tell the user which one it is.
+    function rpRenderRecordsRows(records, noRecordsAtAll) {
+        if (!ridersPayrollRecordsTableBody) return;
+        if (records.length === 0) {
+            const emptyMessage = noRecordsAtAll ? 'Wala pang record.' : 'Walang record na tumutugma sa filter.';
+            ridersPayrollRecordsTableBody.innerHTML = `<tr><td colspan="8" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">${emptyMessage}</td></tr>`;
+            return;
+        }
+        ridersPayrollRecordsTableBody.innerHTML = records.map(rec => {
+            const services = Array.isArray(rec.services) ? rec.services : [];
+            // e.g. "Pisonet x3, Diskless x2" -- built with textContent-safe
+            // escaping via a throwaway element, same defensive pattern
+            // other free-text-rendering tables in this file already use.
+            const servicesSummary = services.length
+                ? services.map(s => `${s.serviceType} x${s.qty}`).join(', ')
+                : '--';
+            const siNumbers = Array.isArray(rec.salesInvoiceNumbers) ? rec.salesInvoiceNumbers : [];
+            const siSummary = siNumbers.length ? siNumbers.join(', ') : '--';
+            const whoFor = rpFormatWhoFor(rec);
+            const escDiv = document.createElement('div');
+            function esc(v) { escDiv.textContent = (v === null || v === undefined) ? '' : String(v); return escDiv.innerHTML; }
+            const whoForHtml = whoFor.label
+                ? `${esc(whoFor.name)} <span style="font-size:0.72em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px;">(${esc(whoFor.label)})</span>`
+                : esc(whoFor.name);
+            return `
+                <tr>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(rec.deliveryDate)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(rec.riderName)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(rec.deliveryMethod)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${whoForHtml}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(siSummary)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(servicesSummary)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border); font-weight: 600; color: var(--primary);">₱${formatCurrency(rec.grandTotal)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(rec.loggedBy)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    // 2026-09-05 follow-up #8: a Rider account only ever gets back their
+    // OWN deliveries from the server now (see viewerRole/viewerName sent
+    // in loadRidersPayrollRecords, enforced in getRidersPayrollRecords on
+    // the backend) -- so the Rider Name filter is meaningless for them.
+    // For Rider, lock the dropdown to a single option (their own name),
+    // pre-selected and disabled, so there's nothing to pick from. For
+    // Manager/Payroll/Owner, restore the normal full list (all riders +
+    // "Lahat ng Rider"), enabled, since they still see everyone. Built with
+    // DOM APIs (not innerHTML) so the logged-in name never needs manual
+    // HTML-escaping.
+    function rpConfigureRecordsFilterForRole() {
+        if (!rpRecordsFilterRider) return;
+        const role = sessionStorage.getItem('userRole') || '';
+        const name = sessionStorage.getItem('loggedInUser') || '';
+        const isUnrestrictedViewer = (role === 'Manager' || role === 'Payroll' || role === 'Owner');
+        rpRecordsFilterRider.innerHTML = '';
+        if (isUnrestrictedViewer) {
+            const allOpt = document.createElement('option');
+            allOpt.value = '';
+            allOpt.textContent = 'Lahat ng Rider';
+            rpRecordsFilterRider.appendChild(allOpt);
+            ['Zaldy Paraiso', 'Mark Briones'].forEach(riderName => {
+                const opt = document.createElement('option');
+                opt.value = riderName;
+                opt.textContent = riderName;
+                rpRecordsFilterRider.appendChild(opt);
+            });
+            rpRecordsFilterRider.value = '';
+            rpRecordsFilterRider.disabled = false;
+        } else {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            rpRecordsFilterRider.appendChild(opt);
+            rpRecordsFilterRider.value = name;
+            rpRecordsFilterRider.disabled = true;
+        }
+    }
+
+    // Re-renders from the cached rpAllRecords using whatever Date range/
+    // Rider Name filters are currently set -- no server round trip, same
+    // "filter/sort a cached list" pattern as other list pages in this app.
+    // Delivery Date is stored/returned as an ISO "YYYY-MM-DD" string (same
+    // format the <input type="date"> fields use), so a plain string
+    // comparison is a correct range check with no date parsing needed.
+    function rpApplyRecordsFilters() {
+        const dateFrom = rpRecordsFilterDateFrom ? rpRecordsFilterDateFrom.value : '';
+        const dateTo = rpRecordsFilterDateTo ? rpRecordsFilterDateTo.value : '';
+        const riderFilter = rpRecordsFilterRider ? rpRecordsFilterRider.value : '';
+        let filtered = rpAllRecords;
+        if (dateFrom) filtered = filtered.filter(rec => rec.deliveryDate >= dateFrom);
+        if (dateTo) filtered = filtered.filter(rec => rec.deliveryDate <= dateTo);
+        if (riderFilter) filtered = filtered.filter(rec => rec.riderName === riderFilter);
+        rpRenderRecordsRows(filtered, rpAllRecords.length === 0);
+    }
+
+    async function loadRidersPayrollRecords() {
+        if (!ridersPayrollRecordsTableBody) return;
+        ridersPayrollRecordsTableBody.innerHTML = '<tr><td colspan="8" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+        try {
+            const result = await postToScriptWithRetry({
+                action: 'getRidersPayrollRecords',
+                viewerRole: sessionStorage.getItem('userRole') || '',
+                viewerName: sessionStorage.getItem('loggedInUser') || ''
+            });
+            rpAllRecords = (result && result.status === 'success' && result.data) ? result.data : [];
+            rpApplyRecordsFilters();
+        } catch (error) {
+            console.error('Error loading Riders Payroll records:', error);
+            ridersPayrollRecordsTableBody.innerHTML = '<tr><td colspan="8" style="padding: 14px 10px; text-align: center; color: var(--error);">Unable to load records.</td></tr>';
+        }
+    }
+
+    // ===== 2026-09-05 follow-up #10: Delivery Approval workflow =====
+    // Small shared helper -- a colored status badge used by both the
+    // Rider's "Status ng Mga Isinumite Ko" table and the Owner/Manager
+    // Delivery Approval table, so the 3 statuses always look the same
+    // wherever they're shown.
+    function rpStatusBadgeHtml(status) {
+        const colors = {
+            Pending: { bg: 'rgba(234, 179, 8, 0.15)', fg: '#eab308' },
+            Approved: { bg: 'rgba(34, 197, 94, 0.15)', fg: '#22c55e' },
+            Rejected: { bg: 'rgba(239, 68, 68, 0.15)', fg: '#ef4444' }
+        };
+        const c = colors[status] || colors.Pending;
+        return `<span style="display:inline-block; padding: 3px 9px; border-radius: 999px; font-size: 0.78em; font-weight: 600; background: ${c.bg}; color: ${c.fg};">${status}</span>`;
+    }
+
+    // Rider's own "Status ng Mga Isinumite Ko" -- lists every submission
+    // they've made (any status), most-recent-first (server already
+    // reverses), with the reviewer's notes visible for a Rejected one so
+    // it's never a silent rejection.
+    async function rpLoadMySubmissions() {
+        if (!rpMySubmissionsTableBody) return;
+        rpMySubmissionsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+        try {
+            const result = await postToScriptWithRetry({
+                action: 'getPendingRidersPayrollSubmissions',
+                viewerRole: sessionStorage.getItem('userRole') || '',
+                viewerName: sessionStorage.getItem('loggedInUser') || ''
+            });
+            const submissions = (result && result.status === 'success' && result.data) ? result.data : [];
+            if (submissions.length === 0) {
+                rpMySubmissionsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Wala ka pang isinumiteng delivery.</td></tr>';
+                return;
+            }
+            const escDiv = document.createElement('div');
+            function esc(v) { escDiv.textContent = (v === null || v === undefined) ? '' : String(v); return escDiv.innerHTML; }
+            rpMySubmissionsTableBody.innerHTML = submissions.map(sub => {
+                const whoFor = rpFormatWhoFor(sub);
+                const whoForHtml = whoFor.label
+                    ? `${esc(whoFor.name)} <span style="font-size:0.72em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px;">(${esc(whoFor.label)})</span>`
+                    : esc(whoFor.name);
+                const notesHtml = sub.status === 'Pending' ? '<span style="color: var(--text-muted);">Hinihintay pa ang review...</span>' : esc(sub.reviewerNotes || '--');
+                return `
+                    <tr>
+                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.deliveryDate)}</td>
+                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.deliveryMethod)}</td>
+                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${whoForHtml}</td>
+                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border); font-weight: 600; color: var(--primary);">₱${formatCurrency(sub.grandTotal)}</td>
+                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${rpStatusBadgeHtml(sub.status)}</td>
+                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${notesHtml}</td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading my Riders Payroll submissions:', error);
+            rpMySubmissionsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--error);">Unable to load submissions.</td></tr>';
+        }
+    }
+
+    // Owner/Manager Delivery Approval queue -- fetches once, caches into
+    // daAllSubmissions, and the status filter re-renders from that cache
+    // (same "filter over a cached list" pattern as rpApplyRecordsFilters
+    // above), so switching between Pending/Approved/Rejected/Lahat doesn't
+    // need a fresh server round trip.
+    function daApplyStatusFilter() {
+        if (!deliveryApprovalTableBody) return;
+        const statusFilter = daStatusFilter ? daStatusFilter.value : 'Pending';
+        const filtered = statusFilter ? daAllSubmissions.filter(sub => sub.status === statusFilter) : daAllSubmissions;
+        if (filtered.length === 0) {
+            const emptyMessage = daAllSubmissions.length === 0
+                ? 'Wala pang isinumiteng delivery.'
+                : 'Walang submission na tumutugma sa filter na ito.';
+            deliveryApprovalTableBody.innerHTML = `<tr><td colspan="8" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">${emptyMessage}</td></tr>`;
+            return;
+        }
+        const escDiv = document.createElement('div');
+        function esc(v) { escDiv.textContent = (v === null || v === undefined) ? '' : String(v); return escDiv.innerHTML; }
+        deliveryApprovalTableBody.innerHTML = filtered.map(sub => {
+            const whoFor = rpFormatWhoFor(sub);
+            const whoForHtml = whoFor.label
+                ? `${esc(whoFor.name)} <span style="font-size:0.72em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px;">(${esc(whoFor.label)})</span>`
+                : esc(whoFor.name);
+            let actionsHtml;
+            if (sub.status === 'Pending') {
+                actionsHtml = `
+                    <button type="button" class="da-approve-btn" data-row-index="${sub.rowIndex}" style="background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #22c55e; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 600; cursor: pointer; margin-right: 6px;">Approve</button>
+                    <button type="button" class="da-reject-btn" data-row-index="${sub.rowIndex}" style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 600; cursor: pointer;">Reject</button>
+                `;
+            } else if (sub.status === 'Approved') {
+                actionsHtml = `Approved by ${esc(sub.reviewedBy)}<br><span style="font-size:0.85em; color: var(--text-muted);">Expenses Tag: ${esc(sub.expensesTag || '--')}</span>`;
+            } else {
+                actionsHtml = `Rejected by ${esc(sub.reviewedBy)}${sub.reviewerNotes ? `<br><span style="font-size:0.85em; color: var(--text-muted);">${esc(sub.reviewerNotes)}</span>` : ''}`;
+            }
+            return `
+                <tr>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.deliveryDate)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.riderName)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.deliveryMethod)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${whoForHtml}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border); font-weight: 600; color: var(--primary);">₱${formatCurrency(sub.grandTotal)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.loggedBy)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${rpStatusBadgeHtml(sub.status)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border); white-space: nowrap;">${actionsHtml}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    async function daLoadPendingSubmissions() {
+        if (!deliveryApprovalTableBody) return;
+        deliveryApprovalTableBody.innerHTML = '<tr><td colspan="8" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+        try {
+            const result = await postToScriptWithRetry({
+                action: 'getPendingRidersPayrollSubmissions',
+                viewerRole: sessionStorage.getItem('userRole') || '',
+                viewerName: sessionStorage.getItem('loggedInUser') || ''
+            });
+            daAllSubmissions = (result && result.status === 'success' && result.data) ? result.data : [];
+            daApplyStatusFilter();
+        } catch (error) {
+            console.error('Error loading Delivery Approval queue:', error);
+            deliveryApprovalTableBody.innerHTML = '<tr><td colspan="8" style="padding: 14px 10px; text-align: center; color: var(--error);">Unable to load submissions.</td></tr>';
+        }
+    }
+
+    // Approve/Reject modals -- opened via event delegation on the table
+    // body (rows are re-rendered on every fetch/filter, so listeners are
+    // attached once here rather than re-bound per row).
+    function daFindSubmissionByRowIndex(rowIndex) {
+        return daAllSubmissions.find(sub => sub.rowIndex === rowIndex);
+    }
+
+    function daBuildModalSummary(sub) {
+        const whoFor = rpFormatWhoFor(sub);
+        return `${sub.riderName} — ${sub.deliveryDate} — ${whoFor.name || '(walang pangalan)'} — ₱${formatCurrency(sub.grandTotal)}`;
+    }
+
+    if (deliveryApprovalTableBody) {
+        deliveryApprovalTableBody.addEventListener('click', (e) => {
+            const approveBtn = e.target.closest('.da-approve-btn');
+            const rejectBtn = e.target.closest('.da-reject-btn');
+            if (approveBtn) {
+                const rowIndex = parseInt(approveBtn.dataset.rowIndex);
+                const sub = daFindSubmissionByRowIndex(rowIndex);
+                if (!sub) return;
+                daActiveReviewRowIndex = rowIndex;
+                if (daApproveModalSummary) daApproveModalSummary.textContent = daBuildModalSummary(sub);
+                if (daApproveExpensesTag) daApproveExpensesTag.value = '';
+                if (daApproveNotes) daApproveNotes.value = '';
+                if (daApproveError) daApproveError.classList.add('hidden');
+                if (daApproveModalOverlay) daApproveModalOverlay.classList.remove('hidden');
+            } else if (rejectBtn) {
+                const rowIndex = parseInt(rejectBtn.dataset.rowIndex);
+                const sub = daFindSubmissionByRowIndex(rowIndex);
+                if (!sub) return;
+                daActiveReviewRowIndex = rowIndex;
+                if (daRejectModalSummary) daRejectModalSummary.textContent = daBuildModalSummary(sub);
+                if (daRejectNotes) daRejectNotes.value = '';
+                if (daRejectError) daRejectError.classList.add('hidden');
+                if (daRejectModalOverlay) daRejectModalOverlay.classList.remove('hidden');
+            }
+        });
+    }
+
+    if (daApproveCancelBtn) {
+        daApproveCancelBtn.addEventListener('click', () => {
+            if (daApproveModalOverlay) daApproveModalOverlay.classList.add('hidden');
+            daActiveReviewRowIndex = null;
+        });
+    }
+    if (daApproveConfirmBtn) {
+        daApproveConfirmBtn.addEventListener('click', async () => {
+            const expensesTag = daApproveExpensesTag ? daApproveExpensesTag.value : '';
+            if (!expensesTag) {
+                if (daApproveError) { daApproveError.textContent = 'Piliin ang Expenses Tag bago mag-approve.'; daApproveError.classList.remove('hidden'); }
+                return;
+            }
+            if (daActiveReviewRowIndex === null) return;
+            daApproveConfirmBtn.disabled = true;
+            try {
+                const result = await postToScriptWithRetry({
+                    action: 'reviewRidersPayrollSubmission',
+                    pendingRowIndex: daActiveReviewRowIndex,
+                    decision: 'Approved',
+                    expensesTag: expensesTag,
+                    reviewerNotes: daApproveNotes ? daApproveNotes.value.trim() : '',
+                    reviewedBy: sessionStorage.getItem('loggedInUser') || ''
+                });
+                if (result && result.status === 'success') {
+                    if (daApproveModalOverlay) daApproveModalOverlay.classList.add('hidden');
+                    daActiveReviewRowIndex = null;
+                    showToast('Na-approve ang submission.', 'success');
+                    daLoadPendingSubmissions();
+                } else {
+                    if (daApproveError) { daApproveError.textContent = (result && result.message) || 'May error sa pag-approve.'; daApproveError.classList.remove('hidden'); }
+                }
+            } catch (error) {
+                console.error('Error approving Riders Payroll submission:', error);
+                if (daApproveError) { daApproveError.textContent = 'Hindi ma-approve -- pakisubukan ulit.'; daApproveError.classList.remove('hidden'); }
+            } finally {
+                daApproveConfirmBtn.disabled = false;
+            }
+        });
+    }
+
+    if (daRejectCancelBtn) {
+        daRejectCancelBtn.addEventListener('click', () => {
+            if (daRejectModalOverlay) daRejectModalOverlay.classList.add('hidden');
+            daActiveReviewRowIndex = null;
+        });
+    }
+    if (daRejectConfirmBtn) {
+        daRejectConfirmBtn.addEventListener('click', async () => {
+            if (daActiveReviewRowIndex === null) return;
+            daRejectConfirmBtn.disabled = true;
+            try {
+                const result = await postToScriptWithRetry({
+                    action: 'reviewRidersPayrollSubmission',
+                    pendingRowIndex: daActiveReviewRowIndex,
+                    decision: 'Rejected',
+                    reviewerNotes: daRejectNotes ? daRejectNotes.value.trim() : '',
+                    reviewedBy: sessionStorage.getItem('loggedInUser') || ''
+                });
+                if (result && result.status === 'success') {
+                    if (daRejectModalOverlay) daRejectModalOverlay.classList.add('hidden');
+                    daActiveReviewRowIndex = null;
+                    showToast('Na-reject ang submission.', 'success');
+                    daLoadPendingSubmissions();
+                } else {
+                    if (daRejectError) { daRejectError.textContent = (result && result.message) || 'May error sa pag-reject.'; daRejectError.classList.remove('hidden'); }
+                }
+            } catch (error) {
+                console.error('Error rejecting Riders Payroll submission:', error);
+                if (daRejectError) { daRejectError.textContent = 'Hindi ma-reject -- pakisubukan ulit.'; daRejectError.classList.remove('hidden'); }
+            } finally {
+                daRejectConfirmBtn.disabled = false;
+            }
+        });
+    }
+
+    if (btnRidersPayrollMySubmissions) {
+        btnRidersPayrollMySubmissions.addEventListener('click', () => {
+            hideAllContainers();
+            if (ridersPayrollMySubmissionsContainer) ridersPayrollMySubmissionsContainer.classList.remove('hidden');
+            rpLoadMySubmissions();
+        });
+    }
+    if (btnRpMySubmissionsRefresh) {
+        btnRpMySubmissionsRefresh.addEventListener('click', rpLoadMySubmissions);
+    }
+
+    if (menuDeliveryApprovalBtn) {
+        menuDeliveryApprovalBtn.addEventListener('click', () => {
+            hideAllContainers();
+            if (deliveryApprovalContainer) deliveryApprovalContainer.classList.remove('hidden');
+            if (daStatusFilter) daStatusFilter.value = 'Pending';
+            daLoadPendingSubmissions();
+        });
+    }
+    if (daStatusFilter) {
+        daStatusFilter.addEventListener('change', daApplyStatusFilter);
+    }
+    if (btnDeliveryApprovalRefresh) {
+        btnDeliveryApprovalRefresh.addEventListener('click', daLoadPendingSubmissions);
+    }
+
+    if (menuRidersPayrollBtn) {
+        menuRidersPayrollBtn.addEventListener('click', () => {
+            hideAllContainers();
+            if (ridersPayrollContainer) ridersPayrollContainer.classList.remove('hidden');
+            rpResetForm();
+            rpLoadDistributorNames();
+        });
+    }
+
+    // 2026-09-05 follow-up #6: "View Delivery Records" now navigates to its
+    // own separate page/container (#riders-payroll-delivery-records-
+    // container) instead of toggling an inline section on this page --
+    // same hideAllContainers()+show-target navigation as every other
+    // button->separate-page flow in this app. Filters reset to blank each
+    // time it's opened, and records are re-fetched fresh (Refresh button
+    // does the same fetch on demand after that).
+    if (btnRidersPayrollViewRecords) {
+        btnRidersPayrollViewRecords.addEventListener('click', () => {
+            hideAllContainers();
+            if (ridersPayrollDeliveryRecordsContainer) ridersPayrollDeliveryRecordsContainer.classList.remove('hidden');
+            if (rpRecordsFilterDateFrom) rpRecordsFilterDateFrom.value = '';
+            if (rpRecordsFilterDateTo) rpRecordsFilterDateTo.value = '';
+            rpConfigureRecordsFilterForRole();
+            loadRidersPayrollRecords();
+        });
+    }
+    if (rpRecordsFilterDateFrom) {
+        rpRecordsFilterDateFrom.addEventListener('change', rpApplyRecordsFilters);
+    }
+    if (rpRecordsFilterDateTo) {
+        rpRecordsFilterDateTo.addEventListener('change', rpApplyRecordsFilters);
+    }
+    if (rpRecordsFilterRider) {
+        rpRecordsFilterRider.addEventListener('change', rpApplyRecordsFilters);
+    }
+    if (rpRecordsClearFiltersBtn) {
+        rpRecordsClearFiltersBtn.addEventListener('click', () => {
+            if (rpRecordsFilterDateFrom) rpRecordsFilterDateFrom.value = '';
+            if (rpRecordsFilterDateTo) rpRecordsFilterDateTo.value = '';
+            // For a Rider account this leaves the dropdown locked to their
+            // own name (nothing to "clear" -- they only ever see their own
+            // records anyway); for Manager/Payroll/Owner it goes back to
+            // "Lahat ng Rider".
+            rpConfigureRecordsFilterForRole();
+            rpApplyRecordsFilters();
+        });
+    }
+
+    if (rpRiderNameSelect) {
+        rpRiderNameSelect.addEventListener('change', rpUpdateServicesVisibility);
+    }
+    if (rpTripTypeSelect) {
+        rpTripTypeSelect.addEventListener('change', rpUpdateTripType);
+    }
+    if (rpBtnAddSi) {
+        rpBtnAddSi.addEventListener('click', () => rpAddSiRow());
+    }
+    if (rpShippingFeeInput) {
+        rpShippingFeeInput.addEventListener('input', rpRecomputeTotals);
+    }
+    if (rpBtnAddService) {
+        rpBtnAddService.addEventListener('click', () => rpAddServiceRow());
+    }
+    if (btnRidersPayrollRefresh) {
+        btnRidersPayrollRefresh.addEventListener('click', loadRidersPayrollRecords);
+    }
+
+    if (ridersPayrollForm) {
+        ridersPayrollForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const riderName = rpRiderNameSelect ? rpRiderNameSelect.value : '';
+            const showingServices = riderName === 'Mark Briones';
+            const tripType = rpTripTypeSelect ? rpTripTypeSelect.value : 'Customer';
+            const isDistributor = tripType === 'Distributor';
+
+            // Client-side validation mirrors the required fields the user
+            // asked for -- the backend re-validates all of this too (never
+            // trust the client alone), this is just for a fast, friendly
+            // error message before a round trip.
+            if (!rpDeliveryDateInput.value) { rpShowStatus('Delivery Date is required.', true); return; }
+            if (!riderName) { rpShowStatus('Rider Name is required.', true); return; }
+            if (!rpDeliveryMethodSelect.value) { rpShowStatus('Delivery Method is required.', true); return; }
+            // Distributor needs Distributor Name; Customer/Backjob both need
+            // Customer Name instead -- same rule saveRidersPayroll enforces
+            // server-side (see the comment above it).
+            if (isDistributor) {
+                if (!rpDistributorNameInput.value.trim()) { rpShowStatus('Distributor Name is required for a Distributor pickup.', true); return; }
+            } else {
+                if (!rpCustomerNameInput.value.trim()) { rpShowStatus('Customer Name is required.', true); return; }
+            }
+            const shippingFee = parseFloat(rpShippingFeeInput.value);
+            if (isNaN(shippingFee) || shippingFee < 0) { rpShowStatus('Shipping Fee must be a valid number, 0 or greater.', true); return; }
+
+            const salesInvoiceNumbers = [];
+            if (rpSiRows) {
+                rpSiRows.querySelectorAll('.rp-si-input').forEach(input => {
+                    const val = input.value.trim();
+                    if (val) salesInvoiceNumbers.push(val);
+                });
+            }
+            // 2026-09-05 follow-up #11: Sales Invoice # is now mandatory
+            // (a Distributor pickup still never has one -- unaffected) and
+            // must be unique -- the user flagged that some Riders kept
+            // re-adding the same delivery to try to get paid twice
+            // ("meron rider na pa ulit-ulit yung pag-add ng record para
+            // maka-daya"). This is just the fast, friendly client-side
+            // check for the required-field and same-submission-duplicate
+            // cases; the real duplicate-against-every-other-record check
+            // can ONLY happen server-side (a Rider's own view is self-only
+            // -filtered per follow-up #8, so the client never has enough
+            // data here to check that itself) -- see saveRidersPayroll.
+            if (!isDistributor) {
+                if (salesInvoiceNumbers.length === 0) { rpShowStatus('Sales Invoice # is required.', true); return; }
+                const seenSi = new Set();
+                for (const si of salesInvoiceNumbers) {
+                    const normalizedSi = si.toUpperCase();
+                    if (seenSi.has(normalizedSi)) { rpShowStatus('May paulit-ulit na Sales Invoice # sa parehong submission: ' + si, true); return; }
+                    seenSi.add(normalizedSi);
+                }
+            }
+
+            const services = [];
+            if (showingServices && rpServicesBody) {
+                const rows = Array.from(rpServicesBody.querySelectorAll('tr'));
+                for (const tr of rows) {
+                    const serviceType = tr.querySelector('.rp-row-service-type').value;
+                    const qty = parseFloat(tr.querySelector('.rp-row-qty').value);
+                    const cost = parseFloat(tr.querySelector('.rp-row-cost').value);
+                    if (!serviceType && (isNaN(qty) || qty === 0) && (isNaN(cost) || cost === 0)) continue; // skip a fully-blank phantom row, same rule Manual Quotation applies
+                    if (!serviceType) { rpShowStatus('Piliin ang Service Type para sa bawat service row.', true); return; }
+                    if (isNaN(qty) || qty <= 0) { rpShowStatus('Ang Qty ng bawat service ay dapat higit sa 0.', true); return; }
+                    if (isNaN(cost) || cost < 0) { rpShowStatus('Ang Cost ng bawat service ay dapat 0 o higit pa.', true); return; }
+                    services.push({ serviceType, qty, cost });
+                }
+            }
+
+            rpSaveBtn.disabled = true;
+            rpShowStatus('Sine-save...', false);
+            try {
+                const loggedBy = sessionStorage.getItem('loggedInUser') || '';
+                const result = await postToScriptWithRetry({
+                    action: 'saveRidersPayroll',
+                    deliveryDate: rpDeliveryDateInput.value,
+                    riderName: riderName,
+                    deliveryMethod: rpDeliveryMethodSelect.value,
+                    tripType: tripType,
+                    customerName: isDistributor ? '' : rpCustomerNameInput.value.trim(),
+                    distributorName: isDistributor ? rpDistributorNameInput.value.trim() : '',
+                    salesInvoiceNumbers: JSON.stringify(salesInvoiceNumbers),
+                    shippingFee: shippingFee,
+                    services: JSON.stringify(services),
+                    loggedBy: loggedBy
+                });
+                if (result && result.status === 'success') {
+                    // 2026-09-05 follow-up #10: a Rider's own submission no
+                    // longer lands directly in Riders Payroll -- it's held
+                    // for Owner/Manager approval first. `pendingApproval`
+                    // tells the frontend which happened so the Rider isn't
+                    // told "Na-save" when it's really still just submitted
+                    // and awaiting review.
+                    if (result.pendingApproval) {
+                        showToast('Naipasa na ang delivery mo para sa approval ng Owner o Manager.', 'success');
+                    } else {
+                        showToast('Na-save ang Riders Delivery record.', 'success');
+                    }
+                    rpResetForm();
+                    // 2026-09-05 follow-up #6: the records list lives on its
+                    // own separate page now (#riders-payroll-delivery-
+                    // records-container), not this form -- no need to
+                    // refresh it in the background here at all; it fetches
+                    // fresh whenever the user next opens "View Delivery
+                    // Records" (or hits Refresh once there).
+                } else {
+                    rpShowStatus((result && result.message) || 'May error sa pag-save.', true);
+                }
+            } catch (error) {
+                console.error('Error saving Riders Payroll record:', error);
+                rpShowStatus('Hindi ma-save -- pakisubukan ulit.', true);
+            } finally {
+                rpSaveBtn.disabled = false;
+            }
+        });
+    }
+
     if (btnPayslipRefresh) {
         btnPayslipRefresh.addEventListener('click', loadPayrollRecords);
     }
@@ -12465,6 +13601,611 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.removeChild(hiddenDiv);
             window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
         }
+    }
+
+    // Rider Payslip (2026-09-06): mirrors the employee Payslip section
+    // directly above as closely as the underlying data allows -- see the
+    // matching comment block above computeRiderPayrollForRider in
+    // google_apps_script.js for the full locked-in design (Gross Pay = sum
+    // of GrandTotal across every Approved delivery in range; Cash Advance
+    // is the only deduction, reusing the SAME "Cash Advances" ledger the
+    // employee Payslip's panel above already manages).
+    const menuRiderPayslipBtn = document.getElementById('menu-rider-payslip-btn');
+    const riderPayslipContainer = document.getElementById('rider-payslip-container');
+    const riderPayslipForm = document.getElementById('rider-payslip-form');
+    const riderPayslipRiderSelect = document.getElementById('rider-payslip-rider');
+    const riderPayslipStartDateInput = document.getElementById('rider-payslip-start-date');
+    const riderPayslipEndDateInput = document.getElementById('rider-payslip-end-date');
+    const riderPayslipStatusMessage = document.getElementById('rider-payslip-status-message');
+    const riderPayslipPreviewSection = document.getElementById('rider-payslip-preview-section');
+    const riderPayslipDeliveriesTableBody = document.getElementById('rider-payslip-deliveries-table-body');
+    const riderPayslipDeliveryCountEl = document.getElementById('rider-payslip-delivery-count');
+    const riderPayslipDeliveryDaysEl = document.getElementById('rider-payslip-delivery-days');
+    const riderPayslipGrossPayEl = document.getElementById('rider-payslip-gross-pay');
+    // Meal Allowance + Commission (2026-09-06 user request): mirrors the
+    // employee Payslip's Commission/Food Allowance inputs exactly -- see the
+    // matching comment above computeRiderPayrollForRider/saveRiderPayslip in
+    // google_apps_script.js for the locked-in design (Meal Allowance auto-
+    // fills as Delivery Days x ₱80 but stays editable; Commission is manual
+    // entry only).
+    const riderPayslipCommissionInput = document.getElementById('rider-payslip-commission');
+    const riderPayslipMealAllowanceInput = document.getElementById('rider-payslip-meal-allowance');
+    const riderPayslipCashAdvanceInput = document.getElementById('rider-payslip-cash-advance');
+    const riderPayslipCaBalanceHint = document.getElementById('rider-payslip-ca-balance-hint');
+    const riderPayslipNetPayEl = document.getElementById('rider-payslip-net-pay');
+    const riderPayslipSaveBtn = document.getElementById('rider-payslip-save-btn');
+    const riderPayslipRecordsTableBody = document.getElementById('rider-payslip-records-table-body');
+    const btnRiderPayslipRefresh = document.getElementById('btn-rider-payslip-refresh');
+
+    let riderPayslipCurrentPreview = null; // last computeRiderPayslipPreview() result, used to recompute Net Pay live and to gate Save
+
+    // Rider Name is a fixed 2-value list (no master/employee-list table
+    // backs it, same as everywhere else in Riders Payroll) -- populated
+    // client-side with no network round trip, mirroring how the Riders
+    // Payroll submission form's own Rider Name dropdown is populated.
+    function loadRiderPayslipRiders() {
+        if (!riderPayslipRiderSelect) return;
+        const previousValue = riderPayslipRiderSelect.value;
+        riderPayslipRiderSelect.innerHTML = '<option value="" disabled selected>Select Rider</option>' +
+            RIDER_PAYSLIP_RIDER_NAMES.map(name => `<option value="${payslipEscapeHtml(name)}">${payslipEscapeHtml(name)}</option>`).join('');
+        if (previousValue && RIDER_PAYSLIP_RIDER_NAMES.includes(previousValue)) {
+            riderPayslipRiderSelect.value = previousValue;
+        }
+    }
+
+    function riderPayslipRecalculateNetPay() {
+        if (!riderPayslipCurrentPreview || !riderPayslipNetPayEl) return;
+        const ca = parseFloat(riderPayslipCashAdvanceInput ? riderPayslipCashAdvanceInput.value : 0) || 0;
+        const commission = parseFloat(riderPayslipCommissionInput ? riderPayslipCommissionInput.value : 0) || 0;
+        const mealAllowance = parseFloat(riderPayslipMealAllowanceInput ? riderPayslipMealAllowanceInput.value : 0) || 0;
+        const grossWithExtras = riderPayslipCurrentPreview.grossPay + commission + mealAllowance;
+        if (riderPayslipGrossPayEl) riderPayslipGrossPayEl.textContent = payslipFormatPeso(grossWithExtras);
+        const netPay = grossWithExtras - ca;
+        riderPayslipNetPayEl.textContent = payslipFormatPeso(netPay);
+    }
+
+    [riderPayslipCashAdvanceInput, riderPayslipCommissionInput, riderPayslipMealAllowanceInput].forEach((input) => {
+        if (input) input.addEventListener('input', riderPayslipRecalculateNetPay);
+    });
+
+    function riderPayslipRenderPreview(data) {
+        riderPayslipCurrentPreview = data;
+        if (riderPayslipDeliveriesTableBody) {
+            const deliveries = data.deliveries || [];
+            if (deliveries.length === 0) {
+                riderPayslipDeliveriesTableBody.innerHTML = '<tr><td colspan="7" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Walang Approved delivery sa loob ng petsa range na ito.</td></tr>';
+            } else {
+                riderPayslipDeliveriesTableBody.innerHTML = deliveries.map((d) => {
+                    const customerOrDistributor = d.tripType === 'Distributor' ? payslipEscapeHtml(d.distributorName) : payslipEscapeHtml(d.customerName);
+                    const siLabel = (d.salesInvoiceNumbers && d.salesInvoiceNumbers.length) ? payslipEscapeHtml(d.salesInvoiceNumbers.join(', ')) : '-';
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <td style="padding: 7px 9px;">${d.deliveryDate}</td>
+                            <td style="padding: 7px 9px;">${payslipEscapeHtml(d.tripType)}</td>
+                            <td style="padding: 7px 9px;">${customerOrDistributor || '-'}</td>
+                            <td style="padding: 7px 9px;">${siLabel}</td>
+                            <td style="padding: 7px 9px;">${payslipFormatPeso(d.shippingFee)}</td>
+                            <td style="padding: 7px 9px;">${payslipFormatPeso(d.servicesTotal)}</td>
+                            <td style="padding: 7px 9px; font-weight: 600;">${payslipFormatPeso(d.grandTotal)}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+        if (riderPayslipDeliveryCountEl) riderPayslipDeliveryCountEl.textContent = data.deliveryCount !== undefined ? data.deliveryCount : '0';
+        if (riderPayslipDeliveryDaysEl) riderPayslipDeliveryDaysEl.textContent = data.deliveryDaysCount !== undefined ? data.deliveryDaysCount : '0';
+        // A fresh compute always starts Commission at 0 (Marvin types it in
+        // manually each time, same as the employee Payslip's Commission
+        // field) -- but Meal Allowance pre-fills with the auto-suggested
+        // amount (Delivery Days x ₱80), still fully editable before saving.
+        if (riderPayslipCommissionInput) riderPayslipCommissionInput.value = '0';
+        if (riderPayslipMealAllowanceInput) riderPayslipMealAllowanceInput.value = (Number(data.autoMealAllowance) || 0).toFixed(2);
+        // Auto-fills the Cash Advance field with the server-suggested,
+        // already-capped deduction -- editable, same "suggestion, pwede pa
+        // ring i-adjust" pattern as the employee Payslip.
+        if (riderPayslipCashAdvanceInput) {
+            const suggested = Number(data.suggestedCashAdvanceDeduction) || 0;
+            riderPayslipCashAdvanceInput.value = suggested.toFixed(2);
+        }
+        if (riderPayslipCaBalanceHint) {
+            const balance = Number(data.cashAdvanceBalance) || 0;
+            if (balance > 0) {
+                riderPayslipCaBalanceHint.textContent = `Natitirang utang: ${payslipFormatPeso(balance)} (${payslipFormatPeso(data.cashAdvanceWeeklyInstallment)}/linggo) -- na-suggest na sa field sa itaas, pwede mo pang baguhin.`;
+                riderPayslipCaBalanceHint.classList.remove('hidden');
+            } else {
+                riderPayslipCaBalanceHint.textContent = '';
+                riderPayslipCaBalanceHint.classList.add('hidden');
+            }
+        }
+        riderPayslipRecalculateNetPay();
+        if (riderPayslipPreviewSection) riderPayslipPreviewSection.classList.remove('hidden');
+    }
+
+    async function loadRiderPayrollRecords() {
+        if (!riderPayslipRecordsTableBody) return;
+        riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getRiderPayrollRecords' })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                riderPayslipRecordsTableBody.innerHTML = `<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load.'}</td></tr>`;
+                return;
+            }
+            const records = result.data || [];
+            if (records.length === 0) {
+                riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">Wala pang na-generate na rider payslip.</td></tr>';
+                return;
+            }
+            riderPayslipRecordsTableBody.innerHTML = records.map((rec, idx) => `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.rider)}</td>
+                    <td style="padding: 8px 10px;">${rec.startDate} - ${rec.endDate}</td>
+                    <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(rec.netPay)}</td>
+                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.generatedBy)}</td>
+                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.timestamp)}</td>
+                    <td style="padding: 8px 10px; white-space: nowrap;">
+                        <button type="button" class="btn-rider-payslip-reprint" data-record-index="${idx}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Reprint</button>
+                        <button type="button" class="btn-rider-payslip-delete" data-record-index="${idx}" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-trash"></i> Delete</button>
+                    </td>
+                </tr>
+            `).join('');
+            // Stashed on the element itself so Reprint can rebuild the PDF
+            // straight from the already-saved delivery breakdown, no extra
+            // network round trip -- same pattern as Payroll Records.
+            riderPayslipRecordsTableBody._records = records;
+        } catch (error) {
+            console.error('Error loading rider payroll records:', error);
+            riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        }
+    }
+
+    // ===== "My Payslip" (2026-09-06 follow-up #2) =====
+    // Self-service, read-only view of the LOGGED-IN account's own past
+    // payslips only. Fetches once via getMyPayrollRecords (server-side
+    // self-scoped by viewerName, no admin bypass at all -- see the matching
+    // comment above getMyPayrollRecords() in google_apps_script.js), then
+    // an optional Start/End Date range filters the cached list client-side
+    // -- same "filter a cached list" pattern as Riders Delivery's own
+    // records filter (rpApplyRecordsFilters). Cutoff dates are compared as
+    // plain "YYYY-MM-DD" strings, same as everywhere else in this app. A
+    // row's own period OVERLAPPING the selected range is what counts as a
+    // match (endDate >= dateFrom AND startDate <= dateTo), not a strict
+    // containment check -- more forgiving for a viewer who doesn't
+    // remember the exact cutoff boundaries.
+    const myPayslipRecordsTableBody = document.getElementById('my-payslip-records-table-body');
+    const myPayslipFilterDateFrom = document.getElementById('my-payslip-filter-date-from');
+    const myPayslipFilterDateTo = document.getElementById('my-payslip-filter-date-to');
+    const btnMyPayslipFilter = document.getElementById('btn-my-payslip-filter');
+    const btnMyPayslipClearFilter = document.getElementById('btn-my-payslip-clear-filter');
+    let myPayslipAllRecords = [];
+
+    function myPayslipRenderRows(records) {
+        if (!myPayslipRecordsTableBody) return;
+        if (records.length === 0) {
+            myPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">Wala pang nakitang payslip.</td></tr>';
+            myPayslipRecordsTableBody._records = [];
+            return;
+        }
+        myPayslipRecordsTableBody.innerHTML = records.map((rec, idx) => `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 8px 10px;">${rec.startDate} - ${rec.endDate}</td>
+                <td style="padding: 8px 10px;">${rec.recordType === 'rider' ? 'Rider Payslip' : 'Payslip'}</td>
+                <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(rec.netPay)}</td>
+                <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.generatedBy)}</td>
+                <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.timestamp)}</td>
+                <td style="padding: 8px 10px; white-space: nowrap;">
+                    <button type="button" class="btn-my-payslip-view" data-record-index="${idx}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> View/Print</button>
+                </td>
+            </tr>
+        `).join('');
+        // Stashed on the element itself (not re-fetched) so View/Print can
+        // rebuild the PDF straight from the already-fetched breakdown, no
+        // extra network round trip -- same pattern as the admin Payroll
+        // Records / Rider Payroll Records tables.
+        myPayslipRecordsTableBody._records = records;
+    }
+
+    function myPayslipApplyFilter() {
+        const dateFrom = myPayslipFilterDateFrom ? myPayslipFilterDateFrom.value : '';
+        const dateTo = myPayslipFilterDateTo ? myPayslipFilterDateTo.value : '';
+        let filtered = myPayslipAllRecords;
+        if (dateFrom) filtered = filtered.filter(rec => rec.endDate >= dateFrom);
+        if (dateTo) filtered = filtered.filter(rec => rec.startDate <= dateTo);
+        myPayslipRenderRows(filtered);
+    }
+
+    // Always sends the CURRENT session's own name -- there is no way for
+    // this page to ask for anyone else's records even if someone tampered
+    // with the request, since the backend independently ignores anything
+    // except viewerName and filters by it directly (see getMyPayrollRecords
+    // in google_apps_script.js).
+    async function loadMyPayrollRecords() {
+        if (!myPayslipRecordsTableBody) return;
+        myPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        try {
+            const result = await postToScriptWithRetry({
+                action: 'getMyPayrollRecords',
+                viewerName: sessionStorage.getItem('loggedInUser') || ''
+            });
+            if (!result || result.status !== 'success') {
+                myPayslipRecordsTableBody.innerHTML = `<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${(result && result.message) || 'Failed to load.'}</td></tr>`;
+                myPayslipAllRecords = [];
+                return;
+            }
+            myPayslipAllRecords = result.data || [];
+            myPayslipApplyFilter();
+        } catch (error) {
+            console.error('Error loading my payroll records:', error);
+            myPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+        }
+    }
+
+    if (btnMyPayslipFilter) {
+        btnMyPayslipFilter.addEventListener('click', () => myPayslipApplyFilter());
+    }
+    if (btnMyPayslipClearFilter) {
+        btnMyPayslipClearFilter.addEventListener('click', () => {
+            if (myPayslipFilterDateFrom) myPayslipFilterDateFrom.value = '';
+            if (myPayslipFilterDateTo) myPayslipFilterDateTo.value = '';
+            myPayslipApplyFilter();
+        });
+    }
+
+    // View/Print reuses the SAME PDF templates the admin Payslip/Rider
+    // Payslip pages already use (generatePayslipPdf / generateRiderPayslipPdf,
+    // both defined just below) -- read-only here, no Edit/Delete button at
+    // all, since this page is meant purely for a person to look up and
+    // reprint their own payslip.
+    if (myPayslipRecordsTableBody) {
+        myPayslipRecordsTableBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-my-payslip-view');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-record-index'), 10);
+            const records = myPayslipRecordsTableBody._records || [];
+            const rec = records[idx];
+            if (!rec) return;
+            if (rec.recordType === 'rider') {
+                let deliveries = [];
+                try { deliveries = JSON.parse(rec.deliveryBreakdown || '[]'); } catch (parseErr) { deliveries = []; }
+                generateRiderPayslipPdf({
+                    rider: rec.name, startDate: rec.startDate, endDate: rec.endDate, deliveries,
+                    deliveryCount: rec.deliveryCount, grossPay: rec.grossPay, cashAdvance: rec.cashAdvance,
+                    totalDeductions: rec.totalDeductions, netPay: rec.netPay, generatedBy: rec.generatedBy,
+                    timestamp: rec.timestamp, cashAdvanceRemainingBalance: rec.cashAdvanceRemainingBalance,
+                    commission: rec.commission, mealAllowance: rec.mealAllowance
+                });
+            } else {
+                let days = [];
+                try { days = JSON.parse(rec.dailyBreakdown || '[]'); } catch (parseErr) { days = []; }
+                generatePayslipPdf({
+                    employee: rec.name, dailyRate: rec.dailyRate, startDate: rec.startDate, endDate: rec.endDate,
+                    days, totalBasePay: rec.totalBasePay, totalOtHours: rec.totalOtHours, totalOtPay: rec.totalOtPay,
+                    grossPay: rec.grossPay, withholdingTax: rec.withholdingTax, sss: rec.sss, philhealth: rec.philhealth,
+                    pagibig: rec.pagibig, cashAdvance: rec.cashAdvance, totalDeductions: rec.totalDeductions,
+                    netPay: rec.netPay, generatedBy: rec.generatedBy, timestamp: rec.timestamp,
+                    commission: rec.commission, cashAdvanceRemainingBalance: rec.cashAdvanceRemainingBalance,
+                    foodAllowance: rec.foodAllowance, daysPresent: rec.daysPresent, daysAbsent: rec.daysAbsent
+                });
+            }
+        });
+    }
+
+    async function generateRiderPayslipPdf(data) {
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+            newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Rider Payslip PDF, please wait...</h3>');
+        }
+
+        const rowsHtml = (data.deliveries || []).map((d) => {
+            const customerOrDistributor = d.tripType === 'Distributor' ? payslipEscapeHtml(d.distributorName) : payslipEscapeHtml(d.customerName);
+            const siLabel = (d.salesInvoiceNumbers && d.salesInvoiceNumbers.length) ? payslipEscapeHtml(d.salesInvoiceNumbers.join(', ')) : '-';
+            return `
+                <tr>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.deliveryDate}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${payslipEscapeHtml(d.tripType)}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${customerOrDistributor || '-'}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${siLabel}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">₱${Number(d.shippingFee).toFixed(2)}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">₱${Number(d.servicesTotal).toFixed(2)}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px; font-weight:700;">₱${Number(d.grandTotal).toFixed(2)}</td>
+                </tr>
+            `;
+        }).join('');
+
+        // Same template/PDF pipeline as generatePayslipPdf above (MQ_BRAND
+        // header, plain <table> layouts throughout, `.payslip-avoid-break`
+        // wrapper so the summary/footer block never splits mid-row across
+        // a page boundary, 0.3in/'a4' margin/format) -- just with a
+        // per-delivery table instead of a per-day one, and no 4-tax-field
+        // deductions (Withholding Tax/SSS/PhilHealth/Pag-IBIG) since those
+        // don't apply to riders. Commission + Meal Allowance (2026-09-06)
+        // ARE shown here, same as the employee Payslip.
+        const htmlString = `
+            <div id="rider-payslip-pdf-content-wrapper" style="font-family: Arial, sans-serif; padding: 20px; color: #1f2937;">
+                <div style="text-align:center; margin-bottom: 18px;">
+                    <div style="font-size:20px; font-weight:800; color:#1f2937;">${MQ_BRAND.name}</div>
+                    <div style="font-size:11.5px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
+                    <div style="font-size:11.5px; color:#6b7280; margin-top:5px;">📍 ${MQ_BRAND.address}</div>
+                    <div style="font-size:11.5px; color:#6b7280;">📞 ${MQ_BRAND.phone} &nbsp;|&nbsp; ✉️ ${MQ_BRAND.email}</div>
+                    <h2 style="margin: 14px 0 0; font-size: 16px; letter-spacing: 0.5px;">RIDER PAYSLIP</h2>
+                </div>
+                <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom: 14px; border-top:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb;">
+                    <tr>
+                        <td style="padding:8px 4px;"><strong>Rider:</strong> ${payslipEscapeHtml(data.rider)}</td>
+                        <td style="padding:8px 4px;"><strong>Cutoff:</strong> ${data.startDate} to ${data.endDate}</td>
+                        <td style="padding:8px 4px; text-align:right;"><strong>Bilang ng Delivery:</strong> ${data.deliveryCount !== undefined && data.deliveryCount !== null ? data.deliveryCount : '-'}</td>
+                    </tr>
+                </table>
+                <table style="width:100%; border-collapse: collapse; margin-bottom: 18px;">
+                    <thead>
+                        <tr style="background:#f3f4f6;">
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Delivery Date</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Trip Type</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Customer / Distributor</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">SI#</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Shipping Fee</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Services Total</th>
+                            <th style="padding:6px 8px; text-align:left; font-size:10px; text-transform:uppercase; color:#6b7280;">Grand Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+                <div class="payslip-avoid-break">
+                    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                        <tr>
+                            <td style="width:50%; vertical-align:top; padding-right:18px;">
+                                <div style="font-size:10px; text-transform:uppercase; color:#6b7280; font-weight:700; margin-bottom:6px; letter-spacing:0.4px;">Pay Summary</div>
+                                <table style="width:100%; border-collapse:collapse;">
+                                    <tr><td style="padding:4px 0;">Gross Pay (Deliveries)</td><td style="padding:4px 0; text-align:right;">${payslipFormatPeso((Number(data.grossPay) || 0) - (Number(data.commission) || 0) - (Number(data.mealAllowance) || 0))}</td></tr>
+                                    <tr><td style="padding:4px 0;">Commission</td><td style="padding:4px 0; text-align:right;">${payslipFormatPeso(data.commission || 0)}</td></tr>
+                                    <tr><td style="padding:4px 0;">Meal Allowance</td><td style="padding:4px 0; text-align:right;">${payslipFormatPeso(data.mealAllowance || 0)}</td></tr>
+                                    <tr style="border-top:1px solid #e5e7eb;"><td style="padding:6px 0; font-weight:700;">Gross Pay</td><td style="padding:6px 0; text-align:right; font-weight:700;">${payslipFormatPeso(data.grossPay)}</td></tr>
+                                </table>
+                            </td>
+                            <td style="width:50%; vertical-align:top; padding-left:18px; border-left:1px solid #e5e7eb;">
+                                <div style="font-size:10px; text-transform:uppercase; color:#6b7280; font-weight:700; margin-bottom:6px; letter-spacing:0.4px;">Deductions</div>
+                                <table style="width:100%; border-collapse:collapse;">
+                                    <tr><td style="padding:4px 0; color:#b91c1c;">Cash Advance</td><td style="padding:4px 0; text-align:right; color:#b91c1c;">-${payslipFormatPeso(data.cashAdvance)}</td></tr>
+                                    ${data.cashAdvanceRemainingBalance !== undefined && data.cashAdvanceRemainingBalance !== null ? `<tr><td colspan="2" style="padding:3px 0 0; font-size:9.5px; color:#6b7280; font-style:italic;">CA Balance na Natitira: ${payslipFormatPeso(data.cashAdvanceRemainingBalance)}</td></tr>` : ''}
+                                </table>
+                            </td>
+                        </tr>
+                    </table>
+                    <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+                        <tr style="border-top:2px solid #1f2937;">
+                            <td style="padding:8px 0; font-weight:800; font-size:15px;">NET PAY</td>
+                            <td style="padding:8px 0; text-align:right; font-weight:800; font-size:15px;">${payslipFormatPeso(data.netPay)}</td>
+                        </tr>
+                    </table>
+                    <div style="margin-top: 24px; font-size: 10px; color: #9ca3af; text-align:center;">
+                        Generated by ${payslipEscapeHtml(data.generatedBy)} on ${payslipEscapeHtml(data.timestamp)} -- ${MQ_BRAND.name}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const hiddenDiv = document.createElement('div');
+        hiddenDiv.innerHTML = htmlString;
+        hiddenDiv.style.position = 'absolute';
+        hiddenDiv.style.top = '-9999px';
+        hiddenDiv.style.left = '-9999px';
+        hiddenDiv.style.width = '800px';
+        document.body.appendChild(hiddenDiv);
+
+        const element = hiddenDiv.querySelector('#rider-payslip-pdf-content-wrapper');
+        const opt = {
+            margin: 0.3,
+            filename: `RiderPayslip_${(data.rider || '').replace(/ /g, '_')}_${data.startDate}_to_${data.endDate}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['css'], avoid: ['tr', '.payslip-avoid-break'] }
+        };
+
+        // Same scroll-position fix as generatePayslipPdf above (see the
+        // detailed comment there) -- html2canvas captures relative to the
+        // page's CURRENT scroll position, not the hidden render target's
+        // fixed off-screen spot, so this snaps to the top before capturing
+        // and restores it afterward.
+        const scrollXBeforeCapture = window.scrollX;
+        const scrollYBeforeCapture = window.scrollY;
+        window.scrollTo(0, 0);
+
+        try {
+            const pdfUrl = await html2pdf().set(opt).from(element).output('bloburl');
+            if (newTab) newTab.location.href = pdfUrl;
+        } catch (err) {
+            console.error('Error generating rider payslip PDF:', err);
+            if (newTab) newTab.close();
+        } finally {
+            document.body.removeChild(hiddenDiv);
+            window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+        }
+    }
+
+    if (menuRiderPayslipBtn) {
+        menuRiderPayslipBtn.addEventListener('click', () => {
+            hideAllContainers();
+            if (riderPayslipContainer) riderPayslipContainer.classList.remove('hidden');
+            if (riderPayslipPreviewSection) riderPayslipPreviewSection.classList.add('hidden');
+            riderPayslipCurrentPreview = null;
+            loadRiderPayslipRiders();
+            loadRiderPayrollRecords();
+        });
+    }
+
+    if (riderPayslipForm) {
+        riderPayslipForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const rider = riderPayslipRiderSelect ? riderPayslipRiderSelect.value : '';
+            const startDate = riderPayslipStartDateInput ? riderPayslipStartDateInput.value : '';
+            const endDate = riderPayslipEndDateInput ? riderPayslipEndDateInput.value : '';
+
+            if (!rider) { showMessage(riderPayslipStatusMessage, 'Piliin ang Rider.', 'error'); return; }
+            if (!startDate || !endDate) { showMessage(riderPayslipStatusMessage, 'Piliin ang Start Date at End Date.', 'error'); return; }
+            if (startDate > endDate) { showMessage(riderPayslipStatusMessage, 'Ang Start Date ay hindi dapat lampas sa End Date.', 'error'); return; }
+
+            const computeBtn = document.getElementById('rider-payslip-compute-btn');
+            const btnText = computeBtn ? computeBtn.querySelector('.btn-text') : null;
+            const spinner = computeBtn ? computeBtn.querySelector('.spinner') : null;
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            if (computeBtn) computeBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'computeRiderPayslipPreview', rider, startDate, endDate })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    riderPayslipRenderPreview(result.data);
+                    showMessage(riderPayslipStatusMessage, 'Na-compute -- i-check ang preview sa ibaba.', 'success');
+                } else {
+                    showMessage(riderPayslipStatusMessage, `Error: ${result.message || 'Hindi na-compute.'}`, 'error');
+                    if (riderPayslipPreviewSection) riderPayslipPreviewSection.classList.add('hidden');
+                    riderPayslipCurrentPreview = null;
+                }
+            } catch (error) {
+                console.error('Error computing rider payslip preview:', error);
+                showMessage(riderPayslipStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                if (computeBtn) computeBtn.disabled = false;
+            }
+        });
+    }
+
+    if (riderPayslipSaveBtn) {
+        riderPayslipSaveBtn.addEventListener('click', async () => {
+            if (!riderPayslipCurrentPreview) return;
+            const rider = riderPayslipRiderSelect ? riderPayslipRiderSelect.value : '';
+            const startDate = riderPayslipStartDateInput ? riderPayslipStartDateInput.value : '';
+            const endDate = riderPayslipEndDateInput ? riderPayslipEndDateInput.value : '';
+            const cashAdvance = parseFloat(riderPayslipCashAdvanceInput.value);
+            const commission = parseFloat(riderPayslipCommissionInput ? riderPayslipCommissionInput.value : 0);
+            const mealAllowance = parseFloat(riderPayslipMealAllowanceInput ? riderPayslipMealAllowanceInput.value : 0);
+
+            if (isNaN(cashAdvance) || cashAdvance < 0) {
+                showMessage(riderPayslipStatusMessage, 'Ang Cash Advance ay dapat valid na numero (0 o mas mataas).', 'error');
+                return;
+            }
+            if (isNaN(commission) || commission < 0) {
+                showMessage(riderPayslipStatusMessage, 'Ang Commission ay dapat valid na numero (0 o mas mataas).', 'error');
+                return;
+            }
+            if (isNaN(mealAllowance) || mealAllowance < 0) {
+                showMessage(riderPayslipStatusMessage, 'Ang Meal Allowance ay dapat valid na numero (0 o mas mataas).', 'error');
+                return;
+            }
+
+            const btnText = riderPayslipSaveBtn.querySelector('.btn-text');
+            const spinner = riderPayslipSaveBtn.querySelector('.spinner');
+            if (btnText) btnText.classList.add('hidden');
+            if (spinner) spinner.classList.remove('hidden');
+            riderPayslipSaveBtn.disabled = true;
+
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({
+                        action: 'saveRiderPayslip', rider, startDate, endDate, cashAdvance, commission, mealAllowance,
+                        generatedBy: sessionStorage.getItem('loggedInUser') || ''
+                    })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showMessage(riderPayslipStatusMessage, 'Na-save ang rider payslip. Ginagawa ang PDF...', 'success');
+                    await generateRiderPayslipPdf(result.data);
+                    loadRiderPayrollRecords();
+                    loadCashAdvanceBalances(); // the CA deduction just recorded (if any) changes the running balance shown on the Payslip page's panel
+                } else {
+                    showMessage(riderPayslipStatusMessage, `Error: ${result.message || 'Hindi na-save ang rider payslip.'}`, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving rider payslip:', error);
+                showMessage(riderPayslipStatusMessage, 'Network error. Please try again.', 'error');
+            } finally {
+                if (btnText) btnText.classList.remove('hidden');
+                if (spinner) spinner.classList.add('hidden');
+                riderPayslipSaveBtn.disabled = false;
+            }
+        });
+    }
+
+    if (btnRiderPayslipRefresh) {
+        btnRiderPayslipRefresh.addEventListener('click', loadRiderPayrollRecords);
+    }
+
+    if (riderPayslipRecordsTableBody) {
+        riderPayslipRecordsTableBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-rider-payslip-reprint');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-record-index'), 10);
+            const records = riderPayslipRecordsTableBody._records || [];
+            const rec = records[idx];
+            if (!rec) return;
+            let deliveries = [];
+            try { deliveries = JSON.parse(rec.deliveryBreakdown || '[]'); } catch (parseErr) { deliveries = []; }
+            generateRiderPayslipPdf({
+                rider: rec.rider, startDate: rec.startDate, endDate: rec.endDate, deliveries,
+                deliveryCount: rec.deliveryCount, grossPay: rec.grossPay, cashAdvance: rec.cashAdvance,
+                totalDeductions: rec.totalDeductions, netPay: rec.netPay, generatedBy: rec.generatedBy,
+                timestamp: rec.timestamp, cashAdvanceRemainingBalance: rec.cashAdvanceRemainingBalance,
+                commission: rec.commission, mealAllowance: rec.mealAllowance
+            });
+        });
+
+        // Same "each button family gets its own delegated listener" pattern
+        // as the employee Payslip Reprint/Delete buttons above.
+        riderPayslipRecordsTableBody.addEventListener('click', async (e) => {
+            const btn = e.target.closest('.btn-rider-payslip-delete');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-record-index'), 10);
+            const records = riderPayslipRecordsTableBody._records || [];
+            const rec = records[idx];
+            if (!rec) return;
+
+            const hasCashAdvance = Number(rec.cashAdvance) > 0;
+            const confirmMsg = hasCashAdvance
+                ? `Sigurado ka bang tatanggalin ang rider payslip na ito ni ${rec.rider} (${rec.startDate} - ${rec.endDate})? Kasama nito, ire-rollback ang Cash Advance deduction na ₱${Number(rec.cashAdvance).toFixed(2)} -- babalik ito sa natitirang utang niya.`
+                : `Sigurado ka bang tatanggalin ang rider payslip na ito ni ${rec.rider} (${rec.startDate} - ${rec.endDate})?`;
+            if (!confirm(confirmMsg)) return;
+
+            const deletedBy = sessionStorage.getItem('loggedInUser') || '';
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'deleteRiderPayslip', rowIndex: rec.rowIndex, deletedBy })
+                });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    showToast(result.message || 'Natanggal ang rider payslip.', 'success');
+                    await loadRiderPayrollRecords();
+                    await loadCashAdvanceBalances();
+                } else {
+                    showToast(result.message || 'Error deleting rider payslip.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
+            } catch (error) {
+                console.error('Error deleting rider payslip:', error);
+                showToast('Network error. Please try again.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            }
+        });
     }
 
     // PDF Report Generator Logic

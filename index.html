@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=10">
+    <link rel="stylesheet" href="style.css?v=13">
     <!-- Fix 48: html2pdf.bundle.min.js, chart.js, and xlsx.full.min.js used to be
          loaded here as plain blocking <script> tags -- meaning every page open,
          even the login screen, waited on all three heavy libraries before the
@@ -49,24 +49,23 @@
     </div>
 
     <div class="container hidden" id="main-menu-container">
+        <!-- 2026-09-06: Welcome/Logout header + the menu-button sidebar are
+             now combined into ONE left-hand column ("ilagay sa ilalim ng
+             welcome ang mga buttons") so the dashboard cards get the
+             freed-up horizontal space, instead of being squeezed by 3
+             separate columns (header | buttons | cards). Buttons keep the
+             same compact icon+label style from Fix 87 -- no button IDs
+             changed, app.js's click handlers/role-gating are untouched,
+             this is a pure layout restructuring. See the #left-column CSS
+             block in style.css for the responsive behavior (stacked full
+             width on mobile, sticky left column on desktop). -->
+        <div class="left-column" id="left-column">
         <header>
             <h1 id="welcome-message">MGH Daily Expenses</h1>
             <p>What would you like to do today?</p>
             <button id="logout-btn" class="logout-btn">Logout</button>
         </header>
 
-        <!-- Fix 87: menu buttons live in their own compact left-hand sidebar
-             (icon + small always-visible label, single column on desktop),
-             separate from the dashboard cards -- which now all sit together
-             in one full-width grid to the right, instead of being split
-             across a "mid-col" (buttons + 2 cards) and a separate
-             "menu-dashboard-col" (2 more cards) like Fix 75/79/82 had it.
-             No button IDs changed -- app.js's click handlers/role-gating are
-             untouched, this is a pure layout restructuring. See the Fix 87
-             CSS block in style.css for the responsive behavior (single
-             column of full-size buttons on mobile, narrow icon+label
-             sidebar + a card grid on desktop). -->
-        <div class="menu-dashboard-layout">
         <nav class="glass-panel main-menu sidebar-menu" id="sidebar-menu">
             <button class="menu-action-btn" id="menu-admin-btn">
                 <span class="icon">⚙️</span>
@@ -108,20 +107,58 @@
                 <span class="icon">⏱️</span>
                 OT Requests
             </button>
-            <!-- Fix 73 (Payroll Phase 3): Holiday Pay marking -- hidden by default,
-                 shown only for Owner/Payroll roles (see the role-gating block in
-                 showApp() in app.js), same "hidden by default, shown in showApp()"
-                 pattern already used for Manual Quotation's store-based gate. -->
-            <button class="menu-action-btn" id="menu-holiday-pay-btn" style="display: none;">
-                <span class="icon">🎉</span>
-                Holiday Pay
+            <!-- 2026-09-06 follow-up #2: "My Payslip" -- a self-service button
+                 visible to EVERY logged-in role (Owner/Payroll/Manager/
+                 Technician/Rider alike, confirmed via AskUserQuestion to
+                 include Rider too, as a deliberate narrow exception to the
+                 Rider sidebar lockdown sweep further below in app.js) so any
+                 account can look up their OWN past payslips by an optional
+                 date range -- never anyone else's. No inline role-gate needed
+                 here since it's meant to default-visible for everyone; the
+                 only exception logic lives in the Rider lockdown sweep in
+                 app.js (menu-my-payslip-btn added to its exemption list). -->
+            <button class="menu-action-btn" id="menu-my-payslip-btn">
+                <span class="icon">🧾</span>
+                My Payslip
             </button>
-            <!-- Fix 74 (Payroll Phase 4): Weekly Payroll Computation + Payslip --
-                 same role gate as Holiday Pay (Owner/Payroll only, see showApp()
-                 in app.js), hidden by default. -->
-            <button class="menu-action-btn" id="menu-payslip-btn" style="display: none;">
-                <span class="icon">💵</span>
-                Payslip
+            <!-- 2026-09-06 follow-up: the user asked to consolidate Holiday
+                 Pay + Payslip + Rider Payslip under one "Payroll" hub button
+                 ("pag pinindot ang payroll button makikita sa loob yung
+                 Payslip, Holiday at Rider Payslip") -- same pattern as the
+                 "MarvsPCStufz" hub button above (a submenu container full
+                 of sub-buttons, see #payroll-menu-container further down).
+                 Those 3 buttons/containers still exist with all their
+                 original IDs/logic completely unchanged -- they've just
+                 been physically relocated into the new hub container
+                 instead of sitting here in the top-level sidebar. Gated to
+                 Owner/Payroll only (same role check all 3 sub-pages
+                 already independently enforce -- see showApp() in
+                 app.js), hidden by default. -->
+            <button class="menu-action-btn" id="menu-payroll-btn" style="display: none;">
+                <span class="icon">💰</span>
+                Payroll
+            </button>
+            <!-- User request (2026-09-05): "gusto kong gumawa ng Riders Payroll
+                 lagay mo sa Ilalim ng Payslip tapos ang meron lang access dyan
+                 Owner at Payroll" -- new top-level menu item, directly below
+                 Payslip, same Owner/Payroll-only role gate (see the
+                 role-gating block in showApp() in app.js). Per the user's own
+                 "unahin mo lang muna gawin yun button" -- this delivery is
+                 JUST the button + a placeholder container for now; the actual
+                 Riders Payroll page/logic is a separate, later delivery. -->
+            <button class="menu-action-btn" id="menu-riders-payroll-btn" style="display: none;">
+                <span class="icon">🛵</span>
+                Riders Delivery
+            </button>
+            <!-- 2026-09-05 follow-up #10: Delivery Approval -- Owner/Manager
+                 only ("ako lang at si manager ang makaka kita at access"),
+                 gated in app.js's showApp(). A Rider account never sees
+                 this button -- it's also part of the blanket sidebar
+                 lockdown from follow-up #9 (Rider only ever sees Riders
+                 Payroll itself). -->
+            <button class="menu-action-btn" id="menu-delivery-approval-btn" style="display: none;">
+                <span class="icon">✅</span>
+                Delivery Approval
             </button>
             <!-- Fix 20: Manual Quotation -- access restricted to store === 'All' or
                  store === 'MarvsPCStufz', same rule as the MarvsPCStufz button above
@@ -136,6 +173,7 @@
                 Supplier List
             </button>
         </nav>
+        </div>
 
         <!-- Fix 87: every dashboard card now lives together in this single
              grid, instead of being split across two separate columns. -->
@@ -343,7 +381,50 @@
                     <div class="dash-empty">Loading...</div>
                 </div>
             </div>
-        </div>
+
+            <!-- User request (2026-09-06): a dashboard card for Purchase
+                 Requests, same source as the "Purchased Items" > View & Edit:
+                 Purchased Order modal (Date Requested/Admin Requested/Item
+                 Description/Qty/Status), with the same Date sort toggle as
+                 the other cards. Only Pending + Partially Purchased +
+                 Rejected are counted/listed (Completed = done, excluded --
+                 same "still needs attention" convention as Client Support's
+                 Open/In Progress). Shown only for RMA Admin/Manager/Owner --
+                 same role gate as the Purchased Items menu button itself,
+                 since this is procurement data, not store-scoped like the
+                 other MarvsPCStufz cards (Purchased Order has no Branch
+                 column at all). -->
+            <div class="glass-panel dash-card" id="dash-purchase-requests-card">
+                <div class="dash-head">
+                    <div class="titlewrap">
+                        <div class="dash-icon">🛒</div>
+                        <div>
+                            <h3>Purchase Requests</h3>
+                            <p class="sub">Still Pending, Partially Purchased, or Rejected</p>
+                        </div>
+                    </div>
+                    <button type="button" class="dash-sort-btn" id="dash-pr-sort-btn" title="I-toggle ang pagkakasunod-sunod ng petsa">Date <i class="fas fa-sort-up" id="dash-pr-sort-icon"></i></button>
+                </div>
+
+                <div class="card-grid cols-3">
+                    <div class="metric-card warn">
+                        <div class="lbl">Pending</div>
+                        <div class="val" id="dash-pr-pending-count">--</div>
+                    </div>
+                    <div class="metric-card mid">
+                        <div class="lbl">Partially Purchased</div>
+                        <div class="val" id="dash-pr-partial-count">--</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="lbl">Rejected</div>
+                        <div class="val" id="dash-pr-rejected-count">--</div>
+                    </div>
+                </div>
+
+                <div class="cust-list-scroll" id="dash-pr-list">
+                    <div class="dash-empty">Loading...</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -668,6 +749,106 @@
         </main>
     </div>
 
+    <!-- Payroll hub (2026-09-06 user request): "pag pinindot ang payroll
+         button makikita sa loob yung Payslip, Holiday at Rider Payslip...
+         move these button Payslip, Rider Payslip and Holiday pay inside
+         the Payroll button" -- same submenu-hub pattern as
+         #marvspc-menu-container above (a plain button list, each one
+         navigating to its own already-existing page). The 3 buttons below
+         are the SAME elements that used to sit directly in the main
+         sidebar -- same IDs, same click handlers/role-gating in app.js,
+         completely unchanged logic, just relocated here. This hub button
+         itself is gated Owner/Payroll only (see showApp() in app.js) --
+         redundant with each sub-page's own independent gate, but kept as
+         defense-in-depth, same reasoning as the backend's own re-checks. -->
+    <!-- "My Payslip" (2026-09-06 follow-up #2): self-service, read-only view
+         of the LOGGED-IN account's own past payslips only -- never anyone
+         else's, enforced server-side by getMyPayrollRecords (see
+         google_apps_script.js) which always filters by the requesting
+         account's own name regardless of role, with no admin bypass. Date
+         range is optional (blank = show everything); when set, filters the
+         already-fetched list client-side, same "filter a cached list"
+         pattern as Riders Delivery's own records filter. Only a View/Print
+         action per row -- no Edit/Delete here, this page is read-only by
+         design. -->
+    <div class="container hidden" id="my-payslip-container" style="max-width: 900px;">
+        <header>
+            <h1><i class="fas fa-receipt" style="margin-right: 8px;"></i>My Payslip</h1>
+            <p>Tingnan ang sarili mong mga naka-save na payslip</p>
+            <button class="back-btn" data-target="main-menu-container"><i class="fas fa-arrow-left"></i> Back to Main Menu</button>
+        </header>
+        <main class="glass-panel" style="max-width: 900px; margin: 0 auto;">
+            <div style="display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 18px;">
+                <div style="flex: 1; min-width: 140px;">
+                    <label style="display:block; font-size:0.78em; color: var(--text-muted); margin-bottom:4px;">Start Date</label>
+                    <input type="date" id="my-payslip-filter-date-from" style="width: 100%;">
+                </div>
+                <div style="flex: 1; min-width: 140px;">
+                    <label style="display:block; font-size:0.78em; color: var(--text-muted); margin-bottom:4px;">End Date</label>
+                    <input type="date" id="my-payslip-filter-date-to" style="width: 100%;">
+                </div>
+                <button type="button" class="submit-btn" id="btn-my-payslip-filter" style="margin-top: 0; width: auto; padding: 10px 18px;">
+                    <i class="fas fa-filter"></i> I-filter
+                </button>
+                <button type="button" id="btn-my-payslip-clear-filter" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 10px 14px; font-size: 0.85em; font-weight: 500; cursor: pointer;">
+                    Clear
+                </button>
+            </div>
+            <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Cutoff</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Type</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Net Pay</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Generated By</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">When</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="my-payslip-records-table-body">
+                        <tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div class="container hidden" id="payroll-menu-container">
+        <header>
+            <h1><i class="fas fa-money-bill-wave" style="margin-right: 8px;"></i>Payroll</h1>
+            <p>Select an option below</p>
+            <button class="back-btn" data-target="main-menu-container"><i class="fas fa-arrow-left"></i> Back to Main Menu</button>
+        </header>
+        <main class="glass-panel main-menu" style="gap: 6px;">
+            <!-- Fix 73 (Payroll Phase 3): Holiday Pay marking -- hidden by default,
+                 shown only for Owner/Payroll roles (see the role-gating block in
+                 showApp() in app.js), same "hidden by default, shown in showApp()"
+                 pattern already used for Manual Quotation's store-based gate. -->
+            <button class="menu-action-btn" id="menu-holiday-pay-btn" style="display: none; padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🎉</span>
+                Holiday Pay
+            </button>
+            <!-- Fix 74 (Payroll Phase 4): Weekly Payroll Computation + Payslip --
+                 same role gate as Holiday Pay (Owner/Payroll only, see showApp()
+                 in app.js), hidden by default. -->
+            <button class="menu-action-btn" id="menu-payslip-btn" style="display: none; padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">💵</span>
+                Payslip
+            </button>
+            <!-- 2026-09-06: the user asked for the SAME Payslip treatment for
+                 Riders ("proceed na tayo sa payslip para sa mga riders naman...
+                 same dun sa ginawa mo sa payslip para sa mga employee... saka
+                 same report din dapat") -- same Owner/Payroll-only role gate as
+                 Payslip (see showApp() in app.js), since it's Owner/Payroll who
+                 generate a rider's payslip, not the Rider themselves. -->
+            <button class="menu-action-btn" id="menu-rider-payslip-btn" style="display: none; padding: 8px 14px; gap: 10px;">
+                <span class="icon" style="width: 30px; height: 30px; font-size: 0.95em;">🏍️</span>
+                Rider Payslip
+            </button>
+        </main>
+    </div>
+
     <!-- Holiday Pay Container (Fix 73 - Payroll Phase 3). The button that opens
          this page is itself hidden unless the session's role is Owner or Payroll
          (see showApp() in app.js) -- this container has no content anyone else
@@ -679,7 +860,9 @@
             <h1><i class="fas fa-umbrella-beach" style="margin-right: 8px;"></i>Holiday Pay</h1>
             <p>I-mark ang mga Regular Holiday / Special Non-Working Holiday dates</p>
             <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
-            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+            <!-- 2026-09-06: now reached via the "Payroll" hub, so Back
+                 returns there instead of straight to the Main Menu. -->
+            <button class="back-btn" data-target="payroll-menu-container">← Back to Payroll</button>
         </header>
 
         <main class="glass-panel" style="margin-top: 20px;">
@@ -771,7 +954,9 @@
             <h1><i class="fas fa-money-check-dollar" style="margin-right: 8px;"></i>Payslip</h1>
             <p>Kalkulahin at i-print ang payslip ng isang empleyado para sa isang date range</p>
             <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
-            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+            <!-- 2026-09-06: now reached via the "Payroll" hub, so Back
+                 returns there instead of straight to the Main Menu. -->
+            <button class="back-btn" data-target="payroll-menu-container">← Back to Payroll</button>
         </header>
 
         <main class="glass-panel" style="margin-top: 20px;">
@@ -1002,6 +1187,473 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Rider Payslip Container (2026-09-06). Mirrors the employee Payslip
+         container above as closely as the underlying data allows -- flow:
+         pick Rider + Start/End Date -> "I-compute" calls
+         computeRiderPayslipPreview (read-only) -> preview shows every
+         APPROVED delivery in range + a Gross Pay total (sum of GrandTotal,
+         confirmed via AskUserQuestion) -> fill in Cash Advance (the ONLY
+         deduction for riders, also confirmed via AskUserQuestion -- no
+         Withholding Tax/SSS/PhilHealth/Pag-IBIG, riders aren't regular
+         employees) -> "I-save at I-print" calls saveRiderPayslip, which
+         independently RECOMPUTES server-side before appending a new row to
+         "Rider Payroll Records" and generating the PDF. Every save is a
+         brand-new record, same as the employee Payslip. Cash Advance
+         balances for riders are managed from the SAME "Cash Advance
+         Balances" panel on the Payslip page above (riders are just
+         additional selectable names there) -- no separate ledger UI here. -->
+    <div class="container hidden" id="rider-payslip-container" style="max-width: 900px;">
+        <header>
+            <h1><i class="fas fa-motorcycle" style="margin-right: 8px;"></i>Rider Payslip</h1>
+            <p>Kalkulahin at i-print ang payslip ng isang rider para sa isang date range</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <!-- 2026-09-06: now reached via the "Payroll" hub, so Back
+                 returns there instead of straight to the Main Menu. -->
+            <button class="back-btn" data-target="payroll-menu-container">← Back to Payroll</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <h2 style="margin-top: 0;">1. Piliin ang Rider at Cutoff Range</h2>
+            <form id="rider-payslip-form">
+                <div class="form-group">
+                    <label for="rider-payslip-rider">Rider</label>
+                    <select id="rider-payslip-rider" required>
+                        <option value="" disabled selected>Select Rider</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rider-payslip-start-date">Start Date</label>
+                        <input type="date" id="rider-payslip-start-date" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="rider-payslip-end-date">End Date</label>
+                        <input type="date" id="rider-payslip-end-date" required>
+                    </div>
+                </div>
+                <button type="submit" class="submit-btn" id="rider-payslip-compute-btn" style="margin-top: 0;">
+                    <span class="btn-text"><i class="fas fa-calculator"></i> I-compute</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+            <div id="rider-payslip-status-message" class="hidden" style="margin-top: 15px;"></div>
+
+            <!-- Preview + deduction + save, hidden until a computation succeeds -->
+            <div id="rider-payslip-preview-section" class="hidden" style="margin-top: 30px;">
+                <hr style="margin: 0 0 20px 0; border: none; border-top: 1px solid var(--glass-border);">
+                <h2 style="margin-top: 0;">2. Preview ng Bawat Delivery</h2>
+                <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.83em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Delivery Date</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Trip Type</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Customer / Distributor</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">SI#</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Shipping Fee</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Services Total</th>
+                                <th style="text-align: left; padding: 8px 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Grand Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rider-payslip-deliveries-table-body"></tbody>
+                    </table>
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 16px; padding: 14px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid var(--glass-border);">
+                    <div><span style="color: var(--text-muted); font-size: 0.78em;">Bilang ng Delivery</span><br><strong id="rider-payslip-delivery-count">0</strong></div>
+                    <div><span style="color: var(--text-muted); font-size: 0.78em;">Delivery Days</span><br><strong id="rider-payslip-delivery-days">0</strong></div>
+                    <div><span style="color: var(--primary); font-size: 0.78em;">Gross Pay</span><br><strong id="rider-payslip-gross-pay" style="color: var(--primary); font-size: 1.1em;">₱0.00</strong></div>
+                </div>
+
+                <!-- Meal Allowance + Commission (user request, 2026-09-06):
+                     "dapat lagyan mo din ng meal allowance at commission" for
+                     Zaldy Paraiso/Mark Briones. Mirrors the employee Payslip's
+                     Commission/Food Allowance fields exactly (see above) --
+                     Meal Allowance auto-fills as Delivery Days x ₱80 but stays
+                     editable; Commission is manual entry only (confirmed via
+                     AskUserQuestion). -->
+                <div class="form-row" style="margin-top: 16px;">
+                    <div class="form-group">
+                        <label for="rider-payslip-commission">Commission (Manual, idadagdag sa Gross Pay)</label>
+                        <input type="number" id="rider-payslip-commission" min="0" step="0.01" value="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="rider-payslip-meal-allowance">Meal Allowance (Auto: Delivery Days x ₱80, pwede i-adjust)</label>
+                        <input type="number" id="rider-payslip-meal-allowance" min="0" step="0.01" value="0">
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 26px;">3. Deduction</h2>
+                <div class="form-group">
+                    <label for="rider-payslip-cash-advance">Cash Advance</label>
+                    <input type="number" id="rider-payslip-cash-advance" min="0" step="0.01" value="0">
+                    <p id="rider-payslip-ca-balance-hint" class="hidden" style="color: var(--text-muted); font-size: 0.8em; margin-top: 4px;"></p>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding: 14px; background: rgba(79,70,229,0.08); border-radius: 10px; border: 1px solid rgba(79,70,229,0.25);">
+                    <span style="font-weight: 600;">Net Pay</span>
+                    <strong id="rider-payslip-net-pay" style="font-size: 1.3em; color: var(--primary);">₱0.00</strong>
+                </div>
+
+                <button type="button" class="submit-btn" id="rider-payslip-save-btn" style="margin-top: 16px;">
+                    <span class="btn-text"><i class="fas fa-file-invoice-dollar"></i> I-save at I-print ang Payslip</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </div>
+
+            <div style="margin-top: 30px;">
+                <hr style="margin: 0 0 20px 0; border: none; border-top: 1px solid var(--glass-border);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h2 style="margin: 0;">Rider Payroll Records</h2>
+                    <button type="button" id="btn-rider-payslip-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
+                </div>
+                <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Rider</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Cutoff</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Net Pay</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Generated By</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">When</th>
+                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rider-payslip-records-table-body">
+                            <tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Riders Payroll Container (2026-09-05 Phase 1: button/placeholder only.
+         2026-09-05 Phase 2, same day: real form + save + records table, per
+         the user's detailed spec after reviewing an interactive HTML mockup.
+         Same Owner/Payroll role gate as Payslip (see showApp() in app.js).
+         Fields: Delivery Date, Rider Name (Zaldy Paraiso/Mark Briones),
+         Delivery Method (Van/Motor/Others), Customer Name, Sales Invoice #,
+         Shipping Fee, plus a "Services" frame (Service Type: Pisonet/
+         Diskless, each with Qty/Cost/auto Total = qty x cost) that is ONLY
+         ever shown for Mark Briones -- never for Zaldy Paraiso, per the
+         user's explicit rule (also re-enforced server-side in
+         saveRidersPayroll, see google_apps_script.js). Multiple service
+         line items are supported (user confirmed: "kahit ilan naman pero
+         mostly naman for 1 delivery nila ay pisonet lang or minsan
+         diskless"), same "+ Add Row" dynamic-row pattern already used by
+         Manual Quotation's Items list (mqAddItemRow/mqRecompute). A Grand
+         Total (Shipping Fee + Services Total) is shown per the user's own
+         "better if meron ng total para mas madali". -->
+    <div class="container hidden" id="riders-payroll-container" style="max-width: 900px;">
+        <header>
+            <h1><i class="fas fa-motorcycle" style="margin-right: 8px;"></i>Riders Delivery</h1>
+            <p>I-log ang delivery + services ng isang rider</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container">← Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <form id="riders-payroll-form">
+                <div class="form-group">
+                    <label for="rp-delivery-date">Delivery Date</label>
+                    <input type="date" id="rp-delivery-date" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="rp-rider-name">Rider Name</label>
+                        <select id="rp-rider-name" required>
+                            <option value="">-- Piliin --</option>
+                            <option value="Zaldy Paraiso">Zaldy Paraiso</option>
+                            <option value="Mark Briones">Mark Briones</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="rp-delivery-method">Delivery Method</label>
+                        <select id="rp-delivery-method" required>
+                            <option value="">-- Piliin --</option>
+                            <option value="Van">Van</option>
+                            <option value="Motor">Motor</option>
+                            <option value="Others">Others</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 2026-09-05 follow-up: "minsan hindi lang naman delivery sa
+                     customer minsan nagpapa pickup din naman ako sa
+                     distributor... pwede ba tayo mag lagay ng drop down
+                     button kapag ang pickup sa distributor or sa customer as
+                     backjob din" -- Trip Type decides whether the Customer
+                     Name or Distributor Name field below shows. Confirmed
+                     via AskUserQuestion: Backjob (redo delivery) still uses
+                     Customer Name, only Distributor swaps in Distributor
+                     Name (see rpUpdateTripType() in app.js). -->
+                <div class="form-group">
+                    <label for="rp-trip-type">Trip Type</label>
+                    <select id="rp-trip-type" required>
+                        <option value="Customer">Delivery sa Customer</option>
+                        <option value="Distributor">Pickup sa Distributor</option>
+                        <option value="Backjob">Backjob (Redo Delivery sa Customer)</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="rp-customer-name-wrap">
+                    <label for="rp-customer-name">Customer Name</label>
+                    <input type="text" id="rp-customer-name" placeholder="e.g. Juan Dela Cruz">
+                </div>
+
+                <!-- 2026-09-05 follow-up #2: "dapat kapag ang trip type ay
+                     pickup sa distributor dapat magiging drop down button
+                     sya tapos lalabas lahat nung distributor galing dun sa
+                     Supplier Name tab column A" -- reuses the existing
+                     "Supplier Name" master list (same getItemSuppliers
+                     action already powering the Purchased Items /
+                     MarvsPCStufz Warranty supplier dropdowns elsewhere in
+                     this app), populated by rpLoadDistributorNames() in
+                     app.js. -->
+                <div class="form-group hidden" id="rp-distributor-name-wrap">
+                    <label for="rp-distributor-name">Distributor Name</label>
+                    <select id="rp-distributor-name">
+                        <option value="" disabled selected>Loading...</option>
+                    </select>
+                </div>
+
+                <!-- 2026-09-05 follow-up: "minsan maraming sales invoice sa
+                     isang tao dahil putol putol ang gawa kaya better sana if
+                     pwede makapag add ng sales invoice box" -- same
+                     "+ Add Row" dynamic-list pattern as Services below,
+                     just a single text input per row (no qty/cost/total).
+                     2026-09-05 follow-up #3: "kapag pickup sa distributor
+                     dapat hindi na lilitaw yung sale invoice kasi pickup sa
+                     distributor yun" -- a Distributor pickup has no Sales
+                     Invoice # at all, so this whole section hides for that
+                     Trip Type (see rpUpdateTripType() in app.js). -->
+                <div class="form-group" id="rp-si-wrap">
+                    <label>Sales Invoice #</label>
+                    <div id="rp-si-rows"></div>
+                    <button type="button" id="rp-btn-add-si" style="margin-top: 4px; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.4); color: var(--primary); border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 600; cursor: pointer;">+ Add Sales Invoice #</button>
+                </div>
+
+                <div class="form-group">
+                    <label for="rp-shipping-fee">Shipping Fee</label>
+                    <input type="number" id="rp-shipping-fee" min="0" step="0.01" placeholder="0.00" required>
+                </div>
+
+                <!-- Services frame -- visible ONLY when Rider Name = Mark Briones -->
+                <div id="rp-services-frame" style="display: none; margin-top: 8px; padding: 18px; border: 1px solid rgba(139,92,246,0.35); border-radius: 14px; background: rgba(139,92,246,0.06);">
+                    <h2 style="text-align: center; font-size: 1.05em; margin: 0 0 16px; font-weight: 700;">Services</h2>
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.88em;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--glass-border);">
+                                    <th style="text-align: left; padding: 6px 8px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Service Type</th>
+                                    <th style="text-align: left; padding: 6px 8px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px; width: 90px;">Qty</th>
+                                    <th style="text-align: left; padding: 6px 8px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px; width: 120px;">Cost</th>
+                                    <th style="text-align: left; padding: 6px 8px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px; width: 130px;">Total Amount</th>
+                                    <th style="width: 40px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="rp-services-body"></tbody>
+                        </table>
+                    </div>
+                    <button type="button" id="rp-btn-add-service" style="margin-top: 10px; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.4); color: var(--primary); border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 600; cursor: pointer;">+ Add Service</button>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 14px; font-size: 0.95em; font-weight: 600;">
+                        Services Total:&nbsp;<span id="rp-services-total" style="color: var(--success);">₱0.00</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--glass-border); font-size: 1.1em; font-weight: 700;">
+                    Grand Total:&nbsp;<span id="rp-grand-total" style="color: var(--primary);">₱0.00</span>
+                </div>
+
+                <p id="rp-status-message" class="hidden" style="margin-top: 12px; font-size: 0.85em; padding: 10px 12px; border-radius: 8px;"></p>
+
+                <button type="submit" class="submit-btn" id="rp-save-btn"><i class="fas fa-save"></i> I-save ang Riders Delivery</button>
+            </form>
+
+            <!-- 2026-09-05 follow-up #6: "ito view delivery dyan pwede ba
+                 alisin? ang gusto ko kasi magkaroon ng view delivery button
+                 tapos kapag pinindot yun magkakaroon ng new form tapos dun
+                 lahat ng delivery makikita naka list view tapos pwede mag
+                 filter ng date then rider name din" -- the records table no
+                 longer lives inline on this page at all; this button now
+                 navigates to a completely separate "Delivery Records" view
+                 (#riders-payroll-delivery-records-container below), same
+                 navigation convention as every other button->separate-page
+                 flow in this app (hideAllContainers() + show target +
+                 .back-btn to return). Role-gated to Rider/Manager/Owner/
+                 Payroll in app.js, same 4 roles the user confirmed again
+                 here ("ang pwede lang mag access dun ay yung meron rider
+                 role, manager, payroll saka owner") -- unchanged from the
+                 prior follow-up. -->
+            <div style="margin-top: 34px;">
+                <button type="button" id="btn-riders-payroll-view-records" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 8px; padding: 10px 14px; font-size: 0.9em; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;"><i class="fas fa-list"></i> <span>View Delivery Records</span></button>
+            </div>
+
+            <!-- 2026-09-05 follow-up #10: "gusto ko ng control bilang owner
+                 dito kung tama ba ang nilalagay nila ... dapat approved ko
+                 muna" -- a Rider's own save no longer lands directly in
+                 Riders Payroll, it's held for Owner/Manager review first
+                 (see the Delivery Approval page, Owner/Manager-only). This
+                 button (Rider-only, gated in app.js) lets a Rider check
+                 what happened to each delivery they submitted --
+                 Pending/Approved/Rejected, with the reviewer's notes on a
+                 Rejected one so it's never silently gone. -->
+            <div style="margin-top: 10px; display: none;" id="btn-riders-payroll-my-submissions-wrap">
+                <button type="button" id="btn-riders-payroll-my-submissions" style="width: 100%; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 8px; padding: 10px 14px; font-size: 0.9em; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;"><i class="fas fa-clipboard-check"></i> <span>Status ng Mga Isinumite Ko</span></button>
+            </div>
+        </main>
+    </div>
+
+    <!-- Riders Payroll Delivery Records (2026-09-05 follow-up #6) -- its own
+         separate view, reached via the "View Delivery Records" button on
+         the Riders Payroll form above. Lists every logged delivery with
+         Date/Rider Name filters, same client-side-filter-over-a-cached-list
+         pattern as other list pages in this app (filter/sort without a
+         fresh server round trip -- see rpApplyRecordsFilters() in app.js). -->
+    <div class="container hidden" id="riders-payroll-delivery-records-container" style="max-width: 1000px;">
+        <header>
+            <h1><i class="fas fa-list" style="margin-right: 8px;"></i>Delivery Records</h1>
+            <p>Lahat ng na-log na delivery ng mga Rider</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="riders-payroll-container">← Back to Riders Delivery</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px;">
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+                    <label for="rp-records-filter-date-from">Delivery Date (From)</label>
+                    <input type="date" id="rp-records-filter-date-from">
+                </div>
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+                    <label for="rp-records-filter-date-to">Delivery Date (To)</label>
+                    <input type="date" id="rp-records-filter-date-to">
+                </div>
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 160px;">
+                    <label for="rp-records-filter-rider">Rider Name</label>
+                    <select id="rp-records-filter-rider">
+                        <option value="">Lahat ng Rider</option>
+                        <option value="Zaldy Paraiso">Zaldy Paraiso</option>
+                        <option value="Mark Briones">Mark Briones</option>
+                    </select>
+                </div>
+                <button type="button" id="rp-records-clear-filters-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 9px 14px; font-size: 0.85em; font-weight: 500; cursor: pointer;">Clear Filters</button>
+                <button type="button" id="btn-riders-payroll-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 9px 14px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
+            </div>
+            <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Delivery Date</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Rider</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Method</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Customer / Distributor</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">SI#</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Services</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Grand Total</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Logged By</th>
+                        </tr>
+                    </thead>
+                    <tbody id="riders-payroll-records-table-body">
+                        <tr><td colspan="8" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- 2026-09-05 follow-up #10: Rider-only "status of my submissions"
+         view -- a Rider's save now goes through Owner/Manager approval
+         first (see Delivery Approval below), so this is where a Rider can
+         see what happened to each one: still Pending, Approved (now a
+         real Riders Payroll record), or Rejected (with the reviewer's
+         notes on why, so it's never silently gone -- confirmed via
+         AskUserQuestion this needed to be visible to the Rider). -->
+    <div class="container hidden" id="riders-payroll-my-submissions-container" style="max-width: 1000px;">
+        <header>
+            <h1><i class="fas fa-clipboard-check" style="margin-right: 8px;"></i>Status ng Mga Isinumite Ko</h1>
+            <p>Pending, Approved, o Rejected -- ang bawat delivery na na-submit mo</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="riders-payroll-container">← Back to Riders Delivery</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 14px;">
+                <button type="button" id="btn-rp-my-submissions-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 9px 14px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
+            </div>
+            <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Delivery Date</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Method</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Customer / Distributor</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Grand Total</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Status</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Notes ng Reviewer</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rp-my-submissions-table-body">
+                        <tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <!-- 2026-09-05 follow-up #10: Owner/Manager-only Delivery Approval
+         queue -- "gusto ko ng control bilang owner ... bago sila
+         makapag-save dapat approved ko muna". Every Rider submission
+         lands here first (Status "Pending"); approving is the ONLY moment
+         it becomes a real Riders Payroll record (with the Expenses Tag
+         chosen here); rejecting leaves the real sheet untouched and marks
+         it Rejected (visible to the Rider in their own "Status ng Mga
+         Isinumite Ko" view above). Confirmed via AskUserQuestion: Manager
+         can fully Approve/Reject too, same as Owner. -->
+    <div class="container hidden" id="delivery-approval-container" style="max-width: 1100px;">
+        <header>
+            <h1><i class="fas fa-clipboard-check" style="margin-right: 8px;"></i>Delivery Approval</h1>
+            <p>I-verify ang mga isinumiteng delivery ng Rider bago ito maging opisyal na Riders Delivery record</p>
+            <p class="logged-in-user-display" style="color: var(--primary); font-weight: 600; margin-top: 5px;"></p>
+            <button class="back-btn" data-target="main-menu-container"><i class="fas fa-arrow-left"></i> Back to Menu</button>
+        </header>
+
+        <main class="glass-panel" style="margin-top: 20px;">
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px;">
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 200px;">
+                    <label for="da-status-filter">Status</label>
+                    <select id="da-status-filter">
+                        <option value="Pending">Pending (kailangan i-review)</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="">Lahat</option>
+                    </select>
+                </div>
+                <button type="button" id="btn-delivery-approval-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 9px 14px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
+            </div>
+            <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
+                    <thead>
+                        <tr style="background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--glass-border);">
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Delivery Date</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Rider</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Method</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Customer / Distributor</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Grand Total</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Isinumite Ni</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Status</th>
+                            <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Actions / Details</th>
+                        </tr>
+                    </thead>
+                    <tbody id="delivery-approval-table-body">
+                        <tr><td colspan="8" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </main>
     </div>
@@ -3263,6 +3915,15 @@
                                  or the existing Supervisor/Manager/Owner gate on OT Approvals; the
                                  user explicitly confirmed those two should stay unchanged. -->
                             <option value="Payroll">Payroll</option>
+                            <!-- 2026-09-05 follow-up #5 (Riders Payroll): new role for actual
+                                 rider accounts -- "gagawa ako ng role na Rider role para sila
+                                 lang ang meron access dun saka manager and owner". Gates the
+                                 Riders Payroll menu button (alongside the existing Owner/Payroll
+                                 access) and the "View Delivery Records" button (alongside
+                                 Manager/Owner/Payroll) -- see app.js. Does NOT grant access to
+                                 any other feature in this app (Payslip, Cash Advance, Attendance,
+                                 etc. all keep their existing role gates unchanged). -->
+                            <option value="Rider">Rider</option>
                         </select>
                     </div>
 
@@ -5374,7 +6035,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=124"></script>
+    <script src="app.js?v=145"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -5626,6 +6287,53 @@
             <div class="confirm-actions">
                 <button id="confirm-cancel-btn"><i class="fas fa-times"></i> Cancel</button>
                 <button id="confirm-ok-btn"><i class="fas fa-trash"></i> Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delivery Approval: Approve modal (2026-09-05 follow-up #10) --
+         requires an Expenses Tag before it can be confirmed, matching the
+         user's own request for a dropdown with Owner/Customer options on
+         the approval form. -->
+    <div id="da-approve-modal-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 420px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <h3 style="margin: 0 0 6px; color: var(--primary);"><i class="fas fa-check-circle"></i> Approve Submission</h3>
+            <p id="da-approve-modal-summary" style="color: var(--text-muted); font-size: 0.85em; margin: 0 0 16px;"></p>
+            <div class="form-group">
+                <label for="da-approve-expenses-tag">Expenses Tag <span style="color: var(--error);">*</span></label>
+                <select id="da-approve-expenses-tag">
+                    <option value="">-- Piliin --</option>
+                    <option value="Owner">Owner</option>
+                    <option value="Customer">Customer</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="da-approve-notes">Notes (opsyonal)</label>
+                <textarea id="da-approve-notes" rows="2" placeholder="Opsyonal na tala..."></textarea>
+            </div>
+            <p id="da-approve-error" class="hidden" style="color: var(--error); font-size: 0.85em; margin: 8px 0 0;"></p>
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+                <button type="button" id="da-approve-cancel-btn" style="flex:1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 8px; padding: 10px; cursor: pointer;">Cancel</button>
+                <button type="button" id="da-approve-confirm-btn" style="flex:1; background: var(--primary); border: none; color: #fff; border-radius: 8px; padding: 10px; font-weight: 600; cursor: pointer;">Confirm Approve</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delivery Approval: Reject modal (2026-09-05 follow-up #10) -- notes
+         here are optional but get saved as ReviewerNotes and are visible to
+         the submitting Rider in their own "Status ng Mga Isinumite Ko" view. -->
+    <div id="da-reject-modal-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 420px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <h3 style="margin: 0 0 6px; color: var(--error);"><i class="fas fa-times-circle"></i> Reject Submission</h3>
+            <p id="da-reject-modal-summary" style="color: var(--text-muted); font-size: 0.85em; margin: 0 0 16px;"></p>
+            <div class="form-group">
+                <label for="da-reject-notes">Dahilan / Notes (opsyonal, makikita ng Rider)</label>
+                <textarea id="da-reject-notes" rows="2" placeholder="e.g. Mali ang Grand Total, paki-double check..."></textarea>
+            </div>
+            <p id="da-reject-error" class="hidden" style="color: var(--error); font-size: 0.85em; margin: 8px 0 0;"></p>
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+                <button type="button" id="da-reject-cancel-btn" style="flex:1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 8px; padding: 10px; cursor: pointer;">Cancel</button>
+                <button type="button" id="da-reject-confirm-btn" style="flex:1; background: var(--error); border: none; color: #fff; border-radius: 8px; padding: 10px; font-weight: 600; cursor: pointer;">Confirm Reject</button>
             </div>
         </div>
     </div>
