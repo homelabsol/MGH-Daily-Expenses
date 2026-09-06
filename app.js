@@ -1166,7 +1166,15 @@ document.addEventListener('DOMContentLoaded', () => {
             // as Open, though a real row's Status is always set on save).
             const active = rows
                 .map(row => ({
-                    date: row[1] || '',
+                    // 2026-09-06 follow-up: row[1] comes straight from a raw
+                    // Sheets Date cell, which serializes as a full ISO
+                    // timestamp ("2026-09-04T16:00:00.000Z") -- confusing to
+                    // show as-is ("nakaka gulo"). Strip everything from the
+                    // "T" (or a plain space, for a date already stored as
+                    // text) onward, keeping just the "YYYY-MM-DD" part --
+                    // same fix already applied to the Purchase Requests
+                    // dashboard card above (see its own `date:` mapping).
+                    date: (row[1] || '').toString().split(/[T ]/)[0],
                     branch: row[2] || '',
                     customerName: row[3] || '(no name)',
                     issue: row[5] || 'Issue not specified',
