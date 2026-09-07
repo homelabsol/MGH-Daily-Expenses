@@ -11135,6 +11135,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (statusFilter) {
             filtered = filtered.filter(row => row.status === statusFilter);
+        } else {
+            // 2026-09-06 follow-up: "kapag resolved na status wag na i
+            // display dito para hindi nakaka dami" -- the default "All"
+            // view now hides Resolved requests to cut clutter (they're
+            // done, no action needed). Still reachable any time by
+            // explicitly picking "Resolved" from the Status dropdown --
+            // this only changes what counts as "All", not what's
+            // possible to look up.
+            filtered = filtered.filter(row => row.status !== 'Resolved');
         }
         renderClientSupportRequestsTable(filtered);
     }
