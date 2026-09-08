@@ -13343,7 +13343,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td style="padding: 8px 10px;">${rec.startDate} - ${rec.endDate}</td>
                 <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(rec.netPay)}</td>
                 <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.generatedBy)}</td>
-                <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.timestamp)}</td>
+                <td style="padding: 8px 10px;">${payslipEscapeHtml((rec.timestamp || '').toString().split(/[T ]/)[0])}</td>
                 <td style="padding: 8px 10px; white-space: nowrap;">
                     <button type="button" class="btn-payslip-reprint" data-record-index="${idx}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Reprint</button>
                     <button type="button" class="btn-payslip-delete" data-record-index="${idx}" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-trash"></i> Delete</button>
@@ -13680,11 +13680,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const riderPayslipRiderSelect = document.getElementById('rider-payslip-rider');
     const riderPayslipStartDateInput = document.getElementById('rider-payslip-start-date');
     const riderPayslipEndDateInput = document.getElementById('rider-payslip-end-date');
+    // Expenses Tag filter (2026-09-08 follow-up): "pwede ba tayo magkaroon
+    // ng selection sa expenses tag sa Riders Payroll? kung All, Owner or
+    // Customer para ma separate ko lang kung kaninong expenses sya" --
+    // scopes I-compute (and, by extension, I-save) to only deliveries
+    // carrying this tag. Defaults to "All" (unfiltered, existing behavior).
+    const riderPayslipExpensesTagSelect = document.getElementById('rider-payslip-expenses-tag');
     const riderPayslipStatusMessage = document.getElementById('rider-payslip-status-message');
     const riderPayslipPreviewSection = document.getElementById('rider-payslip-preview-section');
     const riderPayslipDeliveriesTableBody = document.getElementById('rider-payslip-deliveries-table-body');
     const riderPayslipDeliveryCountEl = document.getElementById('rider-payslip-delivery-count');
     const riderPayslipDeliveryDaysEl = document.getElementById('rider-payslip-delivery-days');
+    const riderPayslipExpensesTagDisplayEl = document.getElementById('rider-payslip-expenses-tag-display');
     const riderPayslipGrossPayEl = document.getElementById('rider-payslip-gross-pay');
     // Meal Allowance + Commission (2026-09-06 user request): mirrors the
     // employee Payslip's Commission/Food Allowance inputs exactly -- see the
@@ -13758,6 +13765,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (riderPayslipDeliveryCountEl) riderPayslipDeliveryCountEl.textContent = data.deliveryCount !== undefined ? data.deliveryCount : '0';
         if (riderPayslipDeliveryDaysEl) riderPayslipDeliveryDaysEl.textContent = data.deliveryDaysCount !== undefined ? data.deliveryDaysCount : '0';
+        if (riderPayslipExpensesTagDisplayEl) riderPayslipExpensesTagDisplayEl.textContent = data.expensesTag || 'All';
         // A fresh compute always starts Commission at 0 (Marvin types it in
         // manually each time, same as the employee Payslip's Commission
         // field) -- but Meal Allowance pre-fills with the auto-suggested
@@ -13787,7 +13795,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadRiderPayrollRecords() {
         if (!riderPayslipRecordsTableBody) return;
-        riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
@@ -13796,18 +13804,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (result.status !== 'success') {
-                riderPayslipRecordsTableBody.innerHTML = `<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load.'}</td></tr>`;
+                riderPayslipRecordsTableBody.innerHTML = `<tr><td colspan="7" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load.'}</td></tr>`;
                 return;
             }
             const records = result.data || [];
             if (records.length === 0) {
-                riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">Wala pang na-generate na rider payslip.</td></tr>';
+                riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: var(--text-muted);">Wala pang na-generate na rider payslip.</td></tr>';
                 return;
             }
             riderPayslipRecordsTableBody.innerHTML = records.map((rec, idx) => `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                     <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.rider)}</td>
                     <td style="padding: 8px 10px;">${rec.startDate} - ${rec.endDate}</td>
+                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.expensesTag || 'All')}</td>
                     <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(rec.netPay)}</td>
                     <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.generatedBy)}</td>
                     <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.timestamp)}</td>
@@ -14001,6 +14010,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <tr>
                         <td style="padding:8px 4px;"><strong>Rider:</strong> ${payslipEscapeHtml(data.rider)}</td>
                         <td style="padding:8px 4px;"><strong>Cutoff:</strong> ${data.startDate} to ${data.endDate}</td>
+                        <td style="padding:8px 4px;"><strong>Expenses Tag:</strong> ${payslipEscapeHtml(data.expensesTag || 'All')}</td>
                         <td style="padding:8px 4px; text-align:right;"><strong>Bilang ng Delivery:</strong> ${data.deliveryCount !== undefined && data.deliveryCount !== null ? data.deliveryCount : '-'}</td>
                     </tr>
                 </table>
@@ -14108,6 +14118,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const rider = riderPayslipRiderSelect ? riderPayslipRiderSelect.value : '';
             const startDate = riderPayslipStartDateInput ? riderPayslipStartDateInput.value : '';
             const endDate = riderPayslipEndDateInput ? riderPayslipEndDateInput.value : '';
+            const expensesTag = riderPayslipExpensesTagSelect ? riderPayslipExpensesTagSelect.value : 'All';
 
             if (!rider) { showMessage(riderPayslipStatusMessage, 'Piliin ang Rider.', 'error'); return; }
             if (!startDate || !endDate) { showMessage(riderPayslipStatusMessage, 'Piliin ang Start Date at End Date.', 'error'); return; }
@@ -14124,7 +14135,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: 'computeRiderPayslipPreview', rider, startDate, endDate })
+                    body: JSON.stringify({ action: 'computeRiderPayslipPreview', rider, startDate, endDate, expensesTag })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
@@ -14152,6 +14163,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const rider = riderPayslipRiderSelect ? riderPayslipRiderSelect.value : '';
             const startDate = riderPayslipStartDateInput ? riderPayslipStartDateInput.value : '';
             const endDate = riderPayslipEndDateInput ? riderPayslipEndDateInput.value : '';
+            const expensesTag = riderPayslipExpensesTagSelect ? riderPayslipExpensesTagSelect.value : 'All';
             const cashAdvance = parseFloat(riderPayslipCashAdvanceInput.value);
             const commission = parseFloat(riderPayslipCommissionInput ? riderPayslipCommissionInput.value : 0);
             const mealAllowance = parseFloat(riderPayslipMealAllowanceInput ? riderPayslipMealAllowanceInput.value : 0);
@@ -14180,7 +14192,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({
-                        action: 'saveRiderPayslip', rider, startDate, endDate, cashAdvance, commission, mealAllowance,
+                        action: 'saveRiderPayslip', rider, startDate, endDate, cashAdvance, commission, mealAllowance, expensesTag,
                         generatedBy: sessionStorage.getItem('loggedInUser') || ''
                     })
                 });
@@ -14223,7 +14235,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 deliveryCount: rec.deliveryCount, grossPay: rec.grossPay, cashAdvance: rec.cashAdvance,
                 totalDeductions: rec.totalDeductions, netPay: rec.netPay, generatedBy: rec.generatedBy,
                 timestamp: rec.timestamp, cashAdvanceRemainingBalance: rec.cashAdvanceRemainingBalance,
-                commission: rec.commission, mealAllowance: rec.mealAllowance
+                commission: rec.commission, mealAllowance: rec.mealAllowance, expensesTag: rec.expensesTag
             });
         });
 
@@ -17032,14 +17044,36 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
+    // 2026-09-08 follow-up: "sige mas maganda kung pwede na din isama" --
+    // the owner confirmed riders' payslips should be pulled into this
+    // report too (they used to be completely invisible to it). A rider
+    // row's recordType is 'rider' (default to 'employee' for anything
+    // missing the field, e.g. cached/older responses) -- a rider payslip
+    // has no Daily Rate/OT/Withholding Tax/SSS/PhilHealth/Pag-IBIG/Food
+    // Allowance, and "Days Present/Absent" doesn't apply the same way, so
+    // the Days P/A column and the detail breakdown render differently per
+    // type rather than showing zeroes for fields that were never there.
+    function payrollReportIsRider(r) {
+        return r.recordType === 'rider';
+    }
+
+    function payrollReportDaysCell(r) {
+        if (payrollReportIsRider(r)) {
+            const count = r.deliveryCount || 0;
+            return `${count} ${count === 1 ? 'delivery' : 'deliveries'}`;
+        }
+        return `${r.daysPresent}/${r.daysAbsent}`;
+    }
+
     function payrollReportRenderRows(rows) {
         const tbody = document.getElementById('payroll-report-tbody');
         if (!rows.length) {
-            tbody.innerHTML = '<tr><td colspan="8" style="padding: 15px; text-align: center; color: var(--text-muted);">No payslips found for this branch/date range.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="padding: 15px; text-align: center; color: var(--text-muted);">No payslips found for this branch/date range.</td></tr>';
             return;
         }
         tbody.innerHTML = '';
         rows.forEach((r, idx) => {
+            const isRider = payrollReportIsRider(r);
             const mainRow = document.createElement('tr');
             mainRow.className = 'payroll-report-row';
             mainRow.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
@@ -17047,10 +17081,11 @@ document.addEventListener('DOMContentLoaded', () => {
             mainRow.dataset.detailTarget = `payroll-report-detail-${idx}`;
             mainRow.innerHTML = `
                 <td style="padding: 12px;"><i class="fas fa-chevron-right payroll-report-expand-icon" style="font-size: 0.8em; color: var(--text-muted);"></i></td>
+                <td style="padding: 12px; color: var(--text-muted); font-size: 0.9em;">${isRider ? 'Rider' : 'Employee'}</td>
                 <td style="padding: 12px;">${payrollReportEscapeHtml(r.employee)}</td>
                 <td style="padding: 12px; color: var(--text-muted); font-size: 0.9em;">${payrollReportEscapeHtml(r.branch || '—')}</td>
                 <td style="padding: 12px;">${payrollReportEscapeHtml(r.startDate)} to ${payrollReportEscapeHtml(r.endDate)}</td>
-                <td style="padding: 12px;">${r.daysPresent}/${r.daysAbsent}</td>
+                <td style="padding: 12px;">${payrollReportDaysCell(r)}</td>
                 <td style="padding: 12px;">₱${formatCurrency(r.grossPay || 0)}</td>
                 <td style="padding: 12px; color: #f87171;">₱${formatCurrency(r.totalDeductions || 0)}</td>
                 <td style="padding: 12px; font-weight: 600; color: #4ade80;">₱${formatCurrency(r.netPay || 0)}</td>
@@ -17059,10 +17094,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const detailRow = document.createElement('tr');
             detailRow.className = 'payroll-report-detail-row hidden';
             detailRow.id = `payroll-report-detail-${idx}`;
-            detailRow.innerHTML = `
-                <td></td>
-                <td colspan="7" style="padding: 12px 12px 18px 12px; background: rgba(0,0,0,0.15);">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 20px; font-size: 0.85em;">
+            const detailFieldsHtml = isRider ? `
+                        <div><span style="color: var(--text-muted);">Deliveries</span><br>${r.deliveryCount || 0}</div>
+                        <div><span style="color: var(--text-muted);">Commission</span><br>₱${formatCurrency(r.commission || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Meal Allowance</span><br>₱${formatCurrency(r.mealAllowance || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Cash Advance</span><br>₱${formatCurrency(r.cashAdvance || 0)}</div>
+                        <div><span style="color: var(--text-muted);">Generated By</span><br>${payrollReportEscapeHtml(r.generatedBy || '—')}</div>
+            ` : `
                         <div><span style="color: var(--text-muted);">Daily Rate</span><br>₱${formatCurrency(r.dailyRate || 0)}</div>
                         <div><span style="color: var(--text-muted);">Base Pay</span><br>₱${formatCurrency(r.totalBasePay || 0)}</div>
                         <div><span style="color: var(--text-muted);">OT Hours / Pay</span><br>${r.totalOtHours || 0} hrs / ₱${formatCurrency(r.totalOtPay || 0)}</div>
@@ -17074,6 +17112,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div><span style="color: var(--text-muted);">Pag-IBIG</span><br>₱${formatCurrency(r.pagibig || 0)}</div>
                         <div><span style="color: var(--text-muted);">Cash Advance</span><br>₱${formatCurrency(r.cashAdvance || 0)}</div>
                         <div><span style="color: var(--text-muted);">Generated By</span><br>${payrollReportEscapeHtml(r.generatedBy || '—')}</div>
+            `;
+            detailRow.innerHTML = `
+                <td></td>
+                <td colspan="8" style="padding: 12px 12px 18px 12px; background: rgba(0,0,0,0.15);">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 20px; font-size: 0.85em;">
+                        ${detailFieldsHtml}
                     </div>
                 </td>
             `;
@@ -17180,10 +17224,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const rowsHtml = lastPayrollReportData.map(r => `
                     <tr style="border-bottom: 1px solid #e2e8f0;">
+                        <td style="padding: 8px;">${payrollReportIsRider(r) ? 'Rider' : 'Employee'}</td>
                         <td style="padding: 8px;">${payrollReportEscapeHtml(r.employee)}</td>
                         <td style="padding: 8px;">${payrollReportEscapeHtml(r.branch || '—')}</td>
                         <td style="padding: 8px;">${payrollReportEscapeHtml(r.startDate)} to ${payrollReportEscapeHtml(r.endDate)}</td>
-                        <td style="padding: 8px;">${r.daysPresent}/${r.daysAbsent}</td>
+                        <td style="padding: 8px;">${payrollReportDaysCell(r)}</td>
                         <td style="padding: 8px;">₱${formatCurrency(r.grossPay || 0)}</td>
                         <td style="padding: 8px;">₱${formatCurrency(r.totalDeductions || 0)}</td>
                         <td style="padding: 8px; font-weight: 600;">₱${formatCurrency(r.netPay || 0)}</td>
@@ -17201,6 +17246,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left; margin-top: 20px;">
                             <thead>
                                 <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                    <th style="padding: 8px; color: #334155;">Type</th>
                                     <th style="padding: 8px; color: #334155;">Employee</th>
                                     <th style="padding: 8px; color: #334155;">Branch</th>
                                     <th style="padding: 8px; color: #334155;">Cutoff</th>
@@ -17215,7 +17261,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </tbody>
                             <tfoot>
                                 <tr style="border-top: 2px solid #cbd5e1; font-weight: 600;">
-                                    <td style="padding: 8px;" colspan="4">TOTAL (${lastPayrollReportData.length} payslip${lastPayrollReportData.length === 1 ? '' : 's'})</td>
+                                    <td style="padding: 8px;" colspan="5">TOTAL (${lastPayrollReportData.length} payslip${lastPayrollReportData.length === 1 ? '' : 's'})</td>
                                     <td style="padding: 8px;">₱${formatCurrency(totalGross)}</td>
                                     <td style="padding: 8px;">₱${formatCurrency(totalDeductions)}</td>
                                     <td style="padding: 8px;">₱${formatCurrency(totalNet)}</td>
@@ -17301,19 +17347,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Built from the underlying data array (not table_to_book on
                 // the DOM table), since that table has hidden expand/collapse
                 // detail rows that table_to_book would otherwise pull in.
+                // 2026-09-08: Type/Delivery Count/Meal Allowance columns
+                // added so a rider payslip's row exports meaningfully too --
+                // its employee-only columns (Daily Rate, OT, Withholding
+                // Tax, SSS, PhilHealth, Pag-IBIG, Food Allowance) just carry
+                // 0, and vice versa for an employee row's Delivery
+                // Count/Meal Allowance.
                 const header = [
-                    'Employee', 'Branch', 'Start Date', 'End Date', 'Days Present', 'Days Absent',
-                    'Daily Rate', 'Base Pay', 'OT Hours', 'OT Pay', 'Commission', 'Food Allowance',
-                    'Gross Pay', 'Withholding Tax', 'SSS', 'PhilHealth', 'Pag-IBIG', 'Cash Advance',
-                    'Total Deductions', 'Net Pay', 'Generated By'
+                    'Type', 'Employee', 'Branch', 'Start Date', 'End Date', 'Days Present', 'Days Absent',
+                    'Delivery Count', 'Daily Rate', 'Base Pay', 'OT Hours', 'OT Pay', 'Commission',
+                    'Food Allowance', 'Meal Allowance', 'Gross Pay', 'Withholding Tax', 'SSS', 'PhilHealth',
+                    'Pag-IBIG', 'Cash Advance', 'Total Deductions', 'Net Pay', 'Generated By'
                 ];
                 const aoa = [header];
                 lastPayrollReportData.forEach(r => {
                     aoa.push([
+                        payrollReportIsRider(r) ? 'Rider' : 'Employee',
                         r.employee || '', r.branch || '', r.startDate || '', r.endDate || '',
-                        r.daysPresent || 0, r.daysAbsent || 0,
+                        r.daysPresent || 0, r.daysAbsent || 0, Number(r.deliveryCount) || 0,
                         Number(r.dailyRate) || 0, Number(r.totalBasePay) || 0, Number(r.totalOtHours) || 0,
                         Number(r.totalOtPay) || 0, Number(r.commission) || 0, Number(r.foodAllowance) || 0,
+                        Number(r.mealAllowance) || 0,
                         Number(r.grossPay) || 0, Number(r.withholdingTax) || 0, Number(r.sss) || 0,
                         Number(r.philhealth) || 0, Number(r.pagibig) || 0, Number(r.cashAdvance) || 0,
                         Number(r.totalDeductions) || 0, Number(r.netPay) || 0, r.generatedBy || ''
