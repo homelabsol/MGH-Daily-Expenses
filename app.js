@@ -1871,8 +1871,219 @@ document.addEventListener('DOMContentLoaded', () => {
         "CCTV Camera", "DVR/NVR/XVR", "Cables", "Switch HUB", "Video Card/GPU", "Others"
     ];
 
+    // Category options used by the Save form's per-row dropdown, the
+    // List/Report Category filter, AND the Modify modal's Category dropdown.
+    // Starts as DPI_CATEGORIES verbatim; dpiLoadItemDescMaster (below)
+    // extends it with any extra category values found in the "Item
+    // Description" sheet that AREN'T already one of these 23 (the sheet's
+    // own categories -- e.g. "PSU", "Processor", "Coinslot" -- don't all
+    // line up 1:1 with this app's fixed list) so picking an item can always
+    // auto-select a matching <option>, never silently fail to find one.
+    let dpiCategoryOptionsList = DPI_CATEGORIES.slice();
+
     function dpiCategoryOptionsHtml(selected) {
-        return DPI_CATEGORIES.map(c => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
+        return dpiCategoryOptionsList.map(c => `<option value="${c}" ${c === selected ? 'selected' : ''}>${c}</option>`).join('');
+    }
+
+    function dpiRefreshCategoryDropdownsAfterMasterListLoad() {
+        document.querySelectorAll('#dpi-items-body .dpi-row-category').forEach(sel => {
+            const current = sel.value;
+            sel.innerHTML = dpiCategoryOptionsHtml(current);
+            sel.value = current;
+        });
+        const filterEl = document.getElementById('dpi-list-category-filter');
+        if (filterEl) {
+            const current = filterEl.value || 'All';
+            filterEl.innerHTML = '<option value="All">All Categories</option>' + dpiCategoryOptionsHtml('');
+            filterEl.value = current;
+        }
+    }
+
+    // Item Description master list (2026-09-09): sourced from the "Item
+    // Description" Google Sheet tab (Description + paired Category
+    // columns) so the per-row description field below is a searchable
+    // PICK-FROM-LIST field instead of free text -- keeps counted item
+    // names uniform instead of drifting into typo'd/inconsistent variants.
+    // User's words: "possible ba gawan ng list view tapos meron search para
+    // mas madali at uniform ang mga description? ngayon yung laman ng
+    // description galing dapat sa google sheet tab item description."
+    // STRICT (confirmed with the user): a row's description is not
+    // considered valid -- and blocks Save -- until it's actually picked
+    // from this list (or the exact text, case-insensitive, is typed and
+    // the field loses focus). Selecting an item ALSO auto-fills its
+    // paired Category (also confirmed with the user). The backend
+    // re-validates every item's description against this same sheet on
+    // Save (see saveDailyPartsInventory), so bypassing this client-side
+    // gate can't smuggle in an off-list description or mismatched category.
+    let dpiItemDescMaster = [];
+
+    async function dpiLoadItemDescMaster() {
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getDpiItemDescriptions' })
+            });
+            const result = await response.json();
+            if (result.status === 'success' && Array.isArray(result.data)) {
+                dpiItemDescMaster = result.data;
+                const existing = {};
+                dpiCategoryOptionsList.forEach(c => { existing[c] = true; });
+                let added = false;
+                dpiItemDescMaster.forEach(item => {
+                    const cat = (item.category || '').trim();
+                    if (cat && !existing[cat]) {
+                        existing[cat] = true;
+                        dpiCategoryOptionsList.push(cat);
+                        added = true;
+                    }
+                });
+                if (added) dpiRefreshCategoryDropdownsAfterMasterListLoad();
+            }
+        } catch (err) {
+            console.error('Error loading Item Description master list.', err);
+        }
+    }
+
+    function dpiFindItemDescMatch(text) {
+        const term = (text || '').trim().toLowerCase();
+        if (!term) return null;
+        return dpiItemDescMaster.find(item => (item.description || '').toLowerCase() === term) || null;
+    }
+
+    // The dropdown is rendered as a `position: fixed` element appended
+    // DIRECTLY to <body> (not left inside the table cell it visually
+    // belongs to) and repositioned to sit under the input on every show.
+    // This is deliberate, not incidental: a `<td>` living inside this
+    // page's `.glass-panel` (which uses `backdrop-filter`, establishing
+    // its own stacking context) painted the dropdown BEHIND the summary
+    // strip div that follows the items table in the DOM, even though the
+    // dropdown's own z-index/position/visibility were all individually
+    // correct -- confirmed by screenshotting it, not just inspecting
+    // computed styles. Moving it out to <body> sidesteps that table/
+    // stacking-context interaction entirely, which is the standard fix for
+    // exactly this class of "dropdown-trapped-inside-a-styled-container"
+    // bug. Each row's dropdown element is tracked via `input.dpiDropdown`
+    // since `tr.querySelector('.dpi-row-desc-dropdown')` no longer finds
+    // it once it's been moved out of the row.
+    function dpiPositionRowDescDropdown(input, dropdown) {
+        const rect = input.getBoundingClientRect();
+        dropdown.style.position = 'fixed';
+        dropdown.style.left = rect.left + 'px';
+        dropdown.style.top = (rect.bottom + 2) + 'px';
+        dropdown.style.width = rect.width + 'px';
+    }
+
+    function dpiRenderRowDescDropdown(input, term) {
+        const dropdown = input.dpiDropdown;
+        if (!dropdown) return;
+        dpiPositionRowDescDropdown(input, dropdown);
+        const lowerTerm = (term || '').trim().toLowerCase();
+        const matches = lowerTerm
+            ? dpiItemDescMaster.filter(item => (item.description || '').toLowerCase().includes(lowerTerm)).slice(0, 30)
+            : dpiItemDescMaster.slice(0, 30);
+        if (matches.length === 0) {
+            dropdown.innerHTML = '<div style="padding: 8px 10px; color: var(--text-muted); font-size: 0.85em;">Walang nahanap. Kailangan munang idagdag sa "Item Description" sheet.</div>';
+        } else {
+            dropdown.innerHTML = matches.map(item => `<div class="dpi-row-desc-option" data-desc="${payslipEscapeHtml(item.description)}" data-category="${payslipEscapeHtml(item.category)}" style="padding: 7px 10px; cursor: pointer; font-size: 0.85em; border-bottom: 1px solid rgba(255,255,255,0.05);">` +
+                `<span style="color: var(--text-light);">${payslipEscapeHtml(item.description)}</span> <span style="color: var(--text-muted);">(${payslipEscapeHtml(item.category)})</span>`
+                + `</div>`).join('');
+        }
+        dropdown.classList.remove('hidden');
+    }
+
+    function dpiHideRowDescDropdown(input) {
+        const dropdown = input.dpiDropdown;
+        if (dropdown) dropdown.classList.add('hidden');
+    }
+
+    function dpiMarkRowDescValidity(tr, isValid) {
+        const input = tr.querySelector('.dpi-row-desc');
+        if (!input) return;
+        input.dataset.valid = isValid ? '1' : '0';
+        input.style.borderColor = (isValid || input.value.trim() === '') ? 'rgba(255,255,255,0.12)' : '#ef4444';
+    }
+
+    function dpiSelectRowDescItem(tr, item) {
+        const input = tr.querySelector('.dpi-row-desc');
+        const categorySelect = tr.querySelector('.dpi-row-category');
+        if (input) input.value = item.description;
+        if (categorySelect && item.category && dpiCategoryOptionsList.indexOf(item.category) !== -1) {
+            categorySelect.value = item.category;
+        }
+        dpiMarkRowDescValidity(tr, true);
+        if (input) dpiHideRowDescDropdown(input);
+    }
+
+    function dpiWireRowDescCombobox(tr) {
+        const input = tr.querySelector('.dpi-row-desc');
+        const dropdown = tr.querySelector('.dpi-row-desc-dropdown');
+        if (!input || !dropdown) return;
+        // Detach the dropdown from the table cell and re-home it on <body>
+        // (see comment above dpiPositionRowDescDropdown) -- position/size
+        // are set fresh on every show, so its template styles only need to
+        // cover appearance, not placement.
+        document.body.appendChild(dropdown);
+        input.dpiDropdown = dropdown;
+
+        input.addEventListener('focus', () => dpiRenderRowDescDropdown(input, input.value));
+        input.addEventListener('input', () => {
+            dpiMarkRowDescValidity(tr, false);
+            dpiRenderRowDescDropdown(input, input.value);
+        });
+        input.addEventListener('blur', () => {
+            // Delayed so a mousedown-selection below still has a chance to
+            // run first on browsers where blur fires before mousedown's
+            // synchronous handler completes.
+            setTimeout(() => {
+                const match = dpiFindItemDescMatch(input.value);
+                if (match) {
+                    dpiSelectRowDescItem(tr, match);
+                } else {
+                    dpiMarkRowDescValidity(tr, false);
+                }
+                dpiHideRowDescDropdown(input);
+            }, 150);
+        });
+        // mousedown (not click) + preventDefault so the input never loses
+        // focus to the dropdown, which would otherwise fire blur and hide
+        // the dropdown before the click/selection registers.
+        dropdown.addEventListener('mousedown', (e) => {
+            const optionEl = e.target.closest('.dpi-row-desc-option');
+            if (!optionEl) return;
+            e.preventDefault();
+            dpiSelectRowDescItem(tr, { description: optionEl.dataset.desc, category: optionEl.dataset.category });
+        });
+    }
+
+    // Missing/RMA Remarks (2026-09-09): user's exact ask, after the per-date
+    // TOTAL row shipped -- "kapag nagkaroon ng rma and missing item pwede
+    // lagyan ng remarks tapos pwede din ma save para hindi natin
+    // malimutan?... meron isang missing item sa kingston dapat meron mag a
+    // appear na box note na magsisilbing note sa missing item at ganon din
+    // naman kapag sa rma meron din note". Confirmed via AskUserQuestion:
+    // (1) REQUIRED -- can't Save if Missing/RMA > 0 but its remarks field is
+    // blank; (2) visible/editable in the Records List view AND the Modify
+    // modal (Report view deliberately left alone, same "List/Modify only"
+    // scope as the Modify feature itself). Live border-highlight (same red
+    // as every other required-but-empty field in this app) updates on every
+    // Missing/RMA/remarks keystroke so the requirement is visible before the
+    // user even tries to Save, not just as a submit-time surprise.
+    function dpiUpdateRemarksHighlight(tr) {
+        const missing = parseFloat(tr.querySelector('.dpi-row-missing').value) || 0;
+        const rma = parseFloat(tr.querySelector('.dpi-row-rma').value) || 0;
+        const missingRemarksEl = tr.querySelector('.dpi-row-missing-remarks');
+        const rmaRemarksEl = tr.querySelector('.dpi-row-rma-remarks');
+        if (missingRemarksEl) {
+            const needsIt = missing > 0 && !missingRemarksEl.value.trim();
+            missingRemarksEl.style.borderColor = needsIt ? '#ef4444' : 'rgba(255,255,255,0.12)';
+            missingRemarksEl.placeholder = missing > 0 ? 'Kailangan ng remarks...' : 'Remarks (optional)';
+        }
+        if (rmaRemarksEl) {
+            const needsIt = rma > 0 && !rmaRemarksEl.value.trim();
+            rmaRemarksEl.style.borderColor = needsIt ? '#ef4444' : 'rgba(255,255,255,0.12)';
+            rmaRemarksEl.placeholder = rma > 0 ? 'Kailangan ng remarks...' : 'Remarks (optional)';
+        }
     }
 
     function dpiAddItemRow(data) {
@@ -1881,21 +2092,40 @@ document.addEventListener('DOMContentLoaded', () => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td style="padding: 4px 8px; vertical-align: top;"><select class="dpi-row-category" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--primary); font-family: inherit; font-size: 0.88em; font-weight: 600;">${dpiCategoryOptionsHtml(data ? data.category : DPI_CATEGORIES[0])}</select></td>
-            <td style="padding: 4px 8px; vertical-align: top;"><textarea class="dpi-row-desc" rows="1" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-family: inherit; font-size: 0.88em;">${data && data.desc ? data.desc : ''}</textarea></td>
+            <td style="padding: 4px 8px; vertical-align: top; position: relative;">
+                <input type="text" class="dpi-row-desc" autocomplete="off" placeholder="Type to search item description..." value="${data && data.desc ? data.desc : ''}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-family: inherit; font-size: 0.88em;">
+                <div class="dpi-row-desc-dropdown hidden" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 50; background: #1e2532; border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; max-height: 220px; overflow-y: auto; margin-top: 2px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);"></div>
+            </td>
             <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="dpi-row-qty" min="0" step="1" value="${data && data.qty ? data.qty : ''}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-size: 0.88em;"></td>
             <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="dpi-row-missing" min="0" step="1" value="${data && data.missing ? data.missing : 0}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: #ef4444; font-size: 0.88em;"></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="text" class="dpi-row-missing-remarks" placeholder="Remarks (optional)" value="${data && data.missingRemarks ? payslipEscapeHtml(data.missingRemarks) : ''}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-family: inherit; font-size: 0.85em;"></td>
             <td style="padding: 4px 8px; vertical-align: top;"><input type="number" class="dpi-row-rma" min="0" step="1" value="${data && data.rma ? data.rma : 0}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: #f59e0b; font-size: 0.88em;"></td>
+            <td style="padding: 4px 8px; vertical-align: top;"><input type="text" class="dpi-row-rma-remarks" placeholder="Remarks (optional)" value="${data && data.rmaRemarks ? payslipEscapeHtml(data.rmaRemarks) : ''}" style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 6px 8px; color: var(--text-light); font-family: inherit; font-size: 0.85em;"></td>
             <td style="padding: 8px 8px; vertical-align: top; color: #10b981; font-weight: 600; font-size: 0.88em;" class="dpi-row-total">0</td>
             <td style="padding: 4px 8px; vertical-align: top; text-align: center;"><button type="button" class="dpi-btn-remove-row" title="Remove row" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #ef4444; border-radius: 6px; width: 26px; height: 26px; cursor: pointer; font-size: 0.85em;">✕</button></td>
         `;
         tbody.appendChild(tr);
         tr.querySelector('.dpi-row-qty').addEventListener('input', dpiRecompute);
-        tr.querySelector('.dpi-row-missing').addEventListener('input', dpiRecompute);
-        tr.querySelector('.dpi-row-rma').addEventListener('input', dpiRecompute);
+        tr.querySelector('.dpi-row-missing').addEventListener('input', () => { dpiRecompute(); dpiUpdateRemarksHighlight(tr); });
+        tr.querySelector('.dpi-row-rma').addEventListener('input', () => { dpiRecompute(); dpiUpdateRemarksHighlight(tr); });
+        tr.querySelector('.dpi-row-missing-remarks').addEventListener('input', () => dpiUpdateRemarksHighlight(tr));
+        tr.querySelector('.dpi-row-rma-remarks').addEventListener('input', () => dpiUpdateRemarksHighlight(tr));
+        dpiUpdateRemarksHighlight(tr);
         tr.querySelector('.dpi-btn-remove-row').addEventListener('click', () => {
+            // The desc dropdown was detached from this <tr> and re-homed on
+            // document.body (see dpiWireRowDescCombobox) to escape a CSS
+            // stacking-context bug, so it won't disappear on its own when the
+            // row is removed -- remove it explicitly to avoid leaking orphaned
+            // dropdown elements on document.body every time a row is deleted.
+            const descInput = tr.querySelector('.dpi-row-desc');
+            if (descInput && descInput.dpiDropdown && descInput.dpiDropdown.parentNode) {
+                descInput.dpiDropdown.parentNode.removeChild(descInput.dpiDropdown);
+            }
             tr.remove();
             dpiRecompute();
         });
+        dpiWireRowDescCombobox(tr);
+        dpiMarkRowDescValidity(tr, !!dpiFindItemDescMatch(tr.querySelector('.dpi-row-desc').value));
     }
 
     function dpiRecompute() {
@@ -1929,7 +2159,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const dateEl = document.getElementById('dpi-date');
         if (dateEl) dateEl.valueAsDate = new Date();
         const tbody = document.getElementById('dpi-items-body');
-        if (tbody) tbody.innerHTML = '';
+        if (tbody) {
+            // Same reasoning as the remove-row handler: each row's desc
+            // dropdown now lives on document.body (not inside this tbody), so
+            // clearing the tbody with innerHTML = '' would silently orphan
+            // those detached dropdown elements instead of removing them.
+            tbody.querySelectorAll('.dpi-row-desc').forEach(input => {
+                if (input.dpiDropdown && input.dpiDropdown.parentNode) {
+                    input.dpiDropdown.parentNode.removeChild(input.dpiDropdown);
+                }
+            });
+            tbody.innerHTML = '';
+        }
         dpiAddItemRow(null);
         dpiRecompute();
         const countedByEl = document.getElementById('dpi-counted-by');
@@ -1988,6 +2229,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (container) container.classList.remove('hidden');
             dpiResetForm();
             dpiLoadRmaAdmins();
+            dpiLoadItemDescMaster();
         });
     }
 
@@ -2539,16 +2781,55 @@ document.addEventListener('DOMContentLoaded', () => {
             const approvedBy = document.getElementById('dpi-approved-by').value;
 
             const items = [];
+            // Item Description is now a strict pick-from-list field (2026-09-09)
+            // -- a row's description must actually be selected from the "Item
+            // Description" sheet's search dropdown (dpiWireRowDescCombobox
+            // marks `dataset.valid` on selection/exact-match-on-blur). A row
+            // with a description typed but never validly selected blocks the
+            // whole Save instead of being silently dropped or silently saved
+            // with an off-list value.
+            let hasInvalidDesc = false;
+            // Missing/RMA Remarks (2026-09-09): "kapag nagkaroon ng rma and
+            // missing item pwede lagyan ng remarks... dapat meron mag a
+            // appear na box note" -- REQUIRED (confirmed via
+            // AskUserQuestion) whenever a row's Missing or RMA is > 0.
+            // Blocks the WHOLE Save (not just that row), same
+            // all-or-nothing convention as the Item Description validation
+            // right above, rather than silently saving without the note.
+            let hasMissingRemarksError = false;
+            let hasRmaRemarksError = false;
             document.querySelectorAll('#dpi-items-body tr').forEach(tr => {
                 const category = tr.querySelector('.dpi-row-category').value;
-                const desc = tr.querySelector('.dpi-row-desc').value.trim();
+                const descInput = tr.querySelector('.dpi-row-desc');
+                const desc = descInput.value.trim();
                 const qty = parseFloat(tr.querySelector('.dpi-row-qty').value) || 0;
                 const missing = parseFloat(tr.querySelector('.dpi-row-missing').value) || 0;
                 const rma = parseFloat(tr.querySelector('.dpi-row-rma').value) || 0;
+                const missingRemarks = tr.querySelector('.dpi-row-missing-remarks').value.trim();
+                const rmaRemarks = tr.querySelector('.dpi-row-rma-remarks').value.trim();
                 if (desc && qty > 0) {
-                    items.push({ category, description: desc, qty, missing, rma });
+                    if (descInput.dataset.valid !== '1') {
+                        hasInvalidDesc = true;
+                        dpiMarkRowDescValidity(tr, false);
+                        return;
+                    }
+                    dpiUpdateRemarksHighlight(tr);
+                    if (missing > 0 && !missingRemarks) hasMissingRemarksError = true;
+                    if (rma > 0 && !rmaRemarks) hasRmaRemarksError = true;
+                    items.push({ category, description: desc, qty, missing, rma, missingRemarks, rmaRemarks });
                 }
             });
+
+            if (hasInvalidDesc) {
+                if (statusMsg) showMessage(statusMsg, 'May Item Description na hindi pinili mula sa search list (naka-highlight na pula). Pumili ng valid na item description bago mag-save.', 'error');
+                return;
+            }
+
+            if (hasMissingRemarksError || hasRmaRemarksError) {
+                const which = hasMissingRemarksError && hasRmaRemarksError ? 'Missing Remarks at RMA Remarks' : (hasMissingRemarksError ? 'Missing Remarks' : 'RMA Remarks');
+                if (statusMsg) showMessage(statusMsg, 'May row na may Missing o RMA pero walang laman ang ' + which + ' (naka-highlight na pula). Kailangan lagyan ng dahilan bago mag-save.', 'error');
+                return;
+            }
 
             if (items.length === 0) {
                 if (statusMsg) showMessage(statusMsg, 'Add at least one item with a description and qty greater than 0.', 'error');
@@ -2617,7 +2898,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('dpi-list-table-body');
         if (!tbody) return;
         if (!rows || rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="13" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>';
             return;
         }
         // Fix 69: same overlapping-text bug fixed on the Deliveries list
@@ -2634,6 +2915,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const modifyBtnHtml = canModifyDpi
                 ? `<button type="button" class="btn-dpi-modify" data-row-index="${row[row.length - 1]}" style="background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-pen"></i> Modify</button>`
                 : '<span style="color: var(--text-muted); font-size: 0.8em;">-</span>';
+            // Missing/RMA Remarks (2026-09-09): row[11]/row[12] -- shown here
+            // per the user's explicit choice when asked (List view + Modify
+            // modal, NOT the Report pivot). A muted "-" placeholder when
+            // blank (e.g. a pre-existing row saved before this feature
+            // existed) instead of an empty-looking cell.
+            const missingRemarksText = (row[11] || '').toString().trim();
+            const rmaRemarksText = (row[12] || '').toString().trim();
             return `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                     <td style="${cellStyle}">${row[0] || ''}</td>
@@ -2642,7 +2930,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="${cellStyle}">${row[3] || ''}</td>
                     <td style="${cellStyle}">${row[4] || 0}</td>
                     <td style="${cellStyle} color: #ef4444;">${row[5] || 0}</td>
+                    <td style="${cellStyle} color: var(--text-muted);">${missingRemarksText ? payslipEscapeHtml(missingRemarksText) : '-'}</td>
                     <td style="${cellStyle} color: #f59e0b;">${row[6] || 0}</td>
+                    <td style="${cellStyle} color: var(--text-muted);">${rmaRemarksText ? payslipEscapeHtml(rmaRemarksText) : '-'}</td>
                     <td style="${cellStyle} color: #10b981; font-weight: 600;">${row[7] || 0}</td>
                     <td style="${cellStyle}">${row[8] || ''}</td>
                     <td style="${cellStyle}">${row[9] || ''}</td>
@@ -2652,25 +2942,57 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
     }
 
+    // Category filter (2026-09-09): free-text-free, single-select dropdown
+    // ("All Categories" or exactly one of DPI_CATEGORIES), applied CLIENT-
+    // SIDE against the already-fetched currentDpiRecords -- same "no extra
+    // network call" convention as the Item Description filter below.
+    // UNLIKE that filter, Category applies to BOTH the List view (via
+    // dpiApplyDescFilter, below) AND the Report pivot (via
+    // dpiComputeReportPivot) -- the user's explicit choice when asked,
+    // since the Report groups by Category and narrowing it down is useful
+    // there too. Column 2 is "Category" in the Daily Parts Inventory row
+    // shape (Date/Branch/Category/Item Description/Qty/Missing/RMA/Total/
+    // Counted By/Approved By).
+    function dpiGetCategoryFilteredRecords() {
+        const categoryEl = document.getElementById('dpi-list-category-filter');
+        const selectedCategory = categoryEl ? categoryEl.value : 'All';
+        if (!selectedCategory || selectedCategory === 'All') return currentDpiRecords || [];
+        return (currentDpiRecords || []).filter(row => (row[2] || '') === selectedCategory);
+    }
+
     // Fix 84: Item Description filter -- free-text, case-insensitive
     // substring, applied CLIENT-SIDE against the already-fetched
     // currentDpiRecords (same "no server round-trip on every keystroke"
     // convention as Deliveries List's Fix 41 Customer Name filter and Build
     // Status's Fix 81 Customer Name filter). Column 3 is "Item Description"
     // in the Daily Parts Inventory row shape (Date/Branch/Category/Item
-    // Description/Qty/Missing/RMA/Total/Counted By/Approved By).
+    // Description/Qty/Missing/RMA/Total/Counted By/Approved By). List-view
+    // only -- stacks on TOP of the Category filter above (narrows further),
+    // but is deliberately NOT applied to the Report pivot (see that
+    // function's own comment).
     function dpiApplyDescFilter() {
         const filterEl = document.getElementById('dpi-list-desc-filter');
         const term = filterEl ? filterEl.value.trim().toLowerCase() : '';
+        const categoryFiltered = dpiGetCategoryFilteredRecords();
         const filtered = term
-            ? currentDpiRecords.filter(row => (row[3] || '').toString().toLowerCase().includes(term))
-            : currentDpiRecords;
+            ? categoryFiltered.filter(row => (row[3] || '').toString().toLowerCase().includes(term))
+            : categoryFiltered;
         dpiRenderList(filtered);
     }
 
     const dpiListDescFilterEl = document.getElementById('dpi-list-desc-filter');
     if (dpiListDescFilterEl) {
         dpiListDescFilterEl.addEventListener('input', dpiApplyDescFilter);
+    }
+
+    const dpiListCategoryFilterEl = document.getElementById('dpi-list-category-filter');
+    if (dpiListCategoryFilterEl) {
+        dpiListCategoryFilterEl.innerHTML = '<option value="All">All Categories</option>' + dpiCategoryOptionsHtml('');
+        dpiListCategoryFilterEl.value = 'All';
+        dpiListCategoryFilterEl.addEventListener('change', () => {
+            dpiApplyDescFilter();
+            dpiRenderReport();
+        });
     }
 
     async function dpiLoadRecords() {
@@ -2680,7 +3002,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const endDate = document.getElementById('dpi-list-end-date').value;
         const branch = document.getElementById('dpi-list-branch').value;
 
-        tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="13" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
 
         try {
             const response = await fetch(SCRIPT_URL, {
@@ -2696,10 +3018,367 @@ document.addEventListener('DOMContentLoaded', () => {
             const rows = (result.status === 'success' && result.data) ? result.data : [];
             currentDpiRecords = rows;
             dpiApplyDescFilter();
+            dpiRenderReport();
         } catch (err) {
             console.error(err);
-            tbody.innerHTML = '<tr><td colspan="11" style="padding: 15px; text-align: center; color: #ef4444;">Failed to load records.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="13" style="padding: 15px; text-align: center; color: #ef4444;">Failed to load records.</td></tr>';
         }
+    }
+
+    // ======= Daily Parts Inventory Report (per Date) (2026-09-09) =======
+    // "possible ba gawan ng report to na pwedeng i check yung range nya
+    // then pwede natin i dispaly yung no of stocks, missing and warranty
+    // per date para magkaroon ng comparison?" -- reuses the SAME
+    // already-fetched currentDpiRecords (no extra network call, same "fetch
+    // once" convention as everywhere else in this app).
+    //
+    // REVISED same day after the user shared their own existing manual
+    // tracking sheet: instead of one summary row per Date+Branch, this is
+    // now an item-by-item pivot -- one row per (Category, Item Description,
+    // Branch), with 3 columns (System Qty, RMA Items, Missing Items)
+    // REPEATED for every distinct Date present in the fetched range, so a
+    // single item's counts can be compared side-by-side across however
+    // many count-dates fall in the selected range. Category is shown as its
+    // own full-width header row above its items (same visual grouping as
+    // the user's sheet). Two different branches counting the SAME item on
+    // the SAME date get separate rows (Branch is its own column) rather
+    // than being summed together -- per the user's explicit choice, since
+    // collapsing branches together would hide which branch actually has
+    // the discrepancy. Always aggregates from the FULL fetched set,
+    // ignoring the Item Description filter (that filter narrows the
+    // per-item List view to one item at a time; the Report is meant to
+    // show every item across dates, not a single filtered one). DOES
+    // respect the Category filter (dpiGetCategoryFilteredRecords), per the
+    // user's explicit choice -- that filter is meant to apply to both
+    // views.
+    let currentDpiReportPivot = { dates: [], itemRows: [] }; // last computed pivot, used by Export/Print
+    let dpiViewMode = 'list';
+
+    // '2026-09-05' -> 'Sep 5' (no year, matching the short date labels the
+    // user's own sheet uses, e.g. "July 13").
+    function dpiFormatReportDateLabel(dateStr) {
+        const parts = (dateStr || '').split('-');
+        if (parts.length !== 3) return dateStr || '';
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function dpiComputeReportPivot() {
+        const dateSet = {};
+        const dateOrder = [];
+        const rowMap = {};
+        const rowOrder = [];
+        // totalsByDate: per-date grand total across EVERY item+branch+category
+        // currently in the pivot -- user's ask (2026-09-09): "pwede mo din ba
+        // lagyan ng total Inventory QTY, Total RMA at Total Missing per
+        // inventory date?". Respects the Category filter (same source rows
+        // as everything else here), since a filtered-down Report should only
+        // total what's actually shown.
+        const totalsByDate = {};
+        (dpiGetCategoryFilteredRecords() || []).forEach(row => {
+            const date = row[0] || '';
+            const branch = row[1] || '';
+            const category = row[2] || '';
+            const item = row[3] || '';
+            const qty = Number(row[4]) || 0;
+            const missing = Number(row[5]) || 0;
+            const rma = Number(row[6]) || 0;
+            if (!dateSet[date]) { dateSet[date] = true; dateOrder.push(date); }
+            const key = category + '||' + item + '||' + branch;
+            if (!rowMap[key]) {
+                rowMap[key] = { category, item, branch, byDate: {} };
+                rowOrder.push(key);
+            }
+            if (!rowMap[key].byDate[date]) rowMap[key].byDate[date] = { qty: 0, missing: 0, rma: 0 };
+            rowMap[key].byDate[date].qty += qty;
+            rowMap[key].byDate[date].missing += missing;
+            rowMap[key].byDate[date].rma += rma;
+            if (!totalsByDate[date]) totalsByDate[date] = { qty: 0, missing: 0, rma: 0 };
+            totalsByDate[date].qty += qty;
+            totalsByDate[date].missing += missing;
+            totalsByDate[date].rma += rma;
+        });
+        const dates = dateOrder.slice().sort();
+        const itemRows = rowOrder.map(k => rowMap[k]).sort((a, b) => {
+            if (a.category !== b.category) return a.category < b.category ? -1 : 1;
+            if (a.item !== b.item) return a.item < b.item ? -1 : 1;
+            return a.branch < b.branch ? -1 : (a.branch > b.branch ? 1 : 0);
+        });
+        return { dates, itemRows, totalsByDate };
+    }
+
+    function dpiRenderReport() {
+        const thead = document.getElementById('dpi-report-table-head');
+        const tbody = document.getElementById('dpi-report-table-body');
+        if (!thead || !tbody) return;
+        const pivot = dpiComputeReportPivot();
+        currentDpiReportPivot = pivot;
+        const dates = pivot.dates;
+        const itemRows = pivot.itemRows;
+        const totalCols = 2 + (dates.length * 3);
+
+        if (itemRows.length === 0 || dates.length === 0) {
+            thead.innerHTML = '<tr style="border-bottom: 1px solid var(--glass-border);"><th style="padding: 10px; text-align: left;">Item Description</th><th style="padding: 10px; text-align: left;">Branch</th></tr>';
+            tbody.innerHTML = `<tr><td colspan="${Math.max(totalCols, 2)}" style="padding: 15px; text-align: center; color: var(--text-muted);">No records found.</td></tr>`;
+            return;
+        }
+
+        let headHtml = '<tr style="border-bottom: 1px solid var(--glass-border);"><th style="padding: 10px; text-align: left;">Item Description</th><th style="padding: 10px; text-align: left;">Branch</th>';
+        dates.forEach(d => {
+            const label = dpiFormatReportDateLabel(d);
+            headHtml += `<th style="padding: 10px; text-align: left;">System QTY ${label}</th><th style="padding: 10px; text-align: left;">RMA Items ${label}</th><th style="padding: 10px; text-align: left;">Missing Items ${label}</th>`;
+        });
+        headHtml += '</tr>';
+        thead.innerHTML = headHtml;
+
+        let bodyHtml = '';
+        let lastCategory = null;
+        itemRows.forEach(r => {
+            if (r.category !== lastCategory) {
+                bodyHtml += `<tr><td colspan="${totalCols}" style="padding: 8px 10px; background: rgba(239,68,68,0.18); color: #ef4444; font-weight: 700;">${payslipEscapeHtml(r.category || '(No Category)')}</td></tr>`;
+                lastCategory = r.category;
+            }
+            let rowHtml = `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);"><td style="padding: 8px 10px;">${payslipEscapeHtml(r.item)}</td><td style="padding: 8px 10px;">${payslipEscapeHtml(r.branch)}</td>`;
+            dates.forEach(d => {
+                const cell = r.byDate[d];
+                if (cell) {
+                    rowHtml += `<td style="padding: 8px 10px;">${cell.qty}</td><td style="padding: 8px 10px; color: #f59e0b;">${cell.rma}</td><td style="padding: 8px 10px; color: #ef4444;">${cell.missing}</td>`;
+                } else {
+                    rowHtml += '<td style="padding: 8px 10px; color: var(--text-muted);">-</td><td style="padding: 8px 10px; color: var(--text-muted);">-</td><td style="padding: 8px 10px; color: var(--text-muted);">-</td>';
+                }
+            });
+            rowHtml += '</tr>';
+            bodyHtml += rowHtml;
+        });
+
+        // Grand TOTAL row (2026-09-09): "pwede mo din ba lagyan ng total
+        // Inventory QTY, Total RMA at Total Missing per inventory date?" --
+        // one row at the very bottom, summing Qty/RMA/Missing across EVERY
+        // item+branch+category currently shown, per date. Placed at the
+        // bottom per the user's explicit choice when asked (grand-total
+        // convention, matching the existing Total Qty/Missing/RMA summary
+        // strip on the Save form).
+        const totals = pivot.totalsByDate || {};
+        let totalRowHtml = `<tr class="dpi-report-total-row" style="border-top: 2px solid rgba(255,255,255,0.25); background: rgba(59,130,246,0.12);"><td style="padding: 8px 10px; font-weight: 700; color: #fff;">TOTAL</td><td style="padding: 8px 10px;"></td>`;
+        dates.forEach(d => {
+            const t = totals[d] || { qty: 0, missing: 0, rma: 0 };
+            totalRowHtml += `<td style="padding: 8px 10px; font-weight: 700; color: #fff;">${t.qty}</td><td style="padding: 8px 10px; font-weight: 700; color: #f59e0b;">${t.rma}</td><td style="padding: 8px 10px; font-weight: 700; color: #ef4444;">${t.missing}</td>`;
+        });
+        totalRowHtml += '</tr>';
+        bodyHtml += totalRowHtml;
+
+        tbody.innerHTML = bodyHtml;
+    }
+
+    function dpiSetViewMode(mode) {
+        dpiViewMode = mode;
+        const listBtn = document.getElementById('dpi-view-toggle-list-btn');
+        const reportBtn = document.getElementById('dpi-view-toggle-report-btn');
+        const listSection = document.getElementById('dpi-list-view-section');
+        const reportSection = document.getElementById('dpi-report-view-section');
+        const descFilterGroup = document.getElementById('dpi-list-desc-filter-group');
+        const activeStyle = 'background: rgba(59,130,246,0.25); border: 1px solid rgba(59,130,246,0.5); color: #fff; border-radius: 6px; padding: 8px 16px; font-size: 0.85em; font-weight: 600; cursor: pointer;';
+        const inactiveStyle = 'background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 8px 16px; font-size: 0.85em; font-weight: 600; cursor: pointer;';
+        if (mode === 'report') {
+            if (listSection) listSection.classList.add('hidden');
+            if (reportSection) reportSection.classList.remove('hidden');
+            if (descFilterGroup) descFilterGroup.classList.add('hidden');
+            if (listBtn) listBtn.setAttribute('style', inactiveStyle);
+            if (reportBtn) reportBtn.setAttribute('style', activeStyle);
+        } else {
+            if (listSection) listSection.classList.remove('hidden');
+            if (reportSection) reportSection.classList.add('hidden');
+            if (descFilterGroup) descFilterGroup.classList.remove('hidden');
+            if (listBtn) listBtn.setAttribute('style', activeStyle);
+            if (reportBtn) reportBtn.setAttribute('style', inactiveStyle);
+        }
+    }
+
+    const dpiViewToggleListBtn = document.getElementById('dpi-view-toggle-list-btn');
+    const dpiViewToggleReportBtn = document.getElementById('dpi-view-toggle-report-btn');
+    if (dpiViewToggleListBtn) dpiViewToggleListBtn.addEventListener('click', () => dpiSetViewMode('list'));
+    if (dpiViewToggleReportBtn) dpiViewToggleReportBtn.addEventListener('click', () => dpiSetViewMode('report'));
+
+    const btnDpiExportReportExcel = document.getElementById('btn-dpi-export-report-excel');
+    if (btnDpiExportReportExcel) {
+        btnDpiExportReportExcel.addEventListener('click', () => {
+            const dates = currentDpiReportPivot.dates || [];
+            const itemRows = currentDpiReportPivot.itemRows || [];
+            if (!itemRows.length || !dates.length) {
+                alert('Walang report na makikita. Mag-Search muna.');
+                return;
+            }
+            try {
+                const header = ['Category', 'Item Description', 'Branch'];
+                dates.forEach(d => {
+                    const label = dpiFormatReportDateLabel(d);
+                    header.push(`System QTY ${label}`, `RMA Items ${label}`, `Missing Items ${label}`);
+                });
+                const aoa = [header];
+                itemRows.forEach(r => {
+                    const rowArr = [r.category, r.item, r.branch];
+                    dates.forEach(d => {
+                        const cell = r.byDate[d];
+                        rowArr.push(cell ? cell.qty : '', cell ? cell.rma : '', cell ? cell.missing : '');
+                    });
+                    aoa.push(rowArr);
+                });
+                // Grand TOTAL row (2026-09-09), matching the on-screen table.
+                const totalsForExport = currentDpiReportPivot.totalsByDate || {};
+                const totalRowArr = ['', 'TOTAL', ''];
+                dates.forEach(d => {
+                    const t = totalsForExport[d] || { qty: 0, missing: 0, rma: 0 };
+                    totalRowArr.push(t.qty, t.rma, t.missing);
+                });
+                aoa.push(totalRowArr);
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "DPI Report");
+                const startDate = document.getElementById('dpi-list-start-date').value || 'all';
+                const endDate = document.getElementById('dpi-list-end-date').value || 'all';
+                XLSX.writeFile(wb, `Daily_Parts_Inventory_Report_${startDate}_to_${endDate}.xlsx`);
+            } catch (error) {
+                console.error(error);
+                alert('Failed to export to Excel.');
+            }
+        });
+    }
+
+    const btnDpiPrintReportPdf = document.getElementById('btn-dpi-print-report-pdf');
+    if (btnDpiPrintReportPdf) {
+        btnDpiPrintReportPdf.addEventListener('click', () => {
+            const dates = currentDpiReportPivot.dates || [];
+            const itemRows = currentDpiReportPivot.itemRows || [];
+            if (!itemRows.length || !dates.length) {
+                alert('Walang report na makikita. Mag-Search muna.');
+                return;
+            }
+            const startDate = document.getElementById('dpi-list-start-date').value;
+            const endDate = document.getElementById('dpi-list-end-date').value;
+            const branch = document.getElementById('dpi-list-branch').value;
+
+            const btnText = btnDpiPrintReportPdf.querySelector('.btn-text') || btnDpiPrintReportPdf;
+            const originalText = btnDpiPrintReportPdf.innerHTML;
+            btnDpiPrintReportPdf.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            btnDpiPrintReportPdf.disabled = true;
+
+            const newTab = window.open('', '_blank');
+            if (newTab) {
+                newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating PDF Report, please wait...</h3>');
+            } else {
+                alert('Popup blocked! Please allow popups for this site to view the PDF.');
+            }
+
+            try {
+                const headerCellsHtml = dates.map(d => {
+                    const label = payslipEscapeHtml(dpiFormatReportDateLabel(d));
+                    return `<th style="padding: 6px; color: #334155;">System QTY ${label}</th><th style="padding: 6px; color: #334155;">RMA Items ${label}</th><th style="padding: 6px; color: #334155;">Missing Items ${label}</th>`;
+                }).join('');
+
+                let lastCategory = null;
+                const totalCols = 2 + (dates.length * 3);
+                const rowsHtml = itemRows.map(r => {
+                    let rowHtml = '';
+                    if (r.category !== lastCategory) {
+                        rowHtml += `<tr><td colspan="${totalCols}" style="padding: 6px 8px; background: #fee2e2; color: #b91c1c; font-weight: 700;">${payslipEscapeHtml(r.category || '(No Category)')}</td></tr>`;
+                        lastCategory = r.category;
+                    }
+                    const dateCellsHtml = dates.map(d => {
+                        const cell = r.byDate[d];
+                        if (cell) {
+                            return `<td style="padding: 6px;">${cell.qty}</td><td style="padding: 6px;">${cell.rma}</td><td style="padding: 6px;">${cell.missing}</td>`;
+                        }
+                        return '<td style="padding: 6px; color: #94a3b8;">-</td><td style="padding: 6px; color: #94a3b8;">-</td><td style="padding: 6px; color: #94a3b8;">-</td>';
+                    }).join('');
+                    rowHtml += `<tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 6px;">${payslipEscapeHtml(r.item)}</td><td style="padding: 6px;">${payslipEscapeHtml(r.branch)}</td>${dateCellsHtml}</tr>`;
+                    return rowHtml;
+                }).join('');
+
+                // Grand TOTAL row (2026-09-09), matching the on-screen table
+                // and Export Excel.
+                const totalsForPdf = currentDpiReportPivot.totalsByDate || {};
+                const totalDateCellsHtml = dates.map(d => {
+                    const t = totalsForPdf[d] || { qty: 0, missing: 0, rma: 0 };
+                    return `<td style="padding: 6px; font-weight: 700;">${t.qty}</td><td style="padding: 6px; font-weight: 700;">${t.rma}</td><td style="padding: 6px; font-weight: 700;">${t.missing}</td>`;
+                }).join('');
+                const totalRowHtml = `<tr style="border-top: 2px solid #334155; background: #e2e8f0;"><td style="padding: 6px; font-weight: 700;">TOTAL</td><td style="padding: 6px;"></td>${totalDateCellsHtml}</tr>`;
+
+                const htmlString = `
+                    <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 100%; margin: 0 auto;">
+                        <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                            <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">Daily Parts Inventory Report</h2>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Branch:</strong> ${payslipEscapeHtml(branch)}</p>
+                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Period:</strong> ${payslipEscapeHtml(startDate)} to ${payslipEscapeHtml(endDate)}</p>
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; margin-top: 20px;">
+                            <thead>
+                                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                    <th style="padding: 6px; color: #334155;">Item Description</th>
+                                    <th style="padding: 6px; color: #334155;">Branch</th>
+                                    ${headerCellsHtml}
+                                </tr>
+                            </thead>
+                            <tbody>${rowsHtml}${totalRowHtml}</tbody>
+                        </table>
+                        <div style="margin-top: 30px; text-align: right; font-size: 11px; color: #94a3b8;">
+                            <p>Generated on ${new Date().toLocaleString()}</p>
+                        </div>
+                    </div>
+                `;
+
+                // Width grows with the number of date columns (3 cols per
+                // date) so a wide range doesn't get squeezed illegibly --
+                // html2canvas renders at this width, then jsPDF scales the
+                // whole page down to fit the landscape letter format.
+                const dpiPdfWidth = Math.max(900, 340 + (dates.length * 210));
+                const hiddenDiv = document.createElement('div');
+                hiddenDiv.innerHTML = htmlString;
+                hiddenDiv.style.position = 'absolute';
+                hiddenDiv.style.top = '-9999px';
+                hiddenDiv.style.left = '-9999px';
+                hiddenDiv.style.width = dpiPdfWidth + 'px';
+                document.body.appendChild(hiddenDiv);
+
+                const opt = {
+                    margin:       0.5,
+                    filename:     `Daily_Parts_Inventory_Report_${startDate}_to_${endDate}.pdf`,
+                    image:        { type: 'jpeg', quality: 0.98 },
+                    html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                    jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' },
+                    pagebreak:    { mode: ['css'], avoid: ['tr'] }
+                };
+                const elementToPrint = hiddenDiv.firstElementChild;
+
+                const scrollXBeforeCapture = window.scrollX;
+                const scrollYBeforeCapture = window.scrollY;
+                window.scrollTo(0, 0);
+
+                setTimeout(() => {
+                    html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function(pdfUrl) {
+                        if (newTab) newTab.location.href = pdfUrl;
+                        document.body.removeChild(hiddenDiv);
+                        window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                        btnDpiPrintReportPdf.innerHTML = originalText;
+                        btnDpiPrintReportPdf.disabled = false;
+                    }).catch(err => {
+                        console.error(err);
+                        if (newTab) newTab.close();
+                        document.body.removeChild(hiddenDiv);
+                        window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                        btnDpiPrintReportPdf.innerHTML = originalText;
+                        btnDpiPrintReportPdf.disabled = false;
+                        alert('Failed to generate PDF.');
+                    });
+                }, 500);
+            } catch (error) {
+                console.error(error);
+                if (newTab) newTab.close();
+                btnDpiPrintReportPdf.innerHTML = originalText;
+                btnDpiPrintReportPdf.disabled = false;
+                alert('Failed to generate PDF.');
+            }
+        });
     }
 
     function dpiModifyRecompute() {
@@ -2709,9 +3388,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const totalEl = document.getElementById('dpi-modify-total');
         if (totalEl) totalEl.textContent = qty - missing - rma;
     }
+    // Missing/RMA Remarks in the Modify modal -- same live required-highlight
+    // behavior as the Save form's dpiUpdateRemarksHighlight, just against the
+    // modal's own field IDs instead of a table row's classes.
+    function dpiUpdateModifyRemarksHighlight() {
+        const missing = parseFloat(document.getElementById('dpi-modify-missing').value) || 0;
+        const rma = parseFloat(document.getElementById('dpi-modify-rma').value) || 0;
+        const missingRemarksEl = document.getElementById('dpi-modify-missing-remarks');
+        const rmaRemarksEl = document.getElementById('dpi-modify-rma-remarks');
+        if (missingRemarksEl) {
+            const needsIt = missing > 0 && !missingRemarksEl.value.trim();
+            missingRemarksEl.style.borderColor = needsIt ? '#ef4444' : 'rgba(255,255,255,0.12)';
+        }
+        if (rmaRemarksEl) {
+            const needsIt = rma > 0 && !rmaRemarksEl.value.trim();
+            rmaRemarksEl.style.borderColor = needsIt ? '#ef4444' : 'rgba(255,255,255,0.12)';
+        }
+    }
     ['dpi-modify-qty', 'dpi-modify-missing', 'dpi-modify-rma'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', dpiModifyRecompute);
+        if (el) el.addEventListener('input', () => { dpiModifyRecompute(); dpiUpdateModifyRemarksHighlight(); });
+    });
+    ['dpi-modify-missing-remarks', 'dpi-modify-rma-remarks'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', dpiUpdateModifyRemarksHighlight);
     });
 
     async function dpiModifyLoadRmaAdmins(selectedValue) {
@@ -2745,6 +3445,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const qtyEl = document.getElementById('dpi-modify-qty');
         const missingEl = document.getElementById('dpi-modify-missing');
         const rmaEl = document.getElementById('dpi-modify-rma');
+        const missingRemarksEl = document.getElementById('dpi-modify-missing-remarks');
+        const rmaRemarksEl = document.getElementById('dpi-modify-rma-remarks');
         const approvedByEl = document.getElementById('dpi-modify-approved-by');
         const statusMsg = document.getElementById('dpi-modify-status-message');
 
@@ -2755,7 +3457,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (qtyEl) qtyEl.value = row[4] || 0;
         if (missingEl) missingEl.value = row[5] || 0;
         if (rmaEl) rmaEl.value = row[6] || 0;
+        if (missingRemarksEl) missingRemarksEl.value = row[11] || '';
+        if (rmaRemarksEl) rmaRemarksEl.value = row[12] || '';
         dpiModifyRecompute();
+        dpiUpdateModifyRemarksHighlight();
         dpiModifyLoadRmaAdmins(row[8] || '');
         // Approved By: always re-stamped to whoever is opening this modal right
         // now, not the originally-saved value -- same "who's provably present"
@@ -2809,6 +3514,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const newRma = parseFloat(document.getElementById('dpi-modify-rma').value) || 0;
             const newCountedBy = document.getElementById('dpi-modify-counted-by').value;
             const newApprovedBy = document.getElementById('dpi-modify-approved-by').value;
+            const newMissingRemarks = document.getElementById('dpi-modify-missing-remarks').value.trim();
+            const newRmaRemarks = document.getElementById('dpi-modify-rma-remarks').value.trim();
             const newTotal = newQty - newMissing - newRma;
 
             if (!newDate || !newDesc || newQty <= 0) {
@@ -2819,6 +3526,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (statusMsg) showMessage(statusMsg, 'Select who Counted By (RMA Admin) before saving.', 'error');
                 return;
             }
+            // Missing/RMA Remarks (2026-09-09): same required-when-nonzero
+            // rule as the Save form, enforced here too since Modify is a
+            // second place a Missing/RMA quantity can be entered/changed.
+            if (newMissing > 0 && !newMissingRemarks) {
+                dpiUpdateModifyRemarksHighlight();
+                if (statusMsg) showMessage(statusMsg, 'May Missing quantity pero walang Missing Remarks (naka-highlight na pula). Lagyan ng dahilan bago mag-save.', 'error');
+                return;
+            }
+            if (newRma > 0 && !newRmaRemarks) {
+                dpiUpdateModifyRemarksHighlight();
+                if (statusMsg) showMessage(statusMsg, 'May RMA quantity pero walang RMA Remarks (naka-highlight na pula). Lagyan ng dahilan bago mag-save.', 'error');
+                return;
+            }
 
             const rowIndex = currentDpiModifyRow[currentDpiModifyRow.length - 1];
             btnSaveDpiModify.disabled = true;
@@ -2826,12 +3546,16 @@ document.addEventListener('DOMContentLoaded', () => {
             btnSaveDpiModify.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
 
             try {
-                // Columns 1-10 of "Daily Parts Inventory" (Date, Branch, Category,
+                // Columns 1-13 of "Daily Parts Inventory" (Date, Branch, Category,
                 // Item Description, Qty, Missing, RMA, Total, Counted By, Approved
-                // By) -- Timestamp (column 11) is left untouched since
-                // updateExpenseRecord only overwrites as many columns as
-                // updatedData has entries.
-                const updatedData = [newDate, newBranch, newCategory, newDesc, newQty, newMissing, newRma, newTotal, newCountedBy, newApprovedBy];
+                // By, Timestamp, Missing Remarks, RMA Remarks). updateExpenseRecord
+                // overwrites a single contiguous range starting at column 1 for
+                // exactly updatedData.length columns -- to reach columns 12-13
+                // (the new Remarks fields) without disturbing Timestamp (column
+                // 11) we re-send its ORIGINAL unchanged value (currentDpiModifyRow[10])
+                // rather than skip it, since the write can't leave a gap.
+                const originalTimestamp = currentDpiModifyRow[10] || '';
+                const updatedData = [newDate, newBranch, newCategory, newDesc, newQty, newMissing, newRma, newTotal, newCountedBy, newApprovedBy, originalTimestamp, newMissingRemarks, newRmaRemarks];
 
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
@@ -2857,6 +3581,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                     dpiApplyDescFilter();
+                    dpiRenderReport();
 
                     if (statusMsg) showMessage(statusMsg, 'Saved successfully!', 'success');
                     showToast('Parts inventory item updated!', 'success');

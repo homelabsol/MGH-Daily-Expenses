@@ -1917,6 +1917,14 @@
             </div>
             <div style="margin-top: 8px; font-size: 0.85em; color: var(--text-muted);">Total (Accounted): <span id="dpi-modify-total" style="color: #10b981; font-weight: 700;">0</span></div>
             <div class="form-group" style="margin-top: 10px;">
+                <label for="dpi-modify-missing-remarks">Missing Remarks <span style="color: var(--text-muted); font-weight: 400;">(required kapag may Missing)</span></label>
+                <input type="text" id="dpi-modify-missing-remarks" placeholder="Dahilan ng missing item..." style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 8px 10px; color: var(--text-light); font-family: inherit; font-size: 0.9em;">
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label for="dpi-modify-rma-remarks">RMA Remarks <span style="color: var(--text-muted); font-weight: 400;">(required kapag may RMA)</span></label>
+                <input type="text" id="dpi-modify-rma-remarks" placeholder="Dahilan ng RMA..." style="width: 100%; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 8px 10px; color: var(--text-light); font-family: inherit; font-size: 0.9em;">
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
                 <label for="dpi-modify-counted-by">Counted By <span style="color: var(--text-muted); font-weight: 400;">(RMA Admin)</span></label>
                 <select id="dpi-modify-counted-by">
                     <option value="">-- Select RMA Admin --</option>
@@ -2624,16 +2632,18 @@
                     <button type="button" id="dpi-btn-add-row" style="background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.4); color: var(--primary); border-radius: 6px; padding: 6px 12px; font-size: 0.85em; font-weight: 600; cursor: pointer;">+ Add Item</button>
                 </div>
                 <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; min-width: 720px;">
+                    <table style="width: 100%; border-collapse: collapse; min-width: 1080px;">
                         <thead>
                             <tr style="text-align: left; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted);">
-                                <th style="padding: 6px 8px; width: 22%;">Category</th>
-                                <th style="padding: 6px 8px; width: 34%;">Item Description</th>
-                                <th style="padding: 6px 8px; width: 11%;">Qty</th>
-                                <th style="padding: 6px 8px; width: 11%;">Missing</th>
-                                <th style="padding: 6px 8px; width: 11%;">RMA</th>
-                                <th style="padding: 6px 8px; width: 11%;">Total</th>
-                                <th style="padding: 6px 8px; width: 6%;"></th>
+                                <th style="padding: 6px 8px; width: 15%;">Category</th>
+                                <th style="padding: 6px 8px; width: 22%;">Item Description</th>
+                                <th style="padding: 6px 8px; width: 8%;">Qty</th>
+                                <th style="padding: 6px 8px; width: 8%;">Missing</th>
+                                <th style="padding: 6px 8px; width: 15%;">Missing Remarks</th>
+                                <th style="padding: 6px 8px; width: 8%;">RMA</th>
+                                <th style="padding: 6px 8px; width: 15%;">RMA Remarks</th>
+                                <th style="padding: 6px 8px; width: 7%;">Total</th>
+                                <th style="padding: 6px 8px; width: 4%;"></th>
                             </tr>
                         </thead>
                         <tbody id="dpi-items-body"></tbody>
@@ -2673,6 +2683,19 @@
         </header>
 
         <main class="glass-panel" style="margin-top: 20px;">
+            <!-- List/Report view toggle (2026-09-09 follow-up): "possible ba
+                 gawan ng report to na pwedeng i check yung range nya then
+                 pwede natin i dispaly yung no of stocks, missing and
+                 warranty per date para magkaroon ng comparison?" -- Report
+                 view aggregates the SAME already-fetched rows (no extra
+                 network call) into one row per Date+Branch, summing
+                 Qty/Missing/RMA/Total, so day-to-day trends are easy to
+                 scan instead of digging through every individual item row. -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <button type="button" id="dpi-view-toggle-list-btn" style="background: rgba(59,130,246,0.25); border: 1px solid rgba(59,130,246,0.5); color: #fff; border-radius: 6px; padding: 8px 16px; font-size: 0.85em; font-weight: 600; cursor: pointer;"><i class="fas fa-list"></i> List</button>
+                <button type="button" id="dpi-view-toggle-report-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 8px 16px; font-size: 0.85em; font-weight: 600; cursor: pointer;"><i class="fas fa-chart-line"></i> Report (per Date)</button>
+            </div>
+
             <div class="form-row" style="flex-wrap: wrap; gap: 10px; align-items: end;">
                 <div class="form-group" style="flex: 1; min-width: 140px;">
                     <label for="dpi-list-start-date">Date From</label>
@@ -2690,7 +2713,16 @@
                         <option value="MarvsPCStufz Marikina">MarvsPCStufz Marikina</option>
                     </select>
                 </div>
+                <!-- Category filter (2026-09-09): applies to BOTH the List
+                     and the Report view (unlike the Item Description filter
+                     below, which stays List-only) -- options populated in
+                     JS from the same DPI_CATEGORIES list used by the Save
+                     form's per-row Category dropdown. -->
                 <div class="form-group" style="flex: 1; min-width: 180px;">
+                    <label for="dpi-list-category-filter">Category</label>
+                    <select id="dpi-list-category-filter"></select>
+                </div>
+                <div class="form-group" id="dpi-list-desc-filter-group" style="flex: 1; min-width: 180px;">
                     <label for="dpi-list-desc-filter">Item Description</label>
                     <input type="text" id="dpi-list-desc-filter" placeholder="Search item description...">
                 </div>
@@ -2700,27 +2732,61 @@
                 </button>
             </div>
 
-            <div style="overflow-x: auto; margin-top: 20px;">
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 960px;">
-                    <thead>
-                        <tr style="border-bottom: 1px solid var(--glass-border);">
-                            <th style="padding: 10px; text-align: left;">Date</th>
-                            <th style="padding: 10px; text-align: left;">Branch</th>
-                            <th style="padding: 10px; text-align: left;">Category</th>
-                            <th style="padding: 10px; text-align: left;">Item Description</th>
-                            <th style="padding: 10px; text-align: left;">Qty</th>
-                            <th style="padding: 10px; text-align: left;">Missing</th>
-                            <th style="padding: 10px; text-align: left;">RMA</th>
-                            <th style="padding: 10px; text-align: left;">Total</th>
-                            <th style="padding: 10px; text-align: left;">Counted By</th>
-                            <th style="padding: 10px; text-align: left;">Approved By</th>
-                            <th style="padding: 10px; text-align: left;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="dpi-list-table-body">
-                        <tr><td colspan="11" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Search" to view records.</td></tr>
-                    </tbody>
-                </table>
+            <!-- List view (existing, per-item rows) -->
+            <div id="dpi-list-view-section">
+                <div style="overflow-x: auto; margin-top: 20px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 1200px;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--glass-border);">
+                                <th style="padding: 10px; text-align: left;">Date</th>
+                                <th style="padding: 10px; text-align: left;">Branch</th>
+                                <th style="padding: 10px; text-align: left;">Category</th>
+                                <th style="padding: 10px; text-align: left;">Item Description</th>
+                                <th style="padding: 10px; text-align: left;">Qty</th>
+                                <th style="padding: 10px; text-align: left;">Missing</th>
+                                <th style="padding: 10px; text-align: left;">Missing Remarks</th>
+                                <th style="padding: 10px; text-align: left;">RMA</th>
+                                <th style="padding: 10px; text-align: left;">RMA Remarks</th>
+                                <th style="padding: 10px; text-align: left;">Total</th>
+                                <th style="padding: 10px; text-align: left;">Counted By</th>
+                                <th style="padding: 10px; text-align: left;">Approved By</th>
+                                <th style="padding: 10px; text-align: left;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dpi-list-table-body">
+                            <tr><td colspan="13" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Search" to view records.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Report view (2026-09-09, revised same day per user's own
+                 sheet example): item-by-item, grouped by Category, one row
+                 per Item Description + Branch, with 3 columns (System Qty,
+                 RMA Items, Missing Items) REPEATED for every distinct Date
+                 found in the fetched range -- so a single item's counts can
+                 be compared side-by-side across dates, matching the user's
+                 existing manual tracking sheet layout. Header row and body
+                 are both built dynamically in JS (dpiRenderReport) since the
+                 number of date-column-groups depends on the search range. -->
+            <div id="dpi-report-view-section" class="hidden">
+                <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; margin-bottom: 10px;">
+                    <button type="button" id="btn-dpi-export-report-excel" style="background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.4); color: #10b981; border-radius: 6px; padding: 7px 14px; font-size: 0.82em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-file-excel"></i> Export Excel</button>
+                    <button type="button" id="btn-dpi-print-report-pdf" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 7px 14px; font-size: 0.82em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-file-pdf"></i> Print PDF</button>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85em; min-width: 640px;">
+                        <thead id="dpi-report-table-head">
+                            <tr style="border-bottom: 1px solid var(--glass-border);">
+                                <th style="padding: 10px; text-align: left;">Item Description</th>
+                                <th style="padding: 10px; text-align: left;">Branch</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dpi-report-table-body">
+                            <tr><td colspan="100" style="padding: 15px; text-align: center; color: var(--text-muted);">Click "Search" to view the report.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </main>
     </div>
@@ -6077,7 +6143,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=151"></script>
+    <script src="app.js?v=157"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
