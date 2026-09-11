@@ -1020,12 +1020,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Row layout returned by getExpenseRecords for "MarvsPCStufz Warranty"
     // (0-indexed, same column mapping mwrOpenModifyForm() above documents
     // and relies on): 0 Warranty Date, 3 Customer Name, 5 Item Description,
-    // 14 Supplier Name, 18 Supplier Status, 19 Date Return (Customer).
+    // 14 Supplier Name, 18 Supplier Status, 19 Date Return (Customer),
+    // 22 Warranty Status.
     // Fix 86: no longer fetches -- rows are fetched ONCE up front by
     // loadMenuDashboardCombined() (part of the single combined
     // getMenuDashboardData call) and passed in here; this function just
     // renders. The "Loading..." placeholder is set by the caller before the
     // fetch starts, same as before.
+    // Fix 96 (2026-09-11): the user noticed a claim marked "Completed" (via
+    // the Item Replacement Modify form's "Warranty Status" dropdown, column
+    // 22 -- see ir-modify-warranty-status in index.html) could still show up
+    // here if "Date Return (Customer)" (column 19) was left blank for it --
+    // the two fields are set independently and this widget only ever looked
+    // at column 19. Now excludes a claim as soon as EITHER signal says it's
+    // done: Date Return (Customer) is filled in, OR Warranty Status is
+    // "Completed".
     function renderWarrantyAgingDashboard(rows) {
         lastDashWarrantyRows = rows || [];
         const listEl = document.getElementById('dash-warranty-list');
@@ -1037,9 +1046,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
 
-            // Blank "Date Return (Customer)" (idx 19) == the item hasn't been
-            // returned to the customer yet == still an open/aging claim.
-            const open = rows.filter(row => !(row[19] || '').toString().trim());
+            // A claim is still "open" (aging) only when BOTH: it hasn't been
+            // returned to the customer yet (blank "Date Return (Customer)",
+            // idx 19) AND its Warranty Status (idx 22) hasn't been marked
+            // "Completed". Either signal alone means it's done and should
+            // drop off this widget entirely (Fix 96).
+            const open = rows.filter(row => {
+                const hasReturnDate = !!(row[19] || '').toString().trim();
+                const warrantyStatus = (row[22] || '').toString().trim();
+                return !hasReturnDate && warrantyStatus !== 'Completed';
+            });
 
             const todayMs = new Date(dashFmtDate(new Date())).getTime();
             const aged = open.map(row => {
