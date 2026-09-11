@@ -1974,21 +1974,41 @@ document.addEventListener('DOMContentLoaded', () => {
         dropdown.style.width = rect.width + 'px';
     }
 
+    // 2026-09-11 follow-up: "medyo nahihirapan kasi ako kapag walang record
+    // na existing kasi need ko muna ilagay ang record... kapag nag save ma
+    // se save na din sya?" -- a brand-new Item Description used to require a
+    // separate manual trip to add it to the "Item Description" sheet before
+    // it could ever be picked here. Confirmed via AskUserQuestion (over a
+    // fully-silent-automatic alternative, specifically to avoid a typo
+    // becoming a permanent catalog entry): when the typed text doesn't
+    // exactly match anything in dpiItemDescMaster, this dropdown now also
+    // offers an explicit "+ Idagdag" option at the bottom -- picking it
+    // marks the row as a confirmed new description (dpiSelectRowDescNewItem
+    // below), which the Save handler then sends to the backend to register
+    // in the SAME request as the Daily Count save (see
+    // newItemDescriptions in the saveDailyPartsInventory payload).
     function dpiRenderRowDescDropdown(input, term) {
         const dropdown = input.dpiDropdown;
         if (!dropdown) return;
         dpiPositionRowDescDropdown(input, dropdown);
-        const lowerTerm = (term || '').trim().toLowerCase();
+        const trimmedTerm = (term || '').trim();
+        const lowerTerm = trimmedTerm.toLowerCase();
         const matches = lowerTerm
             ? dpiItemDescMaster.filter(item => (item.description || '').toLowerCase().includes(lowerTerm)).slice(0, 30)
             : dpiItemDescMaster.slice(0, 30);
+        const hasExactMatch = lowerTerm && dpiItemDescMaster.some(item => (item.description || '').toLowerCase() === lowerTerm);
+        let html = '';
         if (matches.length === 0) {
-            dropdown.innerHTML = '<div style="padding: 8px 10px; color: var(--text-muted); font-size: 0.85em;">Walang nahanap. Kailangan munang idagdag sa "Item Description" sheet.</div>';
+            html += '<div style="padding: 8px 10px; color: var(--text-muted); font-size: 0.85em;">Walang nahanap.</div>';
         } else {
-            dropdown.innerHTML = matches.map(item => `<div class="dpi-row-desc-option" data-desc="${payslipEscapeHtml(item.description)}" data-category="${payslipEscapeHtml(item.category)}" style="padding: 7px 10px; cursor: pointer; font-size: 0.85em; border-bottom: 1px solid rgba(255,255,255,0.05);">` +
+            html += matches.map(item => `<div class="dpi-row-desc-option" data-desc="${payslipEscapeHtml(item.description)}" data-category="${payslipEscapeHtml(item.category)}" style="padding: 7px 10px; cursor: pointer; font-size: 0.85em; border-bottom: 1px solid rgba(255,255,255,0.05);">` +
                 `<span style="color: var(--text-light);">${payslipEscapeHtml(item.description)}</span> <span style="color: var(--text-muted);">(${payslipEscapeHtml(item.category)})</span>`
                 + `</div>`).join('');
         }
+        if (trimmedTerm && !hasExactMatch) {
+            html += `<div class="dpi-row-desc-new-option" data-new-desc="${payslipEscapeHtml(trimmedTerm)}" style="padding: 7px 10px; cursor: pointer; font-size: 0.85em; color: #a78bfa; border-top: 1px solid rgba(167,139,250,0.25); background: rgba(167,139,250,0.06);"><i class="fas fa-plus" style="margin-right: 6px;"></i>Idagdag "${payslipEscapeHtml(trimmedTerm)}" bilang bagong item description</div>`;
+        }
+        dropdown.innerHTML = html;
         dropdown.classList.remove('hidden');
     }
 
@@ -2007,12 +2027,37 @@ document.addEventListener('DOMContentLoaded', () => {
     function dpiSelectRowDescItem(tr, item) {
         const input = tr.querySelector('.dpi-row-desc');
         const categorySelect = tr.querySelector('.dpi-row-category');
-        if (input) input.value = item.description;
+        if (input) {
+            input.value = item.description;
+            delete input.dataset.pendingNewDesc; // picking a REAL list entry cancels any earlier "+ Idagdag" confirmation
+            input.style.borderColor = '';
+            input.title = '';
+        }
         if (categorySelect && item.category && dpiCategoryOptionsList.indexOf(item.category) !== -1) {
             categorySelect.value = item.category;
         }
         dpiMarkRowDescValidity(tr, true);
         if (input) dpiHideRowDescDropdown(input);
+    }
+
+    // Confirms a brand-new Item Description picked via the dropdown's
+    // "+ Idagdag" option (see dpiRenderRowDescDropdown above). Paired with
+    // whatever Category is CURRENTLY selected on this row -- read live at
+    // Save time (dpiSubmitBtn handler), not snapshotted here, so changing
+    // the Category dropdown afterward still pairs correctly. Marked valid
+    // immediately (no server round trip yet -- the actual registration
+    // happens together with the Daily Count save) with a distinct purple
+    // border/tooltip so it's visually different from an existing, already-
+    // on-the-sheet description.
+    function dpiSelectRowDescNewItem(tr, term) {
+        const input = tr.querySelector('.dpi-row-desc');
+        if (!input) return;
+        input.value = term;
+        input.dataset.pendingNewDesc = term;
+        input.dataset.valid = '1';
+        input.style.borderColor = '#a78bfa';
+        input.title = 'Bagong item description -- idadagdag ito sa "Item Description" sheet kapag na-save ang Daily Count na ito.';
+        dpiHideRowDescDropdown(input);
     }
 
     function dpiWireRowDescCombobox(tr) {
@@ -2028,6 +2073,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         input.addEventListener('focus', () => dpiRenderRowDescDropdown(input, input.value));
         input.addEventListener('input', () => {
+            // Any edit invalidates an earlier "+ Idagdag" confirmation -- the
+            // confirmed text and the current text no longer match, so it must
+            // be re-confirmed (or a real list match picked) before this row
+            // is valid again.
+            delete input.dataset.pendingNewDesc;
+            input.style.borderColor = '';
+            input.title = '';
             dpiMarkRowDescValidity(tr, false);
             dpiRenderRowDescDropdown(input, input.value);
         });
@@ -2036,6 +2088,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // run first on browsers where blur fires before mousedown's
             // synchronous handler completes.
             setTimeout(() => {
+                // A still-current "+ Idagdag" confirmation (the text hasn't
+                // changed since) stays valid on blur -- only fall through to
+                // the real-list-match check / invalid state otherwise.
+                if (input.dataset.pendingNewDesc && input.dataset.pendingNewDesc === input.value.trim()) {
+                    dpiHideRowDescDropdown(input);
+                    return;
+                }
                 const match = dpiFindItemDescMatch(input.value);
                 if (match) {
                     dpiSelectRowDescItem(tr, match);
@@ -2049,6 +2108,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // focus to the dropdown, which would otherwise fire blur and hide
         // the dropdown before the click/selection registers.
         dropdown.addEventListener('mousedown', (e) => {
+            const newOptionEl = e.target.closest('.dpi-row-desc-new-option');
+            if (newOptionEl) {
+                e.preventDefault();
+                dpiSelectRowDescNewItem(tr, newOptionEl.dataset.newDesc);
+                return;
+            }
             const optionEl = e.target.closest('.dpi-row-desc-option');
             if (!optionEl) return;
             e.preventDefault();
@@ -2798,6 +2863,17 @@ document.addEventListener('DOMContentLoaded', () => {
             // right above, rather than silently saving without the note.
             let hasMissingRemarksError = false;
             let hasRmaRemarksError = false;
+            // 2026-09-11 follow-up: any row whose description was confirmed
+            // via the dropdown's "+ Idagdag" option (dpiSelectRowDescNewItem
+            // -- input.dataset.pendingNewDesc still matches the current
+            // text) gets collected here and sent alongside the save so the
+            // backend can register it in the "Item Description" sheet in
+            // the SAME request, instead of requiring a separate manual step
+            // first. Category is read live from the row (not a stale
+            // snapshot), and deduped by description in case 2+ rows
+            // confirmed the exact same brand-new description.
+            const newItemDescriptions = [];
+            const seenNewDescs = {};
             document.querySelectorAll('#dpi-items-body tr').forEach(tr => {
                 const category = tr.querySelector('.dpi-row-category').value;
                 const descInput = tr.querySelector('.dpi-row-desc');
@@ -2817,6 +2893,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (missing > 0 && !missingRemarks) hasMissingRemarksError = true;
                     if (rma > 0 && !rmaRemarks) hasRmaRemarksError = true;
                     items.push({ category, description: desc, qty, missing, rma, missingRemarks, rmaRemarks });
+                    if (descInput.dataset.pendingNewDesc && descInput.dataset.pendingNewDesc === desc) {
+                        const key = desc.toLowerCase();
+                        if (!seenNewDescs[key]) {
+                            seenNewDescs[key] = true;
+                            newItemDescriptions.push({ description: desc, category });
+                        }
+                    }
                 }
             });
 
@@ -2854,13 +2937,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({
                         action: 'saveDailyPartsInventory',
-                        date, branch, items, countedBy, approvedBy
+                        date, branch, items, countedBy, approvedBy, newItemDescriptions
                     })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
                     dpiResetForm();
                     dpiLoadRmaAdmins();
+                    // Refresh the cached Item Description master list so any
+                    // just-registered new description(s) are immediately
+                    // searchable in this session without a page reload.
+                    if (newItemDescriptions.length > 0) dpiLoadItemDescMaster();
                     if (statusMsg) showMessage(statusMsg, 'Daily parts count saved successfully!', 'success');
                 } else {
                     if (statusMsg) showMessage(statusMsg, result.message || 'Error saving daily parts count.', 'error');
@@ -10987,45 +11074,163 @@ document.addEventListener('DOMContentLoaded', () => {
                 warningsEl.innerHTML = `<div style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 8px; padding: 8px 14px; color: #6ee7b7; font-size: 0.85em;"><i class="fas fa-check-circle"></i> May staff na naka-duty araw-araw sa bawat branch.</div>`;
             }
 
-            // Render preview table. Standard Schedule generates a full
-            // 1-year range (365+ date columns) -- rendering every single day
-            // would make the preview table unusably wide, so the ON-SCREEN
-            // preview is capped to the first PREVIEW_MAX_DAYS days as a
-            // representative sample; the FULL range is still what actually
-            // gets saved (lastGeneratedSchedule keeps the untouched full
-            // result.dates/schedule, only the rendered HTML below is capped).
-            const PREVIEW_MAX_DAYS = 14;
-            const previewDates = result.dates.slice(0, PREVIEW_MAX_DAYS);
-            const isPreviewTruncated = result.dates.length > PREVIEW_MAX_DAYS;
-            const previewContainer = document.getElementById('sched-preview-container');
-            let tableHtml = '';
-            if (isPreviewTruncated) {
-                tableHtml += `<div style="margin-bottom: 10px; color: var(--text-muted); font-size: 0.85em;"><i class="fas fa-info-circle"></i> Preview lang ang unang ${PREVIEW_MAX_DAYS} araw (${result.dates.length} araw total ang isesave, ${startDate} hanggang ${endDate}).</div>`;
-            }
-            tableHtml += '<table style="border-collapse: collapse; font-size: 0.78em; min-width: 100%;"><thead><tr>';
-            tableHtml += '<th style="padding: 8px; text-align: left; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid var(--glass-border);">Staff</th>';
-            tableHtml += '<th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Branch</th>';
-            previewDates.forEach(d => {
-                const label = `${d.getMonth() + 1}/${d.getDate()}`;
-                tableHtml += `<th style="padding: 6px; text-align: center; border-bottom: 1px solid var(--glass-border); min-width: 55px;">${label}</th>`;
-            });
-            tableHtml += '</tr></thead><tbody>';
-            result.schedule.forEach(row => {
-                tableHtml += '<tr>';
-                tableHtml += `<td style="padding: 8px; font-weight: 500; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staff.name}</td>`;
-                tableHtml += `<td style="padding: 8px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staff.branch}</td>`;
-                row.cells.slice(0, PREVIEW_MAX_DAYS).forEach(cell => {
-                    const isDuty = cell.status === 'Duty';
-                    const cellText = isDuty ? (cell.shift ? cell.shift.shortLabel : 'Duty') : 'Off';
-                    const cellTitle = isDuty && cell.shift ? cell.shift.label : 'Day Off';
-                    tableHtml += `<td title="${cellTitle}" style="padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: ${isDuty ? '600' : '400'};">${cellText}</td>`;
-                });
-                tableHtml += '</tr>';
-            });
-            tableHtml += '</tbody></table>';
-            previewContainer.innerHTML = tableHtml;
+            // Render preview table (extracted into renderSchedulePreviewTable so
+            // the drag-and-drop swap handler below can re-render after a swap
+            // without duplicating this whole block).
+            renderSchedulePreviewTable();
 
             btnSaveSchedule.classList.remove('hidden');
+        });
+    }
+
+    // Fix (2026-09-10): drag-and-drop schedule swapping -- user's words: "staff
+    // name nga para pwede magpalit ng schedule" (drag the staff NAME so two staff
+    // can trade schedules -- for when someone wants to swap duty with a
+    // co-worker). Dragging one staff's name onto another staff's row in the
+    // PREVIEW table (there's no separate "view saved schedule" screen yet, so
+    // this only applies before Save) swaps their ENTIRE schedule for the whole
+    // period -- name, branch, and every single day's shift/day-off cell all move
+    // together, so the two staff literally trade places in the generated
+    // schedule. This only reorders lastGeneratedSchedule.schedule in memory;
+    // Save Schedule reads that exact array, so a swap made before Save is what
+    // actually gets written to the sheet.
+    function renderSchedulePreviewTable() {
+        if (!lastGeneratedSchedule) return;
+        const previewContainer = document.getElementById('sched-preview-container');
+        if (!previewContainer) return;
+        // Standard Schedule generates a full 1-year range (365+ date columns) --
+        // rendering every single day would make the preview table unusably wide,
+        // so the ON-SCREEN preview is capped to the first PREVIEW_MAX_DAYS days as
+        // a representative sample; the FULL range is still what actually gets
+        // saved (lastGeneratedSchedule keeps the untouched full dates/schedule,
+        // only the rendered HTML here is capped).
+        const PREVIEW_MAX_DAYS = 14;
+        const previewDates = lastGeneratedSchedule.dates.slice(0, PREVIEW_MAX_DAYS);
+        const isPreviewTruncated = lastGeneratedSchedule.dates.length > PREVIEW_MAX_DAYS;
+        let tableHtml = '';
+        if (isPreviewTruncated) {
+            tableHtml += `<div style="margin-bottom: 10px; color: var(--text-muted); font-size: 0.85em;"><i class="fas fa-info-circle"></i> Preview lang ang unang ${PREVIEW_MAX_DAYS} araw (${lastGeneratedSchedule.dates.length} araw total ang isesave, ${lastGeneratedSchedule.startDate} hanggang ${lastGeneratedSchedule.endDate}).</div>`;
+        }
+        if (lastGeneratedSchedule.schedule.length > 1) {
+            tableHtml += `<div style="margin-bottom: 10px; color: var(--text-muted); font-size: 0.85em;"><i class="fas fa-arrows-up-down"></i> Tip: i-drag ang pangalan ng staff papunta sa ibang staff para magpalitan ang buong schedule nila (kung sino ang papalit).</div>`;
+        }
+        tableHtml += '<table style="border-collapse: collapse; font-size: 0.78em; min-width: 100%;"><thead><tr>';
+        tableHtml += '<th style="padding: 8px; text-align: left; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid var(--glass-border);">Staff</th>';
+        tableHtml += '<th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Branch</th>';
+        previewDates.forEach(d => {
+            const label = `${d.getMonth() + 1}/${d.getDate()}`;
+            tableHtml += `<th style="padding: 6px; text-align: center; border-bottom: 1px solid var(--glass-border); min-width: 55px;">${label}</th>`;
+        });
+        tableHtml += '</tr></thead><tbody>';
+        lastGeneratedSchedule.schedule.forEach((row, idx) => {
+            tableHtml += `<tr class="sched-staff-row-preview" data-row-index="${idx}">`;
+            tableHtml += `<td class="sched-staff-name-cell" draggable="true" data-row-index="${idx}" title="I-drag papunta sa ibang staff para magpalitan ng schedule" style="padding: 8px; font-weight: 500; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid rgba(255,255,255,0.05); cursor: grab;"><i class="fas fa-grip-vertical" style="opacity: 0.4; margin-right: 6px; font-size: 0.85em;"></i>${row.staff.name}</td>`;
+            tableHtml += `<td style="padding: 8px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staff.branch}</td>`;
+            row.cells.slice(0, PREVIEW_MAX_DAYS).forEach(cell => {
+                const isDuty = cell.status === 'Duty';
+                const cellText = isDuty ? (cell.shift ? cell.shift.shortLabel : 'Duty') : 'Off';
+                const cellTitle = isDuty && cell.shift ? cell.shift.label : 'Day Off';
+                tableHtml += `<td title="${cellTitle}" style="padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: ${isDuty ? '600' : '400'};">${cellText}</td>`;
+            });
+            tableHtml += '</tr>';
+        });
+        tableHtml += '</tbody></table>';
+        previewContainer.innerHTML = tableHtml;
+    }
+
+    let scheduleDragSourceIndex = null;
+    const schedPreviewContainerEl = document.getElementById('sched-preview-container');
+    if (schedPreviewContainerEl) {
+        function clearScheduleDropHighlight() {
+            schedPreviewContainerEl.querySelectorAll('.sched-staff-row-preview').forEach(r => {
+                r.style.outline = '';
+                r.style.background = '';
+            });
+        }
+        schedPreviewContainerEl.addEventListener('dragstart', (e) => {
+            const cell = e.target.closest('.sched-staff-name-cell');
+            if (!cell) { e.preventDefault(); return; }
+            scheduleDragSourceIndex = parseInt(cell.getAttribute('data-row-index'), 10);
+            cell.style.cursor = 'grabbing';
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                // Some browsers require setData for the drag to register at all;
+                // scheduleDragSourceIndex above is the real source of truth either way.
+                try { e.dataTransfer.setData('text/plain', String(scheduleDragSourceIndex)); } catch (err) { /* ignore */ }
+            }
+        });
+        schedPreviewContainerEl.addEventListener('dragover', (e) => {
+            if (scheduleDragSourceIndex === null) return;
+            const row = e.target.closest('.sched-staff-row-preview');
+            if (!row) return;
+            e.preventDefault(); // required to allow a drop on this element
+            clearScheduleDropHighlight();
+            row.style.outline = '2px dashed #a78bfa';
+            row.style.background = 'rgba(139,92,246,0.08)';
+        });
+        schedPreviewContainerEl.addEventListener('dragleave', (e) => {
+            const row = e.target.closest('.sched-staff-row-preview');
+            if (row) { row.style.outline = ''; row.style.background = ''; }
+        });
+        schedPreviewContainerEl.addEventListener('drop', (e) => {
+            const row = e.target.closest('.sched-staff-row-preview');
+            clearScheduleDropHighlight();
+            if (!row || scheduleDragSourceIndex === null || !lastGeneratedSchedule) { scheduleDragSourceIndex = null; return; }
+            e.preventDefault();
+            const targetIndex = parseInt(row.getAttribute('data-row-index'), 10);
+            const sourceIndex = scheduleDragSourceIndex;
+            scheduleDragSourceIndex = null;
+            if (targetIndex === sourceIndex) return;
+            const sourceRow = lastGeneratedSchedule.schedule[sourceIndex];
+            const targetRow = lastGeneratedSchedule.schedule[targetIndex];
+            if (!sourceRow || !targetRow) return;
+            if (sourceRow.staff.branch !== targetRow.staff.branch) {
+                if (!confirm(`Magkaibang branch sina ${sourceRow.staff.name} (${sourceRow.staff.branch}) at ${targetRow.staff.name} (${targetRow.staff.branch}). Sigurado ka bang gusto mong ipagpalit ang schedule nila?`)) return;
+            }
+            const sourceName = sourceRow.staff.name, targetName = targetRow.staff.name;
+            // Swap the CELLS (and branch, since the shift pattern was generated
+            // for that specific branch) between the two rows, but keep each row's
+            // NAME fixed to its own array position. This is what actually "trades
+            // schedules": Archie is still "Archie" afterward, just now working
+            // Johnpaul's days/shifts, and vice versa -- swapping which array slot
+            // each whole {name, cells} object sits in (the first version of this
+            // fix) only reordered the two rows on-screen without changing either
+            // person's actual assigned days at all, which is NOT a real swap.
+            const tempCells = sourceRow.cells;
+            const tempBranch = sourceRow.staff.branch;
+            sourceRow.cells = targetRow.cells;
+            sourceRow.staff.branch = targetRow.staff.branch;
+            targetRow.cells = tempCells;
+            targetRow.staff.branch = tempBranch;
+            // Defer the actual re-render (which replaces every <tr>/<td> in this
+            // table, INCLUDING the very cell the browser is still mid-drag on) to
+            // the next tick instead of doing it synchronously inside this 'drop'
+            // handler. If the dragged-from cell is ripped out of the DOM before
+            // the browser gets to fire its native 'dragend' on it, the browser's
+            // internal drag-and-drop state never cleans up properly -- confirmed
+            // by testing: doing the swap (and re-render) synchronously here left
+            // EVERY later drag on the page (even an unrelated drop-on-self) unable
+            // to fire so much as a 'dragstart' again, as if the browser thought a
+            // drag was still in progress. Waiting one tick lets 'dragend' land on
+            // the original node first, so the table can safely be rebuilt after.
+            setTimeout(() => {
+                renderSchedulePreviewTable();
+                const warningsEl = document.getElementById('sched-warnings');
+                if (warningsEl) {
+                    let swapNote = document.getElementById('sched-swap-note');
+                    if (!swapNote) {
+                        swapNote = document.createElement('div');
+                        swapNote.id = 'sched-swap-note';
+                        swapNote.style.cssText = 'margin-top: 8px; background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.3); border-radius: 8px; padding: 8px 14px; color: #c4b5fd; font-size: 0.85em;';
+                        warningsEl.appendChild(swapNote);
+                    }
+                    swapNote.innerHTML = `<i class="fas fa-arrows-up-down"></i> Napalitan na ang schedule nina ${sourceName} at ${targetName}.`;
+                }
+            }, 0);
+        });
+        schedPreviewContainerEl.addEventListener('dragend', () => {
+            scheduleDragSourceIndex = null;
+            clearScheduleDropHighlight();
         });
     }
 
@@ -13146,6 +13351,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const ridersPayrollMySubmissionsContainer = document.getElementById('riders-payroll-my-submissions-container');
     const rpMySubmissionsTableBody = document.getElementById('rp-my-submissions-table-body');
     const btnRpMySubmissionsRefresh = document.getElementById('btn-rp-my-submissions-refresh');
+    const rpMySubmissionsStatusFilter = document.getElementById('rp-my-submissions-status-filter');
+    // Cached raw list from the last fetch -- the Status filter (2026-09-11
+    // follow-up) re-renders from this instead of re-fetching, same
+    // "filter/sort without a fresh server round trip" pattern as rpAllRecords
+    // above.
+    let rpAllMySubmissions = [];
 
     const menuDeliveryApprovalBtn = document.getElementById('menu-delivery-approval-btn');
     const deliveryApprovalContainer = document.getElementById('delivery-approval-container');
@@ -13496,10 +13707,60 @@ document.addEventListener('DOMContentLoaded', () => {
         return `<span style="display:inline-block; padding: 3px 9px; border-radius: 999px; font-size: 0.78em; font-weight: 600; background: ${c.bg}; color: ${c.fg};">${status}</span>`;
     }
 
+    // Re-renders #rp-my-submissions-table-body from the cached
+    // rpAllMySubmissions using whatever Status filter is currently picked --
+    // no server round trip, same "filter a cached list" pattern as
+    // rpApplyRecordsFilters/daApplyStatusFilter elsewhere in this file.
+    // 2026-09-11 follow-up: "dapat dito yung mga approved hindi na ipapakita
+    // kasi approved na eh, kapag mahaba mahirap makalalito pa yan" -- the
+    // default "Lahat (Active)" view (empty filter value) now hides Approved
+    // rows to keep the list short and focused on what still needs the
+    // Rider's attention (Pending) or their notice (Rejected); Approved is
+    // never removed outright, just one dropdown pick away, same convention
+    // as the Client Support Requests list's own "All (Active)" filter.
+    function rpApplyMySubmissionsFilter() {
+        if (!rpMySubmissionsTableBody) return;
+        if (rpAllMySubmissions.length === 0) {
+            rpMySubmissionsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Wala ka pang isinumiteng delivery.</td></tr>';
+            return;
+        }
+        const statusFilter = rpMySubmissionsStatusFilter ? rpMySubmissionsStatusFilter.value : '';
+        const filtered = statusFilter
+            ? rpAllMySubmissions.filter(sub => sub.status === statusFilter)
+            : rpAllMySubmissions.filter(sub => sub.status !== 'Approved');
+        if (filtered.length === 0) {
+            const emptyMessage = statusFilter
+                ? 'Walang submission na tumutugma sa filter na ito.'
+                : 'Wala kang Pending o Rejected na submission ngayon -- lahat Approved na. Piliin ang "Approved" sa filter para makita.';
+            rpMySubmissionsTableBody.innerHTML = `<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">${emptyMessage}</td></tr>`;
+            return;
+        }
+        const escDiv = document.createElement('div');
+        function esc(v) { escDiv.textContent = (v === null || v === undefined) ? '' : String(v); return escDiv.innerHTML; }
+        rpMySubmissionsTableBody.innerHTML = filtered.map(sub => {
+            const whoFor = rpFormatWhoFor(sub);
+            const whoForHtml = whoFor.label
+                ? `${esc(whoFor.name)} <span style="font-size:0.72em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px;">(${esc(whoFor.label)})</span>`
+                : esc(whoFor.name);
+            const notesHtml = sub.status === 'Pending' ? '<span style="color: var(--text-muted);">Hinihintay pa ang review...</span>' : esc(sub.reviewerNotes || '--');
+            return `
+                <tr>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.deliveryDate)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.deliveryMethod)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${whoForHtml}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border); font-weight: 600; color: var(--primary);">₱${formatCurrency(sub.grandTotal)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${rpStatusBadgeHtml(sub.status)}</td>
+                    <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${notesHtml}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
     // Rider's own "Status ng Mga Isinumite Ko" -- lists every submission
     // they've made (any status), most-recent-first (server already
     // reverses), with the reviewer's notes visible for a Rejected one so
-    // it's never a silent rejection.
+    // it's never a silent rejection. Fetches once into rpAllMySubmissions;
+    // rpApplyMySubmissionsFilter renders from that cache.
     async function rpLoadMySubmissions() {
         if (!rpMySubmissionsTableBody) return;
         rpMySubmissionsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
@@ -13509,30 +13770,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 viewerRole: sessionStorage.getItem('userRole') || '',
                 viewerName: sessionStorage.getItem('loggedInUser') || ''
             });
-            const submissions = (result && result.status === 'success' && result.data) ? result.data : [];
-            if (submissions.length === 0) {
-                rpMySubmissionsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Wala ka pang isinumiteng delivery.</td></tr>';
-                return;
-            }
-            const escDiv = document.createElement('div');
-            function esc(v) { escDiv.textContent = (v === null || v === undefined) ? '' : String(v); return escDiv.innerHTML; }
-            rpMySubmissionsTableBody.innerHTML = submissions.map(sub => {
-                const whoFor = rpFormatWhoFor(sub);
-                const whoForHtml = whoFor.label
-                    ? `${esc(whoFor.name)} <span style="font-size:0.72em; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px;">(${esc(whoFor.label)})</span>`
-                    : esc(whoFor.name);
-                const notesHtml = sub.status === 'Pending' ? '<span style="color: var(--text-muted);">Hinihintay pa ang review...</span>' : esc(sub.reviewerNotes || '--');
-                return `
-                    <tr>
-                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.deliveryDate)}</td>
-                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${esc(sub.deliveryMethod)}</td>
-                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${whoForHtml}</td>
-                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border); font-weight: 600; color: var(--primary);">₱${formatCurrency(sub.grandTotal)}</td>
-                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${rpStatusBadgeHtml(sub.status)}</td>
-                        <td style="padding: 9px 10px; border-bottom: 1px solid var(--glass-border);">${notesHtml}</td>
-                    </tr>
-                `;
-            }).join('');
+            rpAllMySubmissions = (result && result.status === 'success' && result.data) ? result.data : [];
+            rpApplyMySubmissionsFilter();
         } catch (error) {
             console.error('Error loading my Riders Payroll submissions:', error);
             rpMySubmissionsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 14px 10px; text-align: center; color: var(--error);">Unable to load submissions.</td></tr>';
@@ -13724,11 +13963,15 @@ document.addEventListener('DOMContentLoaded', () => {
         btnRidersPayrollMySubmissions.addEventListener('click', () => {
             hideAllContainers();
             if (ridersPayrollMySubmissionsContainer) ridersPayrollMySubmissionsContainer.classList.remove('hidden');
+            if (rpMySubmissionsStatusFilter) rpMySubmissionsStatusFilter.value = '';
             rpLoadMySubmissions();
         });
     }
     if (btnRpMySubmissionsRefresh) {
         btnRpMySubmissionsRefresh.addEventListener('click', rpLoadMySubmissions);
+    }
+    if (rpMySubmissionsStatusFilter) {
+        rpMySubmissionsStatusFilter.addEventListener('change', rpApplyMySubmissionsFilter);
     }
 
     if (menuDeliveryApprovalBtn) {

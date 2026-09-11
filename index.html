@@ -1617,7 +1617,26 @@
         </header>
 
         <main class="glass-panel" style="margin-top: 20px;">
-            <div style="display: flex; justify-content: flex-end; margin-bottom: 14px;">
+            <!-- 2026-09-11 follow-up: "dapat dito yung mga approved hindi na
+                 ipapakita kasi approved na eh, kapag mahaba mahirap makalalito
+                 pa yan" -- once a Rider has a lot of Approved deliveries this
+                 list got long and hard to scan for what still needs
+                 attention. Same "All (Active)" convention already used on
+                 the Client Support Requests list (Resolved hidden by
+                 default, still reachable) and the same Status dropdown
+                 shape as the Owner/Manager Delivery Approval queue's own
+                 filter -- default "Lahat (Active)" hides Approved, but it's
+                 one click away via the dropdown, never fully removed. -->
+            <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; justify-content: flex-end; margin-bottom: 14px;">
+                <div class="form-group" style="margin: 0; flex: 1; min-width: 200px; text-align: left;">
+                    <label for="rp-my-submissions-status-filter">Status</label>
+                    <select id="rp-my-submissions-status-filter">
+                        <option value="" selected>Lahat (Active)</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                    </select>
+                </div>
                 <button type="button" id="btn-rp-my-submissions-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 9px 14px; font-size: 0.85em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
             </div>
             <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
@@ -6143,7 +6162,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=157"></script>
+    <script src="app.js?v=160"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
