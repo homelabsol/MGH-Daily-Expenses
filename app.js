@@ -1178,8 +1178,22 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!listEl) return;
 
         try {
-            // "Active" = not yet Resolved (blank Status defensively treated
-            // as Open, though a real row's Status is always set on save).
+            // Fix 101: this dashboard widget's OPEN/IN PROGRESS tiles only
+            // ever counted those 2 statuses, but the "active" set it drew
+            // the URGENT count/banner/list from used to be EVERYTHING not
+            // yet Resolved -- including "Sent to Store" and "Converted to
+            // Warranty" requests, which have already been forwarded/actioned
+            // and don't need the same front-desk "claim this" attention.
+            // That mismatch is exactly why the URGENT count could read much
+            // higher than OPEN + IN PROGRESS combined (user's report: "ang
+            // daming naka flag dapat dito yung display lang ay yung naka
+            // inprogress at pending status" -- confirmed via AskUserQuestion
+            // that the WHOLE widget, not just the URGENT count, should be
+            // scoped to Open + In Progress only). "Active" now means exactly
+            // those 2 statuses (blank Status defensively treated as Open,
+            // though a real row's Status is always set on save) -- Sent to
+            // Store / Converted to Warranty / Resolved requests no longer
+            // appear anywhere on this card at all, urgent or not.
             const active = rows
                 .map(row => ({
                     // 2026-09-06 follow-up: row[1] comes straight from a raw
@@ -1198,7 +1212,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     status: row[7] || 'Open',
                     assignedTechnician: row[8] || ''
                 }))
-                .filter(r => r.status !== 'Resolved');
+                .filter(r => r.status === 'Open' || r.status === 'In Progress');
 
             const openCount = active.filter(r => r.status === 'Open').length;
             const inProgressCount = active.filter(r => r.status === 'In Progress').length;
