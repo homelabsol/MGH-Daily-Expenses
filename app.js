@@ -3187,16 +3187,36 @@ document.addEventListener('DOMContentLoaded', () => {
             const qty = Number(row[4]) || 0;
             const missing = Number(row[5]) || 0;
             const rma = Number(row[6]) || 0;
+            // Fix 97 (2026-09-11): Missing Remarks / RMA Remarks (row[11] /
+            // row[12], same columns dpiRenderList already shows in the List
+            // view -- see that function's comment) -- carried along here too
+            // so the Print PDF can show them. NOT shown on-screen or in
+            // Export Excel for this Report pivot (user's explicit choice,
+            // Print PDF only). If 2+ saved rows share the same item+branch+
+            // date (e.g. 2 separate submissions same day), their remarks are
+            // concatenated with "; " rather than one overwriting the other.
+            const missingRemarks = (row[11] || '').toString().trim();
+            const rmaRemarks = (row[12] || '').toString().trim();
             if (!dateSet[date]) { dateSet[date] = true; dateOrder.push(date); }
             const key = category + '||' + item + '||' + branch;
             if (!rowMap[key]) {
                 rowMap[key] = { category, item, branch, byDate: {} };
                 rowOrder.push(key);
             }
-            if (!rowMap[key].byDate[date]) rowMap[key].byDate[date] = { qty: 0, missing: 0, rma: 0 };
+            if (!rowMap[key].byDate[date]) rowMap[key].byDate[date] = { qty: 0, missing: 0, rma: 0, missingRemarks: '', rmaRemarks: '' };
             rowMap[key].byDate[date].qty += qty;
             rowMap[key].byDate[date].missing += missing;
             rowMap[key].byDate[date].rma += rma;
+            if (missingRemarks) {
+                rowMap[key].byDate[date].missingRemarks = rowMap[key].byDate[date].missingRemarks
+                    ? rowMap[key].byDate[date].missingRemarks + '; ' + missingRemarks
+                    : missingRemarks;
+            }
+            if (rmaRemarks) {
+                rowMap[key].byDate[date].rmaRemarks = rowMap[key].byDate[date].rmaRemarks
+                    ? rowMap[key].byDate[date].rmaRemarks + '; ' + rmaRemarks
+                    : rmaRemarks;
+            }
             if (!totalsByDate[date]) totalsByDate[date] = { qty: 0, missing: 0, rma: 0 };
             totalsByDate[date].qty += qty;
             totalsByDate[date].missing += missing;
@@ -3374,74 +3394,89 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             try {
-                const headerCellsHtml = dates.map(d => {
-                    const label = payslipEscapeHtml(dpiFormatReportDateLabel(d));
-                    return `<th style="padding: 6px; color: #334155;">System QTY ${label}</th><th style="padding: 6px; color: #334155;">RMA Items ${label}</th><th style="padding: 6px; color: #334155;">Missing Items ${label}</th>`;
-                }).join('');
-
-                let lastCategory = null;
-                const totalCols = 2 + (dates.length * 3);
-                const rowsHtml = itemRows.map(r => {
-                    let rowHtml = '';
-                    if (r.category !== lastCategory) {
-                        rowHtml += `<tr><td colspan="${totalCols}" style="padding: 6px 8px; background: #fee2e2; color: #b91c1c; font-weight: 700;">${payslipEscapeHtml(r.category || '(No Category)')}</td></tr>`;
-                        lastCategory = r.category;
-                    }
-                    const dateCellsHtml = dates.map(d => {
-                        const cell = r.byDate[d];
-                        if (cell) {
-                            return `<td style="padding: 6px;">${cell.qty}</td><td style="padding: 6px;">${cell.rma}</td><td style="padding: 6px;">${cell.missing}</td>`;
-                        }
-                        return '<td style="padding: 6px; color: #94a3b8;">-</td><td style="padding: 6px; color: #94a3b8;">-</td><td style="padding: 6px; color: #94a3b8;">-</td>';
+                // Fix 97 (2026-09-11): user's ask -- "pwede ba dito sa print
+                // ng daily parts inventory records eh kasama yung mga
+                // remarks ng missing items at rma?" -- 2 extra columns per
+                // date (Missing Remarks, RMA Remarks) added here, right
+                // after that date's existing 3 (System QTY/RMA Items/
+                // Missing Items). Confirmed via AskUserQuestion: Print PDF
+                // ONLY (not the on-screen Report table, not Export Excel),
+                // and a full extra column-per-date (not one combined
+                // all-dates column) to stay consistent with how every other
+                // per-date value already repeats across dates here.
+                //
+                // Fix 98 (2026-09-11): building this HTML is now a function
+                // of (fontPx, padPx) instead of hardcoded 10px/6px, so the
+                // shrink-to-fit retry loop below can regenerate it smaller
+                // without duplicating this whole block.
+                const buildDpiReportHtml = (fontPx, padPx) => {
+                    const headerCellsHtml = dates.map(d => {
+                        const label = payslipEscapeHtml(dpiFormatReportDateLabel(d));
+                        return `<th style="padding: ${padPx}px; color: #334155;">System QTY ${label}</th><th style="padding: ${padPx}px; color: #334155;">RMA Items ${label}</th><th style="padding: ${padPx}px; color: #334155;">Missing Items ${label}</th><th style="padding: ${padPx}px; color: #334155;">Missing Remarks ${label}</th><th style="padding: ${padPx}px; color: #334155;">RMA Remarks ${label}</th>`;
                     }).join('');
-                    rowHtml += `<tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: 6px;">${payslipEscapeHtml(r.item)}</td><td style="padding: 6px;">${payslipEscapeHtml(r.branch)}</td>${dateCellsHtml}</tr>`;
-                    return rowHtml;
-                }).join('');
 
-                // Grand TOTAL row (2026-09-09), matching the on-screen table
-                // and Export Excel.
-                const totalsForPdf = currentDpiReportPivot.totalsByDate || {};
-                const totalDateCellsHtml = dates.map(d => {
-                    const t = totalsForPdf[d] || { qty: 0, missing: 0, rma: 0 };
-                    return `<td style="padding: 6px; font-weight: 700;">${t.qty}</td><td style="padding: 6px; font-weight: 700;">${t.rma}</td><td style="padding: 6px; font-weight: 700;">${t.missing}</td>`;
-                }).join('');
-                const totalRowHtml = `<tr style="border-top: 2px solid #334155; background: #e2e8f0;"><td style="padding: 6px; font-weight: 700;">TOTAL</td><td style="padding: 6px;"></td>${totalDateCellsHtml}</tr>`;
+                    let lastCategory = null;
+                    const totalCols = 2 + (dates.length * 5);
+                    const rowsHtml = itemRows.map(r => {
+                        let rowHtml = '';
+                        if (r.category !== lastCategory) {
+                            rowHtml += `<tr><td colspan="${totalCols}" style="padding: ${padPx}px 8px; background: #fee2e2; color: #b91c1c; font-weight: 700;">${payslipEscapeHtml(r.category || '(No Category)')}</td></tr>`;
+                            lastCategory = r.category;
+                        }
+                        const dateCellsHtml = dates.map(d => {
+                            const cell = r.byDate[d];
+                            if (cell) {
+                                const missingRemarksHtml = cell.missingRemarks ? payslipEscapeHtml(cell.missingRemarks) : '-';
+                                const rmaRemarksHtml = cell.rmaRemarks ? payslipEscapeHtml(cell.rmaRemarks) : '-';
+                                return `<td style="padding: ${padPx}px;">${cell.qty}</td><td style="padding: ${padPx}px;">${cell.rma}</td><td style="padding: ${padPx}px;">${cell.missing}</td><td style="padding: ${padPx}px; color: #64748b;">${missingRemarksHtml}</td><td style="padding: ${padPx}px; color: #64748b;">${rmaRemarksHtml}</td>`;
+                            }
+                            return `<td style="padding: ${padPx}px; color: #94a3b8;">-</td><td style="padding: ${padPx}px; color: #94a3b8;">-</td><td style="padding: ${padPx}px; color: #94a3b8;">-</td><td style="padding: ${padPx}px; color: #94a3b8;">-</td><td style="padding: ${padPx}px; color: #94a3b8;">-</td>`;
+                        }).join('');
+                        rowHtml += `<tr style="border-bottom: 1px solid #e2e8f0;"><td style="padding: ${padPx}px;">${payslipEscapeHtml(r.item)}</td><td style="padding: ${padPx}px;">${payslipEscapeHtml(r.branch)}</td>${dateCellsHtml}</tr>`;
+                        return rowHtml;
+                    }).join('');
 
-                const htmlString = `
-                    <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 100%; margin: 0 auto;">
-                        <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
-                            <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">Daily Parts Inventory Report</h2>
-                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Branch:</strong> ${payslipEscapeHtml(branch)}</p>
-                            <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Period:</strong> ${payslipEscapeHtml(startDate)} to ${payslipEscapeHtml(endDate)}</p>
+                    // Grand TOTAL row (2026-09-09), matching the on-screen
+                    // table and Export Excel. Remarks columns (Fix 97) have
+                    // no meaningful total -- left blank, same treatment as
+                    // the Branch column already gets on this row.
+                    const totalsForPdf = currentDpiReportPivot.totalsByDate || {};
+                    const totalDateCellsHtml = dates.map(d => {
+                        const t = totalsForPdf[d] || { qty: 0, missing: 0, rma: 0 };
+                        return `<td style="padding: ${padPx}px; font-weight: 700;">${t.qty}</td><td style="padding: ${padPx}px; font-weight: 700;">${t.rma}</td><td style="padding: ${padPx}px; font-weight: 700;">${t.missing}</td><td style="padding: ${padPx}px;"></td><td style="padding: ${padPx}px;"></td>`;
+                    }).join('');
+                    const totalRowHtml = `<tr style="border-top: 2px solid #334155; background: #e2e8f0;"><td style="padding: ${padPx}px; font-weight: 700;">TOTAL</td><td style="padding: ${padPx}px;"></td>${totalDateCellsHtml}</tr>`;
+
+                    return `
+                        <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 100%; margin: 0 auto;">
+                            <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
+                                <h2 style="margin: 0 0 10px 0; color: #1e293b; font-size: 24px;">Daily Parts Inventory Report</h2>
+                                <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Branch:</strong> ${payslipEscapeHtml(branch)}</p>
+                                <p style="margin: 5px 0; color: #64748b; font-size: 14px;"><strong>Period:</strong> ${payslipEscapeHtml(startDate)} to ${payslipEscapeHtml(endDate)}</p>
+                            </div>
+                            <table style="width: 100%; border-collapse: collapse; font-size: ${fontPx}px; text-align: left; margin-top: 20px;">
+                                <thead>
+                                    <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                        <th style="padding: ${padPx}px; color: #334155;">Item Description</th>
+                                        <th style="padding: ${padPx}px; color: #334155;">Branch</th>
+                                        ${headerCellsHtml}
+                                    </tr>
+                                </thead>
+                                <tbody>${rowsHtml}${totalRowHtml}</tbody>
+                            </table>
+                            <div style="margin-top: 30px; text-align: right; font-size: 11px; color: #94a3b8;">
+                                <p>Generated on ${new Date().toLocaleString()}</p>
+                            </div>
                         </div>
-                        <table style="width: 100%; border-collapse: collapse; font-size: 10px; text-align: left; margin-top: 20px;">
-                            <thead>
-                                <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-                                    <th style="padding: 6px; color: #334155;">Item Description</th>
-                                    <th style="padding: 6px; color: #334155;">Branch</th>
-                                    ${headerCellsHtml}
-                                </tr>
-                            </thead>
-                            <tbody>${rowsHtml}${totalRowHtml}</tbody>
-                        </table>
-                        <div style="margin-top: 30px; text-align: right; font-size: 11px; color: #94a3b8;">
-                            <p>Generated on ${new Date().toLocaleString()}</p>
-                        </div>
-                    </div>
-                `;
+                    `;
+                };
 
-                // Width grows with the number of date columns (3 cols per
-                // date) so a wide range doesn't get squeezed illegibly --
+                // Width grows with the number of date columns (5 cols per
+                // date now that Missing Remarks/RMA Remarks were added --
+                // Fix 97) so a wide range doesn't get squeezed illegibly --
                 // html2canvas renders at this width, then jsPDF scales the
                 // whole page down to fit the landscape letter format.
-                const dpiPdfWidth = Math.max(900, 340 + (dates.length * 210));
-                const hiddenDiv = document.createElement('div');
-                hiddenDiv.innerHTML = htmlString;
-                hiddenDiv.style.position = 'absolute';
-                hiddenDiv.style.top = '-9999px';
-                hiddenDiv.style.left = '-9999px';
-                hiddenDiv.style.width = dpiPdfWidth + 'px';
-                document.body.appendChild(hiddenDiv);
+                const dpiPdfWidth = Math.max(900, 340 + (dates.length * 350));
 
                 const opt = {
                     margin:       0.5,
@@ -3451,23 +3486,91 @@ document.addEventListener('DOMContentLoaded', () => {
                     jsPDF:        { unit: 'in', format: 'letter', orientation: 'landscape' },
                     pagebreak:    { mode: ['css'], avoid: ['tr'] }
                 };
-                const elementToPrint = hiddenDiv.firstElementChild;
 
                 const scrollXBeforeCapture = window.scrollX;
                 const scrollYBeforeCapture = window.scrollY;
                 window.scrollTo(0, 0);
 
                 setTimeout(() => {
-                    html2pdf().set(opt).from(elementToPrint).output('bloburl').then(function(pdfUrl) {
+                    // Fix 98 (2026-09-11): "dapat naka wrap ito kung kaya
+                    // pag kasyahin sa isang buong page eh dapat ganon lang
+                    // except mahaba saka pumunta sa next page" -- the report
+                    // was landing on a mostly-blank trailing page even when
+                    // its content was only a sliver taller than one page's
+                    // worth (reproduced: 13 SSD rows with a few longer RMA
+                    // Remarks measured right at html2pdf's real one-page
+                    // height threshold for this render width). html2pdf's
+                    // 'css' pagebreak + avoid:['tr'] mode has no partial-fit
+                    // case (see the Manual Quotation PDF's own extensive
+                    // comment on this exact html2pdf quirk, search
+                    // "MQ_RENDER_WIDTH_PX" above) -- being even a few px
+                    // over shoves whatever doesn't fit onto its own near-
+                    // empty page. Rather than hand-deriving html2pdf's exact
+                    // internal px-per-inch assumptions for THIS page format/
+                    // margin combo (tried it, came out measurably wrong
+                    // against the real library when checked against an
+                    // actual generated PDF), this does a REAL trial render
+                    // with the actual html2pdf/jsPDF pipeline, checks the
+                    // resulting page count via jsPDF's own
+                    // `getNumberOfPages()`, and if it's more than 1, shrinks
+                    // the table's font-size/padding by 10% and tries again --
+                    // up to a floor font size, at which point a genuinely
+                    // long report (too many rows/dates to ever fit one page)
+                    // is accepted as-is and flows across multiple full pages
+                    // normally, exactly per the user's own ask.
+                    const DPI_REPORT_MIN_FONT_PX = 7;
+                    const DPI_REPORT_MAX_ATTEMPTS = 6;
+                    const DPI_REPORT_SHRINK_RATIO = 0.9;
+
+                    (async () => {
+                        let fontPx = 10, padPx = 6;
+                        for (let attempt = 0; attempt < DPI_REPORT_MAX_ATTEMPTS; attempt++) {
+                            const hiddenDiv = document.createElement('div');
+                            hiddenDiv.innerHTML = buildDpiReportHtml(fontPx, padPx);
+                            hiddenDiv.style.position = 'absolute';
+                            hiddenDiv.style.top = '-9999px';
+                            hiddenDiv.style.left = '-9999px';
+                            hiddenDiv.style.width = dpiPdfWidth + 'px';
+                            document.body.appendChild(hiddenDiv);
+                            const elementToPrint = hiddenDiv.firstElementChild;
+                            try {
+                                const trialPdf = await html2pdf().set(opt).from(elementToPrint).toPdf().get('pdf');
+                                const numPages = trialPdf.internal.getNumberOfPages();
+                                const isLastAttempt = attempt === DPI_REPORT_MAX_ATTEMPTS - 1;
+                                if (numPages <= 1 || fontPx <= DPI_REPORT_MIN_FONT_PX || isLastAttempt) {
+                                    document.body.removeChild(hiddenDiv);
+                                    return trialPdf;
+                                }
+                                document.body.removeChild(hiddenDiv);
+                                // Clamp to the floor rather than letting
+                                // fontPx overshoot below it -- without this,
+                                // a report that never fits would keep
+                                // shrinking past DPI_REPORT_MIN_FONT_PX on
+                                // its last couple of attempts (e.g. 7.3 ->
+                                // 6.6 -> 5.9 -- already illegibly small by
+                                // the time the loop's attempt-count limit
+                                // kicks in). Scaling padPx by the SAME
+                                // actually-applied ratio (not always the
+                                // full 10%) keeps padding proportional to
+                                // font size even on the clamped step.
+                                const nextFontPx = Math.max(DPI_REPORT_MIN_FONT_PX, Math.round(fontPx * DPI_REPORT_SHRINK_RATIO * 10) / 10);
+                                const appliedRatio = nextFontPx / fontPx;
+                                padPx = Math.round(padPx * appliedRatio * 10) / 10;
+                                fontPx = nextFontPx;
+                            } catch (attemptErr) {
+                                document.body.removeChild(hiddenDiv);
+                                throw attemptErr;
+                            }
+                        }
+                    })().then(function(pdfObj) {
+                        const pdfUrl = pdfObj.output('bloburl');
                         if (newTab) newTab.location.href = pdfUrl;
-                        document.body.removeChild(hiddenDiv);
                         window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
                         btnDpiPrintReportPdf.innerHTML = originalText;
                         btnDpiPrintReportPdf.disabled = false;
                     }).catch(err => {
                         console.error(err);
                         if (newTab) newTab.close();
-                        document.body.removeChild(hiddenDiv);
                         window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
                         btnDpiPrintReportPdf.innerHTML = originalText;
                         btnDpiPrintReportPdf.disabled = false;
@@ -4113,26 +4216,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const dateFormatted = dateStr ? new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
 
-            // Fix 70: the user wants the quotation itself to ALWAYS stay on
-            // exactly one printed page no matter how many parts are on it,
-            // with page 2 always being the Terms & Conditions (never pushed
-            // to page 3). The items table is the only part of page 1 whose
-            // height actually grows with the record -- everything else
-            // (header, customer info, totals, terms note, signatures,
-            // footer) is fixed regardless of item count. So instead of a
-            // single hardcoded row size, item rows are built through this
-            // function so they can be regenerated at a smaller font/padding
-            // if, after the first render, the real measured page-1 height
-            // (see the shrink-to-fit pass further below, after the hidden
-            // div is attached to the document) would overflow one page.
-            // Base sizes below (13px font, 9px/10px padding) match exactly
-            // what this table always used before Fix 70, so a normal-length
-            // quotation renders pixel-identical to before -- shrinking only
-            // ever kicks in once the items actually would have overflowed.
+            // Fix 70 -> Fix 99: the user wants the quotation to ALWAYS render
+            // as exactly 2 pages -- page 1 the quotation itself (letterhead,
+            // customer info, items, totals, terms note, signatures, footer),
+            // page 2 the fixed Replacement & Warranty Terms -- no matter how
+            // many items are on it. The letterhead is the very first thing
+            // rendered on page 1, so as long as page 1 never overflows, it
+            // can never be pushed down or duplicated across a page boundary.
+            //
+            // Fix 70 (v1, then v2) tried to guarantee this by PREDICTING
+            // html2pdf's real page-height budget with a hand-derived formula
+            // (A4 size in points -> inches -> px), then pre-shrinking the
+            // items table if a getBoundingClientRect() measurement of the
+            // still-off-screen preview looked like it would overflow that
+            // predicted budget. v1's predicted budget was already confirmed
+            // wrong once (a real regression: a 10-item quotation still
+            // overflowed to a near-blank extra page). The exact same class of
+            // bug was independently rediscovered for the Daily Parts
+            // Inventory Report's own Print PDF (search "DPI_REPORT_MIN_FONT_PX"
+            // in this file): there too, an analytical page-height prediction
+            // was measurably wrong (predicted 675px, the real threshold was
+            // 713-748px) versus what html2pdf/jsPDF actually produce.
+            //
+            // Fix 99 replaces the prediction entirely with a REAL trial
+            // render through the actual html2pdf/jsPDF pipeline: render the
+            // quotation, ask jsPDF itself how many pages it actually produced
+            // (`pdf.internal.getNumberOfPages()`), and if that's more than
+            // the correct target of 2 pages, shrink the items table's font/
+            // padding and render again -- the same proven technique already
+            // shipped for the DPI Report fix. This removes the whole class of
+            // risk the old prediction-based approach carried, including
+            // whatever exact rendering condition produced the letterhead/
+            // signature-duplication-looking layout the user reported (that
+            // symptom matches this same "avoid" pagebreak bumping content it
+            // mis-predicted would fit).
             const MQ_ITEMS_BASE_FONT_PX = 13;
             const MQ_ITEMS_BASE_PAD_V_PX = 9;
             const MQ_ITEMS_BASE_PAD_H_PX = 10;
-            const MQ_ITEMS_MIN_SCALE = 0.6; // floor so shrunk text never becomes illegibly small
+            const MQ_ITEMS_MIN_FONT_PX = 7.8; // matches the old MQ_ITEMS_MIN_SCALE (0.6) floor: 13 * 0.6
+            const MQ_ITEMS_SHRINK_RATIO = 0.9;
+            const MQ_MAX_SHRINK_ATTEMPTS = 6;
+            const MQ_TARGET_MAX_PAGES = 2; // page 1 = quotation, page 2 = fixed Warranty Terms
 
             function buildMqItemsRowsHtml(fontPx, padVPx, padHPx) {
                 let html = '';
@@ -4151,104 +4275,105 @@ document.addEventListener('DOMContentLoaded', () => {
                 return html;
             }
 
-            const itemsRowsHtml = buildMqItemsRowsHtml(MQ_ITEMS_BASE_FONT_PX, MQ_ITEMS_BASE_PAD_V_PX, MQ_ITEMS_BASE_PAD_H_PX);
-
-            const htmlString = `
-                <div id="mq-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
-                <div id="mq-page1">
-                    <table style="width:100%; border-collapse:collapse; border-bottom:3px solid #4f46e5; padding-bottom:16px; margin-bottom:20px;">
-                        <tr>
-                            <td style="vertical-align:top; padding-bottom:16px;">
-                                <table style="border-collapse:collapse;"><tr>
-                                    <td style="width:46px; height:46px; background:#4f46e5; border-radius:10px; text-align:center; vertical-align:middle; color:#fff; font-size:22px; font-weight:700;">M</td>
-                                    <td style="padding-left:12px; vertical-align:middle;">
-                                        <div style="font-size:20px; font-weight:800; color:#1f2937; line-height:1.15;">${MQ_BRAND.name}</div>
-                                        <div style="font-size:11.5px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
-                                        <div style="font-size:11.5px; color:#6b7280; margin-top:5px;">📍 ${MQ_BRAND.address} &nbsp;|&nbsp; 📞 ${MQ_BRAND.phone}</div>
-                                        <div style="font-size:11.5px; color:#6b7280;">✉️ ${MQ_BRAND.email}</div>
-                                    </td>
-                                </tr></table>
-                            </td>
-                            <td style="vertical-align:top; text-align:right; padding-bottom:16px;">
-                                <div style="font-size:22px; font-weight:800; color:#4f46e5; letter-spacing:1px;">QUOTATION</div>
-                                <div style="font-size:14px; font-weight:700; color:#1f2937; margin-top:4px;">${quotationNumber}</div>
-                                <div style="font-size:12.5px; color:#6b7280; margin-top:2px;">Date: ${dateFormatted}</div>
-                            </td>
-                        </tr>
-                    </table>
-
-                    <table style="width:100%; margin-bottom:22px;">
-                        <tr>
-                            <td style="vertical-align:top; width:60%;">
-                                <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af; font-weight:700; margin-bottom:6px;">Quotation For</div>
-                                <p style="margin:2px 0; font-size:13.5px; color:#1f2937;"><strong>${customerName}</strong></p>
-                                ${companyName ? `<p style="margin:2px 0; font-size:13.5px; color:#1f2937;">${companyName}</p>` : ''}
-                                ${mobile ? `<p style="margin:2px 0; font-size:12.5px; color:#6b7280;">Mobile#: ${mobile}</p>` : ''}
-                                ${address ? `<p style="margin:2px 0; font-size:12.5px; color:#6b7280;">${address}</p>` : ''}
-                            </td>
-                            <td style="vertical-align:top; text-align:right;">
-                                <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af; font-weight:700; margin-bottom:6px;">Prepared By</div>
-                                <p style="margin:2px 0; font-size:13.5px; color:#1f2937;"><strong>${encodedBy}</strong></p>
-                                <p style="margin:2px 0; font-size:12.5px; color:#6b7280;">${MQ_BRAND.name}</p>
-                            </td>
-                        </tr>
-                    </table>
-
-                    <table id="mq-items-table" style="width:100%; border-collapse:collapse; margin-bottom:18px;">
-                        <thead>
-                            <tr style="background:#f3f4f6;">
-                                <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:left; border-bottom:2px solid #e5e7eb;">Description</th>
-                                <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Qty</th>
-                                <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Unit Price</th>
-                                <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody id="mq-items-tbody">
-                            ${itemsRowsHtml}
-                        </tbody>
-                    </table>
-
-                    <div class="mq-avoid-break">
-                        <table style="width:260px; margin-left:auto; margin-top:6px;">
-                            <tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Total Qty</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">${totalQty}</td></tr>
-                            <tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Subtotal</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">₱${formatCurrency(totalBeforeDiscount)}</td></tr>
-                            <tr><td style="padding:5px 0; font-size:13.5px; color:#b91c1c;">Discount</td><td style="padding:5px 0; font-size:13.5px; color:#b91c1c; text-align:right;">− ₱${formatCurrency(discount)}</td></tr>
-                            <tr><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5;">Total Amount</td><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5; text-align:right;">₱${formatCurrency(totalAmount)}</td></tr>
-                        </table>
-
-                        <div style="margin-top:22px; padding:14px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
-                            <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; font-weight:700; margin-bottom:8px;">Terms &amp; Conditions</div>
-                            <ul style="margin:0; padding-left:18px;">
-                                <li style="font-size:12.5px; color:#374151; margin-bottom:4px;">50% downpayment upon confirmation, balance due upon completion/delivery.</li>
-                                <li style="font-size:12.5px; color:#374151; margin-bottom:4px;">This quotation is valid for 7 days from the date issued.</li>
-                                <li style="font-size:12.5px; color:#374151;">Full Replacement &amp; Warranty Terms and Conditions on page 2 of this document.</li>
-                            </ul>
-                        </div>
-
-                        <table style="width:100%; margin-top:40px;">
+            function buildMqHtmlString(fontPx, padVPx, padHPx) {
+                const itemsRowsHtml = buildMqItemsRowsHtml(fontPx, padVPx, padHPx);
+                return `
+                    <div id="mq-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
+                    <div id="mq-page1">
+                        <table style="width:100%; border-collapse:collapse; border-bottom:3px solid #4f46e5; padding-bottom:16px; margin-bottom:20px;">
                             <tr>
-                                <td style="width:50%; text-align:center;">
-                                    <div style="width:200px; border-top:1px solid #9ca3af; margin:40px auto 4px;"></div>
-                                    <div style="font-size:12px; color:#374151; font-weight:600;">Authorized Signature</div>
-                                    <div style="font-size:10.5px; color:#9ca3af; margin-top:2px;">${MQ_BRAND.name}</div>
+                                <td style="vertical-align:top; padding-bottom:16px;">
+                                    <table style="border-collapse:collapse;"><tr>
+                                        <td style="width:46px; height:46px; background:#4f46e5; border-radius:10px; text-align:center; vertical-align:middle; color:#fff; font-size:22px; font-weight:700;">M</td>
+                                        <td style="padding-left:12px; vertical-align:middle;">
+                                            <div style="font-size:20px; font-weight:800; color:#1f2937; line-height:1.15;">${MQ_BRAND.name}</div>
+                                            <div style="font-size:11.5px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
+                                            <div style="font-size:11.5px; color:#6b7280; margin-top:5px;">📍 ${MQ_BRAND.address} &nbsp;|&nbsp; 📞 ${MQ_BRAND.phone}</div>
+                                            <div style="font-size:11.5px; color:#6b7280;">✉️ ${MQ_BRAND.email}</div>
+                                        </td>
+                                    </tr></table>
                                 </td>
-                                <td style="width:50%; text-align:center;">
-                                    <div style="width:200px; border-top:1px solid #9ca3af; margin:40px auto 4px;"></div>
-                                    <div style="font-size:12px; color:#374151; font-weight:600;">Conforme (Client Signature)</div>
-                                    <div style="font-size:10.5px; color:#9ca3af; margin-top:2px;">Printed Name &amp; Date</div>
+                                <td style="vertical-align:top; text-align:right; padding-bottom:16px;">
+                                    <div style="font-size:22px; font-weight:800; color:#4f46e5; letter-spacing:1px;">QUOTATION</div>
+                                    <div style="font-size:14px; font-weight:700; color:#1f2937; margin-top:4px;">${quotationNumber}</div>
+                                    <div style="font-size:12.5px; color:#6b7280; margin-top:2px;">Date: ${dateFormatted}</div>
                                 </td>
                             </tr>
                         </table>
 
-                        <div style="margin-top:28px; padding-top:14px; border-top:1px solid #e5e7eb; font-size:11px; color:#9ca3af; text-align:center;">
-                            ${MQ_BRAND.name} — this document is a quotation only and is not a final invoice or receipt.
+                        <table style="width:100%; margin-bottom:22px;">
+                            <tr>
+                                <td style="vertical-align:top; width:60%;">
+                                    <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af; font-weight:700; margin-bottom:6px;">Quotation For</div>
+                                    <p style="margin:2px 0; font-size:13.5px; color:#1f2937;"><strong>${customerName}</strong></p>
+                                    ${companyName ? `<p style="margin:2px 0; font-size:13.5px; color:#1f2937;">${companyName}</p>` : ''}
+                                    ${mobile ? `<p style="margin:2px 0; font-size:12.5px; color:#6b7280;">Mobile#: ${mobile}</p>` : ''}
+                                    ${address ? `<p style="margin:2px 0; font-size:12.5px; color:#6b7280;">${address}</p>` : ''}
+                                </td>
+                                <td style="vertical-align:top; text-align:right;">
+                                    <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af; font-weight:700; margin-bottom:6px;">Prepared By</div>
+                                    <p style="margin:2px 0; font-size:13.5px; color:#1f2937;"><strong>${encodedBy}</strong></p>
+                                    <p style="margin:2px 0; font-size:12.5px; color:#6b7280;">${MQ_BRAND.name}</p>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <table id="mq-items-table" style="width:100%; border-collapse:collapse; margin-bottom:18px;">
+                            <thead>
+                                <tr style="background:#f3f4f6;">
+                                    <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:left; border-bottom:2px solid #e5e7eb;">Description</th>
+                                    <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Qty</th>
+                                    <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Unit Price</th>
+                                    <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mq-items-tbody">
+                                ${itemsRowsHtml}
+                            </tbody>
+                        </table>
+
+                        <div class="mq-avoid-break">
+                            <table style="width:260px; margin-left:auto; margin-top:6px;">
+                                <tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Total Qty</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">${totalQty}</td></tr>
+                                <tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Subtotal</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">₱${formatCurrency(totalBeforeDiscount)}</td></tr>
+                                <tr><td style="padding:5px 0; font-size:13.5px; color:#b91c1c;">Discount</td><td style="padding:5px 0; font-size:13.5px; color:#b91c1c; text-align:right;">− ₱${formatCurrency(discount)}</td></tr>
+                                <tr><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5;">Total Amount</td><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5; text-align:right;">₱${formatCurrency(totalAmount)}</td></tr>
+                            </table>
+
+                            <div style="margin-top:22px; padding:14px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
+                                <div style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:#6b7280; font-weight:700; margin-bottom:8px;">Terms &amp; Conditions</div>
+                                <ul style="margin:0; padding-left:18px;">
+                                    <li style="font-size:12.5px; color:#374151; margin-bottom:4px;">50% downpayment upon confirmation, balance due upon completion/delivery.</li>
+                                    <li style="font-size:12.5px; color:#374151; margin-bottom:4px;">This quotation is valid for 7 days from the date issued.</li>
+                                    <li style="font-size:12.5px; color:#374151;">Full Replacement &amp; Warranty Terms and Conditions on page 2 of this document.</li>
+                                </ul>
+                            </div>
+
+                            <table style="width:100%; margin-top:40px;">
+                                <tr>
+                                    <td style="width:50%; text-align:center;">
+                                        <div style="width:200px; border-top:1px solid #9ca3af; margin:40px auto 4px;"></div>
+                                        <div style="font-size:12px; color:#374151; font-weight:600;">Authorized Signature</div>
+                                        <div style="font-size:10.5px; color:#9ca3af; margin-top:2px;">${MQ_BRAND.name}</div>
+                                    </td>
+                                    <td style="width:50%; text-align:center;">
+                                        <div style="width:200px; border-top:1px solid #9ca3af; margin:40px auto 4px;"></div>
+                                        <div style="font-size:12px; color:#374151; font-weight:600;">Conforme (Client Signature)</div>
+                                        <div style="font-size:10.5px; color:#9ca3af; margin-top:2px;">Printed Name &amp; Date</div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <div style="margin-top:28px; padding-top:14px; border-top:1px solid #e5e7eb; font-size:11px; color:#9ca3af; text-align:center;">
+                                ${MQ_BRAND.name} — this document is a quotation only and is not a final invoice or receipt.
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                    ${mqWarrantyTermsHtml()}
-                </div>
-            `;
+                        ${mqWarrantyTermsHtml()}
+                    </div>
+                `;
+            }
 
             // 0.4in margin combined with the page-break-before padding trick was
             // confirmed in testing to occasionally trigger an extra, nearly-blank
@@ -4257,91 +4382,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // no stray page.
             const MQ_MARGIN_IN = 0.3;
 
-            // Fix 70 (v2): the first version of this shrink-to-fit pass measured
-            // against a made-up 800px-wide preview and an approximated page-height
-            // budget -- close enough for a small quotation to still "pass" its own
-            // check, but WRONG relative to what html2pdf actually does internally,
-            // which caused a real regression (reported by the user: a 10-item
-            // quotation came back with a big blank gap on page 1 and the totals/
-            // terms-note/signature block bumped whole to a separate page).
-            //
-            // html2pdf.js (dist/html2pdf.bundle.js, read directly from the
-            // library's own source to get this right instead of guessing again):
-            //   - clones the element into its own container sized to EXACTLY
-            //     `pageSize.inner.width` (the A4 page width minus left+right
-            //     margin) -- for our 0.3in margin + A4 + unit:'in' that is
-            //     floor((8.267777..in - 0.6in) * 96) = 736px, NOT 800px. A
-            //     narrower render width means long Description text wraps onto
-            //     MORE lines than an 800px preview would ever show, so the old
-            //     800px measurement under-counted the real height.
-            //   - its 'css' pagebreak mode computes page boundaries using
-            //     `pageSize.inner.px.height` = floor((11.692916..in - 0.6in) * 96)
-            //     = 1064px, and for every element with 'avoid' behavior (this
-            //     includes EVERY <tr> and our own '.mq-avoid-break', per the
-            //     `pagebreak.avoid` option below), if that element's own top/
-            //     bottom straddle a page boundary it is bumped WHOLLY onto the
-            //     next page (inserting a blank filler div first) -- there is no
-            //     partial "80% fits" case, so being just a few px over 1064 is
-            //     enough to shove the entire totals/terms-note/signature block
-            //     to a mostly-blank page, exactly what the user's screenshot
-            //     showed. The fix: measure against these SAME real numbers
-            //     (derived below from jsPDF's own 'a4' point size, the same way
-            //     html2pdf.js itself does it) instead of an assumed width/ratio.
-            const A4_WIDTH_IN = 595.28 / 72;   // jsPDF's built-in 'a4' page width, in inches (595.28pt / 72pt-per-in)
-            const A4_HEIGHT_IN = 841.89 / 72;  // jsPDF's built-in 'a4' page height, in inches
+            // Real width html2pdf renders this element at, derived from jsPDF's
+            // own 'a4' page size (same reasoning as the DPI Report fix) -- only
+            // used so the off-screen trial renders wrap text exactly the way the
+            // real PDF output will.
+            const A4_WIDTH_IN = 595.28 / 72; // jsPDF's built-in 'a4' page width, in inches
             const mqInnerWidthIn = A4_WIDTH_IN - MQ_MARGIN_IN * 2;
-            const mqInnerHeightIn = A4_HEIGHT_IN - MQ_MARGIN_IN * 2;
-            // Matches html2pdf.js's own px conversion (src/utils.js toPx(), with
-            // k=72 for unit:'in'): Math.floor(val * k / 72 * 96) == Math.floor(val * 96).
             const mqToHtml2pdfPx = (inches) => Math.floor(inches * 96);
-            const MQ_RENDER_WIDTH_PX = mqToHtml2pdfPx(mqInnerWidthIn); // 736 -- the REAL width html2pdf renders this element at
-            const MQ_PAGE_MAX_HEIGHT_PX = mqToHtml2pdfPx(mqInnerHeightIn); // 1064 -- the REAL one-page height budget
-            // Small fixed safety cushion (not a multiplier this time, since the
-            // numbers above are now the real ones, not an approximation) -- the
-            // per-<tr> 'avoid' rule still means landing exactly on the boundary
-            // is risky, so stay a comfortable margin under it.
-            const MQ_SAFETY_MARGIN_PX = 16;
-
-            const hiddenDiv = document.createElement('div');
-            hiddenDiv.innerHTML = htmlString;
-            hiddenDiv.style.position = 'absolute';
-            hiddenDiv.style.top = '-9999px';
-            hiddenDiv.style.left = '-9999px';
-            // Render the off-screen preview at the SAME width html2pdf will
-            // actually use (see above) so text wrapping -- and therefore every
-            // height measurement below -- matches the real PDF output exactly.
-            hiddenDiv.style.width = MQ_RENDER_WIDTH_PX + 'px';
-            document.body.appendChild(hiddenDiv);
-
-            const element = hiddenDiv.querySelector('#mq-print-wrapper');
-            const page1El = hiddenDiv.querySelector('#mq-page1');
-            const itemsTbodyEl = hiddenDiv.querySelector('#mq-items-tbody');
-            if (items.length > 0 && element && page1El && itemsTbodyEl) {
-                const budgetTotal = MQ_PAGE_MAX_HEIGHT_PX - MQ_SAFETY_MARGIN_PX;
-                let scale = 1;
-                for (let attempt = 0; attempt < 6; attempt++) {
-                    // #mq-print-wrapper's own CSS padding (40px top) sits above
-                    // #mq-page1 and eats into the same one-page budget -- measure
-                    // it directly (rather than assuming a number) so this stays
-                    // correct if that padding is ever changed later.
-                    const topOffset = page1El.getBoundingClientRect().top - element.getBoundingClientRect().top;
-                    const page1Height = page1El.getBoundingClientRect().height;
-                    const totalNeeded = topOffset + page1Height;
-                    if (totalNeeded <= budgetTotal) break; // fits already -- stop
-                    const itemsHeight = itemsTbodyEl.getBoundingClientRect().height;
-                    const chromeHeight = totalNeeded - itemsHeight; // everything else on page 1, fixed regardless of item count
-                    const budgetForItems = Math.max(1, budgetTotal - chromeHeight);
-                    const neededRatio = budgetForItems / itemsHeight;
-                    const newScale = Math.max(MQ_ITEMS_MIN_SCALE, scale * neededRatio * 0.97);
-                    if (newScale >= scale) break; // no more room to shrink further -- stop rather than loop pointlessly
-                    scale = newScale;
-                    itemsTbodyEl.innerHTML = buildMqItemsRowsHtml(
-                        Math.round(MQ_ITEMS_BASE_FONT_PX * scale * 10) / 10,
-                        Math.round(MQ_ITEMS_BASE_PAD_V_PX * scale * 10) / 10,
-                        Math.round(MQ_ITEMS_BASE_PAD_H_PX * scale * 10) / 10
-                    );
-                }
-            }
+            const MQ_RENDER_WIDTH_PX = mqToHtml2pdfPx(mqInnerWidthIn); // 736
 
             const opt = {
                 margin: MQ_MARGIN_IN,
@@ -4349,33 +4397,60 @@ document.addEventListener('DOMContentLoaded', () => {
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
                 jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' },
-                // 'legacy' mode adds its own height-estimation-based page break on TOP
-                // of the explicit CSS break already used to separate the quotation from
-                // the Terms page -- in testing this produced an extra, nearly-empty
-                // trailing 3rd page. Targeting the Terms page by ID via `before` (rather
-                // than relying only on the inline `page-break-before` style) gives
-                // html2pdf an exact element offset to break at, which in testing removed
-                // the stray trailing page that inline-style-only CSS mode still produced.
-                // '.mq-avoid-break' wraps the totals/terms-note/signatures/footer block as
-                // ONE unit -- without this, a longer item list (more rows) can push that
-                // block right up against the page boundary and have it get sliced mid-
-                // element (confirmed in testing: the footer sentence split across two
-                // pages, with a stray near-blank page after it). Keeping it atomic means
-                // it either fully fits after the items table, or cleanly moves as a whole
-                // to the next page -- never split mid-sentence/mid-table.
+                // Targeting the Terms page by ID via `before` (rather than relying
+                // only on the inline `page-break-before` style) gives html2pdf an
+                // exact element offset to break at. '.mq-avoid-break' wraps the
+                // totals/terms-note/signatures/footer block as ONE unit -- without
+                // this, a longer item list (more rows) can push that block right up
+                // against the page boundary and have it get sliced mid-element.
+                // Keeping it atomic means it either fully fits after the items
+                // table, or cleanly moves as a whole to the next page.
                 pagebreak: { mode: ['css'], before: '#mq-terms-page', avoid: ['tr', '.mq-avoid-break'] }
             };
 
-            html2pdf().set(opt).from(element).output('bloburl').then(function (pdfUrl) {
+            (async () => {
+                let fontPx = MQ_ITEMS_BASE_FONT_PX;
+                let padVPx = MQ_ITEMS_BASE_PAD_V_PX;
+                let padHPx = MQ_ITEMS_BASE_PAD_H_PX;
+                for (let attempt = 0; attempt < MQ_MAX_SHRINK_ATTEMPTS; attempt++) {
+                    const hiddenDiv = document.createElement('div');
+                    hiddenDiv.innerHTML = buildMqHtmlString(fontPx, padVPx, padHPx);
+                    hiddenDiv.style.position = 'absolute';
+                    hiddenDiv.style.top = '-9999px';
+                    hiddenDiv.style.left = '-9999px';
+                    // Render the off-screen preview at the SAME width html2pdf will
+                    // actually use so text wrapping matches the real PDF output.
+                    hiddenDiv.style.width = MQ_RENDER_WIDTH_PX + 'px';
+                    document.body.appendChild(hiddenDiv);
+                    const element = hiddenDiv.querySelector('#mq-print-wrapper');
+                    try {
+                        const trialPdf = await html2pdf().set(opt).from(element).toPdf().get('pdf');
+                        const numPages = trialPdf.internal.getNumberOfPages();
+                        const isLastAttempt = attempt === MQ_MAX_SHRINK_ATTEMPTS - 1;
+                        if (numPages <= MQ_TARGET_MAX_PAGES || fontPx <= MQ_ITEMS_MIN_FONT_PX || isLastAttempt) {
+                            document.body.removeChild(hiddenDiv);
+                            return trialPdf;
+                        }
+                        document.body.removeChild(hiddenDiv);
+                        const nextFontPx = Math.max(MQ_ITEMS_MIN_FONT_PX, Math.round(fontPx * MQ_ITEMS_SHRINK_RATIO * 10) / 10);
+                        const appliedRatio = nextFontPx / fontPx;
+                        padVPx = Math.round(padVPx * appliedRatio * 10) / 10;
+                        padHPx = Math.round(padHPx * appliedRatio * 10) / 10;
+                        fontPx = nextFontPx;
+                    } catch (attemptErr) {
+                        document.body.removeChild(hiddenDiv);
+                        throw attemptErr;
+                    }
+                }
+            })().then(function (pdfObj) {
+                const pdfUrl = pdfObj.output('bloburl');
                 if (newTab) newTab.location.href = pdfUrl;
-                document.body.removeChild(hiddenDiv);
                 btnEl.innerHTML = originalHtml;
                 btnEl.disabled = false;
             }).catch(function (error) {
                 console.error('Quotation PDF generation error:', error);
                 if (newTab) newTab.close();
                 alert('Error generating quotation PDF.');
-                document.body.removeChild(hiddenDiv);
                 btnEl.innerHTML = originalHtml;
                 btnEl.disabled = false;
             });
