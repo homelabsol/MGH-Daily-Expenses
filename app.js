@@ -4408,6 +4408,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 pagebreak: { mode: ['css'], before: '#mq-terms-page', avoid: ['tr', '.mq-avoid-break'] }
             };
 
+            // Fix 100: the user reported a large, unexplained blank gap above
+            // the letterhead ("madaming space sa taas") on a real generated
+            // PDF that otherwise matched this fix's expected 1-page layout --
+            // not reproducible in this sandbox's fresh-page-load Playwright
+            // repro, but reproducible in theory whenever the Manual Quotation
+            // list page itself is scrolled down at the moment Print is
+            // clicked: html2canvas has a well-known quirk where it can
+            // capture relative to the window's CURRENT scroll offset even
+            // for an element explicitly positioned off-screen. Every OTHER
+            // PDF print handler in this app (Daily Parts Inventory Report,
+            // and others -- search "scrollXBeforeCapture" elsewhere in this
+            // file) already guards against exactly this by resetting scroll
+            // to (0,0) before capture and restoring it after -- this handler
+            // was simply missing that same guard.
+            const scrollXBeforeCapture = window.scrollX;
+            const scrollYBeforeCapture = window.scrollY;
+            window.scrollTo(0, 0);
+
             (async () => {
                 let fontPx = MQ_ITEMS_BASE_FONT_PX;
                 let padVPx = MQ_ITEMS_BASE_PAD_V_PX;
@@ -4445,12 +4463,14 @@ document.addEventListener('DOMContentLoaded', () => {
             })().then(function (pdfObj) {
                 const pdfUrl = pdfObj.output('bloburl');
                 if (newTab) newTab.location.href = pdfUrl;
+                window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
                 btnEl.innerHTML = originalHtml;
                 btnEl.disabled = false;
             }).catch(function (error) {
                 console.error('Quotation PDF generation error:', error);
                 if (newTab) newTab.close();
                 alert('Error generating quotation PDF.');
+                window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
                 btnEl.innerHTML = originalHtml;
                 btnEl.disabled = false;
             });
