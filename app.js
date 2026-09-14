@@ -14842,12 +14842,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 riderPayslipDeliveriesTableBody.innerHTML = deliveries.map((d) => {
                     const customerOrDistributor = d.tripType === 'Distributor' ? payslipEscapeHtml(d.distributorName) : payslipEscapeHtml(d.customerName);
                     const siLabel = (d.salesInvoiceNumbers && d.salesInvoiceNumbers.length) ? payslipEscapeHtml(d.salesInvoiceNumbers.join(', ')) : '-';
+                    // Fix 102: same word-break/overflow-wrap discipline as Fix 69
+                    // elsewhere in this file ("every cell wraps within its own
+                    // column") -- the SI# and Customer/Distributor cells are the 2
+                    // columns whose value can run long (a multi-invoice delivery's
+                    // SI# is often a single un-split "02617 / 0258 / ... / 02615"
+                    // string), so they need an explicit break point.
                     return `
                         <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                             <td style="padding: 7px 9px;">${d.deliveryDate}</td>
                             <td style="padding: 7px 9px;">${payslipEscapeHtml(d.tripType)}</td>
-                            <td style="padding: 7px 9px;">${customerOrDistributor || '-'}</td>
-                            <td style="padding: 7px 9px;">${siLabel}</td>
+                            <td style="padding: 7px 9px; word-break: break-word; overflow-wrap: break-word;">${customerOrDistributor || '-'}</td>
+                            <td style="padding: 7px 9px; word-break: break-word; overflow-wrap: break-word;">${siLabel}</td>
                             <td style="padding: 7px 9px;">${payslipFormatPeso(d.shippingFee)}</td>
                             <td style="padding: 7px 9px;">${payslipFormatPeso(d.servicesTotal)}</td>
                             <td style="padding: 7px 9px; font-weight: 600;">${payslipFormatPeso(d.grandTotal)}</td>
@@ -15069,12 +15075,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const rowsHtml = (data.deliveries || []).map((d) => {
             const customerOrDistributor = d.tripType === 'Distributor' ? payslipEscapeHtml(d.distributorName) : payslipEscapeHtml(d.customerName);
             const siLabel = (d.salesInvoiceNumbers && d.salesInvoiceNumbers.length) ? payslipEscapeHtml(d.salesInvoiceNumbers.join(', ')) : '-';
+            // Fix 102: reproduced against the REAL html2pdf/jsPDF library --
+            // a long, un-split SI# value ("02617 / 0258 / 02598 / 02603 /
+            // 02615", the actual real-world shape when several invoice
+            // numbers are typed into one field) wraps to 2 lines in this
+            // cell, and html2canvas's rasterization renders those 2 wrapped
+            // lines OVERLAPPING each other instead of stacked -- garbled,
+            // unreadable text -- even though the live on-screen browser
+            // preview above wraps the exact same string cleanly (this is an
+            // html2canvas rasterization quirk, not a live-DOM layout bug).
+            // Same word-break/overflow-wrap fix already used everywhere else
+            // in this file for exactly this class of long-value-in-a-table-
+            // cell issue (search "Fix 69") resolves it here too -- verified
+            // against the real library, the same 5-invoice-number string no
+            // longer overlaps after this change.
             return `
                 <tr>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.deliveryDate}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${payslipEscapeHtml(d.tripType)}</td>
-                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${customerOrDistributor || '-'}</td>
-                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${siLabel}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px; word-break: break-word; overflow-wrap: break-word;">${customerOrDistributor || '-'}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px; word-break: break-word; overflow-wrap: break-word;">${siLabel}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">₱${Number(d.shippingFee).toFixed(2)}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">₱${Number(d.servicesTotal).toFixed(2)}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px; font-weight:700;">₱${Number(d.grandTotal).toFixed(2)}</td>
