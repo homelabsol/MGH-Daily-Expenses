@@ -19858,7 +19858,12 @@ document.addEventListener("DOMContentLoaded", function() {
                                 action: 'deleteRecord',
                                 sheetName: sheet,
                                 rowIndex: rowIndex,
-                                encodedBy: sessionStorage.getItem('loggedInUser')
+                                encodedBy: sessionStorage.getItem('loggedInUser'),
+                                // Fix 104: sent so the backend can independently enforce the
+                                // Owner/Manager-only Delete restriction on Gcash Expenses (not
+                                // just hide the button here) -- see deleteRecord in
+                                // google_apps_script.js.
+                                viewerRole: sessionStorage.getItem('userRole') || ''
                             })
                         });
                         const result = await response.json();
@@ -19973,29 +19978,34 @@ document.addEventListener("DOMContentLoaded", function() {
         if (sheet !== 'Daily Survey') {
             if (viewBtn) actionTd.appendChild(viewBtn);
             if (sheet !== 'Warranty Items' && sheet !== 'Handover' && sheet !== 'Purchased Order') {
-                if (sheet !== 'Item Purchased') {
-                    actionTd.appendChild(deleteBtn);
-                }
                 // Fix 103 (2026-09-16): user's words, "pwede mo bang alisin access
                 // edit access ng lahat ng staff dyan sa view edit gcash expenses?"
                 // (remove Edit access for all staff on View & Edit Gcash Expenses).
                 // Confirmed via AskUserQuestion: only Owner and Manager keep the
                 // Edit/Save buttons here -- every other role (Staff, Technician,
-                // RMA Admin, Supervisor, Auditor, Payroll, Rider) can still VIEW and
-                // DELETE a Gcash Expense row (Delete access was never part of this
-                // ask, left unchanged), just can no longer edit its values. Scoped
-                // to the 'Gcash Expenses' sheet only -- every other sheet sharing
-                // this same generic View & Edit modal (Cash Expenses, Gcash
-                // Receivable, Cash on Hand, Remitted amount, Other Expenses,
-                // MarvsPCStufz Expenses, Daily Check and Balance, Customer
-                // Information Sheet, Deliveries) is unaffected.
+                // RMA Admin, Supervisor, Auditor, Payroll, Rider) loses them.
+                // Fix 104, same-day follow-up: user then shared the SAME modal's
+                // screenshots again and said "dito din alisin mo edit at delete
+                // button" (remove the Edit AND Delete buttons here too) -- widening
+                // the ask to also hide Delete from everyone but Owner/Manager, same
+                // gate as Edit/Save (Print is unaffected -- never part of either
+                // ask, every role keeps it). Both scoped to the 'Gcash Expenses'
+                // sheet only -- every other sheet sharing this same generic View &
+                // Edit modal (Cash Expenses, Gcash Receivable, Cash on Hand,
+                // Remitted amount, Other Expenses, MarvsPCStufz Expenses, Daily
+                // Check and Balance, Customer Information Sheet, Deliveries) is
+                // unaffected -- Delete there still works for every role, unchanged.
                 if (sheet === 'Gcash Expenses') {
                     const currentRole = sessionStorage.getItem('userRole') || '';
                     if (currentRole === 'Owner' || currentRole === 'Manager') {
+                        actionTd.appendChild(deleteBtn);
                         actionTd.appendChild(editBtn);
                         actionTd.appendChild(saveBtn);
                     }
                 } else {
+                    if (sheet !== 'Item Purchased') {
+                        actionTd.appendChild(deleteBtn);
+                    }
                     actionTd.appendChild(editBtn);
                     actionTd.appendChild(saveBtn);
                 }
