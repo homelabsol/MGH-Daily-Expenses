@@ -19914,7 +19914,12 @@ document.addEventListener("DOMContentLoaded", function() {
                     sheetName: sheet,
                     rowIndex: rowIndex,
                     updatedData: updatedData,
-                    encodedBy: sessionStorage.getItem('loggedInUser')
+                    encodedBy: sessionStorage.getItem('loggedInUser'),
+                    // Fix 103: sent so the backend can independently enforce the
+                    // Owner/Manager-only Edit restriction on Gcash Expenses (not just
+                    // hide the button here) -- see updateExpenseRecord in
+                    // google_apps_script.js.
+                    viewerRole: sessionStorage.getItem('userRole') || ''
                 };
 
                 const response = await fetch(SCRIPT_URL, {
@@ -19971,8 +19976,29 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (sheet !== 'Item Purchased') {
                     actionTd.appendChild(deleteBtn);
                 }
-                actionTd.appendChild(editBtn);
-                actionTd.appendChild(saveBtn);
+                // Fix 103 (2026-09-16): user's words, "pwede mo bang alisin access
+                // edit access ng lahat ng staff dyan sa view edit gcash expenses?"
+                // (remove Edit access for all staff on View & Edit Gcash Expenses).
+                // Confirmed via AskUserQuestion: only Owner and Manager keep the
+                // Edit/Save buttons here -- every other role (Staff, Technician,
+                // RMA Admin, Supervisor, Auditor, Payroll, Rider) can still VIEW and
+                // DELETE a Gcash Expense row (Delete access was never part of this
+                // ask, left unchanged), just can no longer edit its values. Scoped
+                // to the 'Gcash Expenses' sheet only -- every other sheet sharing
+                // this same generic View & Edit modal (Cash Expenses, Gcash
+                // Receivable, Cash on Hand, Remitted amount, Other Expenses,
+                // MarvsPCStufz Expenses, Daily Check and Balance, Customer
+                // Information Sheet, Deliveries) is unaffected.
+                if (sheet === 'Gcash Expenses') {
+                    const currentRole = sessionStorage.getItem('userRole') || '';
+                    if (currentRole === 'Owner' || currentRole === 'Manager') {
+                        actionTd.appendChild(editBtn);
+                        actionTd.appendChild(saveBtn);
+                    }
+                } else {
+                    actionTd.appendChild(editBtn);
+                    actionTd.appendChild(saveBtn);
+                }
             } else if (sheet === 'Warranty Items') {
                 const currentRole = sessionStorage.getItem('userRole');
                 if (currentRole === 'Supervisor' || currentRole === 'Manager' || currentRole === 'Owner') {
