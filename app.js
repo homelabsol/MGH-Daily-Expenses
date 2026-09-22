@@ -14800,6 +14800,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const riderPayslipSaveBtn = document.getElementById('rider-payslip-save-btn');
     const riderPayslipRecordsTableBody = document.getElementById('rider-payslip-records-table-body');
     const btnRiderPayslipRefresh = document.getElementById('btn-rider-payslip-refresh');
+    // Fix 105 (2026-09-21): "itong sa payroll ng riders payslip pwede ba
+    // lagyan ng filter date yung record kasi kapag madami na mahirap yan
+    // eh" -- optional Cutoff (From/To) date range filter, same "fetch once,
+    // filter client-side" pattern as the employee Payslip's own Payroll
+    // Records filter (see applyPayslipRecordsFilter above).
+    const riderPayslipRecordsFilterDateFrom = document.getElementById('rider-payslip-records-filter-date-from');
+    const riderPayslipRecordsFilterDateTo = document.getElementById('rider-payslip-records-filter-date-to');
+    const btnRiderPayslipRecordsClearFilters = document.getElementById('rider-payslip-records-clear-filters-btn');
 
     let riderPayslipCurrentPreview = null; // last computeRiderPayslipPreview() result, used to recompute Net Pay live and to gate Save
 
@@ -14892,6 +14900,53 @@ document.addEventListener('DOMContentLoaded', () => {
         if (riderPayslipPreviewSection) riderPayslipPreviewSection.classList.remove('hidden');
     }
 
+    // Fix 105 (2026-09-21): holds every fetched record (unfiltered); the
+    // table body only ever shows whatever renderRiderPayrollRecordsRows()
+    // was last given, so the date filter below can narrow it client-side
+    // with no extra network round trip -- same split as
+    // payslipAllRecords/renderPayrollRecordsRows above.
+    let riderPayslipAllRecords = [];
+
+    function renderRiderPayrollRecordsRows(records) {
+        if (!riderPayslipRecordsTableBody) return;
+        if (records.length === 0) {
+            riderPayslipRecordsTableBody.innerHTML = `<tr><td colspan="7" style="padding: 15px; text-align: center; color: var(--text-muted);">${riderPayslipAllRecords.length === 0 ? 'Wala pang na-generate na rider payslip.' : 'Walang rider payslip na tumutugma sa napiling date range.'}</td></tr>`;
+            riderPayslipRecordsTableBody._records = [];
+            return;
+        }
+        riderPayslipRecordsTableBody.innerHTML = records.map((rec, idx) => `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.rider)}</td>
+                <td style="padding: 8px 10px;">${rec.startDate} - ${rec.endDate}</td>
+                <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.expensesTag || 'All')}</td>
+                <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(rec.netPay)}</td>
+                <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.generatedBy)}</td>
+                <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.timestamp)}</td>
+                <td style="padding: 8px 10px; white-space: nowrap;">
+                    <button type="button" class="btn-rider-payslip-reprint" data-record-index="${idx}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Reprint</button>
+                    <button type="button" class="btn-rider-payslip-delete" data-record-index="${idx}" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-trash"></i> Delete</button>
+                </td>
+            </tr>
+        `).join('');
+        // Stashed on the element itself so Reprint/Delete can act straight
+        // from the already-saved record, no extra network round trip --
+        // holds whatever is CURRENTLY RENDERED (the filtered subset, if a
+        // filter is active), so each button's data-record-index lines up.
+        riderPayslipRecordsTableBody._records = records;
+    }
+
+    function applyRiderPayslipRecordsFilter() {
+        const dateFrom = riderPayslipRecordsFilterDateFrom ? riderPayslipRecordsFilterDateFrom.value : '';
+        const dateTo = riderPayslipRecordsFilterDateTo ? riderPayslipRecordsFilterDateTo.value : '';
+        let filtered = riderPayslipAllRecords;
+        // A row's own cutoff period OVERLAPPING the selected range counts as
+        // a match (same forgiving semantics as the employee Payslip's and My
+        // Payslip's own date filters), not a strict containment check.
+        if (dateFrom) filtered = filtered.filter(rec => rec.endDate >= dateFrom);
+        if (dateTo) filtered = filtered.filter(rec => rec.startDate <= dateTo);
+        renderRiderPayrollRecordsRows(filtered);
+    }
+
     async function loadRiderPayrollRecords() {
         if (!riderPayslipRecordsTableBody) return;
         riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
@@ -14904,35 +14959,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
             if (result.status !== 'success') {
                 riderPayslipRecordsTableBody.innerHTML = `<tr><td colspan="7" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load.'}</td></tr>`;
+                riderPayslipAllRecords = [];
                 return;
             }
-            const records = result.data || [];
-            if (records.length === 0) {
-                riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: var(--text-muted);">Wala pang na-generate na rider payslip.</td></tr>';
-                return;
-            }
-            riderPayslipRecordsTableBody.innerHTML = records.map((rec, idx) => `
-                <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
-                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.rider)}</td>
-                    <td style="padding: 8px 10px;">${rec.startDate} - ${rec.endDate}</td>
-                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.expensesTag || 'All')}</td>
-                    <td style="padding: 8px 10px; font-weight: 600;">${payslipFormatPeso(rec.netPay)}</td>
-                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.generatedBy)}</td>
-                    <td style="padding: 8px 10px;">${payslipEscapeHtml(rec.timestamp)}</td>
-                    <td style="padding: 8px 10px; white-space: nowrap;">
-                        <button type="button" class="btn-rider-payslip-reprint" data-record-index="${idx}" style="background: rgba(59,130,246,0.2); color: #3b82f6; border: 1px solid rgba(59,130,246,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Reprint</button>
-                        <button type="button" class="btn-rider-payslip-delete" data-record-index="${idx}" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-left: 4px;"><i class="fas fa-trash"></i> Delete</button>
-                    </td>
-                </tr>
-            `).join('');
-            // Stashed on the element itself so Reprint can rebuild the PDF
-            // straight from the already-saved delivery breakdown, no extra
-            // network round trip -- same pattern as Payroll Records.
-            riderPayslipRecordsTableBody._records = records;
+            riderPayslipAllRecords = result.data || [];
+            applyRiderPayslipRecordsFilter();
         } catch (error) {
             console.error('Error loading rider payroll records:', error);
-            riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            riderPayslipRecordsTableBody.innerHTML = '<tr><td colspan="7" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
         }
+    }
+
+    if (riderPayslipRecordsFilterDateFrom) {
+        riderPayslipRecordsFilterDateFrom.addEventListener('change', applyRiderPayslipRecordsFilter);
+    }
+    if (riderPayslipRecordsFilterDateTo) {
+        riderPayslipRecordsFilterDateTo.addEventListener('change', applyRiderPayslipRecordsFilter);
+    }
+    if (btnRiderPayslipRecordsClearFilters) {
+        btnRiderPayslipRecordsClearFilters.addEventListener('click', () => {
+            if (riderPayslipRecordsFilterDateFrom) riderPayslipRecordsFilterDateFrom.value = '';
+            if (riderPayslipRecordsFilterDateTo) riderPayslipRecordsFilterDateTo.value = '';
+            applyRiderPayslipRecordsFilter();
+        });
     }
 
     // ===== "My Payslip" (2026-09-06 follow-up #2) =====
