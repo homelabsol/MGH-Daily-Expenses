@@ -11550,16 +11550,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ======= Staff Schedule LIST (Fix 108) =======
-    // User's words, right after the Print Schedule button (Fix 107) shipped:
-    // "dito sa schedule pwede bang gumawa ka nalng ng new button name List of
-    // Schedule tapos meron date na from at to na filter para madali makita
-    // then lagyan ng filter ng branch din" (make a new "List of Schedule"
-    // button with a Date From/To filter so it's easy to see, plus a Branch
-    // filter too). This reads back whatever's already been SAVED to the
-    // "Staff Schedule" sheet (via Save Schedule above) -- separate from the
-    // Generator's own in-progress preview, which only ever shows the CURRENT
-    // unsaved batch and disappears once the modal is closed.
+    // ======= Staff Schedule LIST (Fix 108 + Fix 109) =======
+    // Fix 108, user's words, right after the Print Schedule button (Fix 107)
+    // shipped: "dito sa schedule pwede bang gumawa ka nalng ng new button
+    // name List of Schedule tapos meron date na from at to na filter para
+    // madali makita then lagyan ng filter ng branch din" (make a new "List
+    // of Schedule" button with a Date From/To filter so it's easy to see,
+    // plus a Branch filter too). This reads back whatever's already been
+    // SAVED to the "Staff Schedule" sheet (via Save Schedule above) --
+    // separate from the Generator's own in-progress preview, which only
+    // ever shows the CURRENT unsaved batch and disappears once the modal is
+    // closed.
+    //
+    // Fix 109, same-day follow-up once the FLAT (one row per staff per day)
+    // version above shipped -- user's words, with 2 screenshots of it: "ah
+    // mali ito, hindi muna sya ipapakita yung daily schedule bali yung range
+    // lang ipapakita mo kung meron entry. ex na range sept27 to october3
+    // tapos branch concepcion tapos lagyan mo ng print button sa gilid"
+    // (that's wrong -- don't show the daily schedule for now, just show the
+    // range if there's an entry, e.g. range Sept27-Oct3, branch Concepcion,
+    // and add a Print button on the side). Replaced the flat per-day table
+    // with a PIVOT exactly like the Generator's own preview shape (Staff |
+    // Branch | one column per date) -- but the date COLUMNS shown are only
+    // the dates that actually have >=1 saved entry within the picked range
+    // (not every calendar day, per "kung meron entry"), and a Date From AND
+    // Date To are now REQUIRED before anything renders (a pivot needs a
+    // bounded range to build columns from; a Staff Schedule Generator with a
+    // Standard Schedule mode can save a full YEAR of history, so pivoting an
+    // unbounded/blank range by default would produce an unreadable wall of
+    // date columns).
     //
     // Reuses the existing generic `getExpenseRecords` action (already live,
     // no backend redeploy needed) with sheetName: "Staff Schedule" -- rather
@@ -11572,63 +11591,125 @@ document.addEventListener('DOMContentLoaded', () => {
     // Payslip's and the employee Payslip's own Records tables (Fix 105 and
     // earlier). A wide sentinel date range (2000-01-01 to 2100-12-31) is
     // passed server-side to fetch the FULL sheet history in one request; the
-    // user's own Date From/To picks then narrow that same cached array
-    // client-side too, so changing any filter never re-fetches.
+    // user's own Date From/To/Branch picks then narrow and pivot that same
+    // cached array client-side too, so changing any filter never re-fetches.
     const btnViewStaffScheduleList = document.getElementById('btn-view-staff-schedule-list');
     const staffScheduleListModal = document.getElementById('staffScheduleListModal');
     const closeStaffScheduleListModalBtn = document.getElementById('close-staff-schedule-list-modal-btn');
-    const staffScheduleListTableBody = document.getElementById('staff-schedule-list-table-body');
+    const staffScheduleListContainer = document.getElementById('staff-schedule-list-container');
     const schedListFilterDateFrom = document.getElementById('sched-list-filter-date-from');
     const schedListFilterDateTo = document.getElementById('sched-list-filter-date-to');
     const schedListFilterBranch = document.getElementById('sched-list-filter-branch');
     const schedListClearFiltersBtn = document.getElementById('sched-list-clear-filters-btn');
     const schedListRefreshBtn = document.getElementById('sched-list-refresh-btn');
+    const schedListPrintBtn = document.getElementById('sched-list-print-btn');
 
     let staffScheduleListAllRecords = [];
     let staffScheduleListLoaded = false;
+    let staffScheduleListLastPivot = null; // read by printStaffScheduleList()
 
-    function renderStaffScheduleListRows(records) {
-        if (!staffScheduleListTableBody) return;
-        if (records.length === 0) {
-            staffScheduleListTableBody.innerHTML = `<tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">${staffScheduleListAllRecords.length === 0 ? 'Wala pang na-save na schedule.' : 'Walang schedule na tumutugma sa filter.'}</td></tr>`;
-            return;
-        }
-        staffScheduleListTableBody.innerHTML = records.map(r => {
-            const isDuty = r[5] === 'Duty';
-            return `
-                <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">${r[0]}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--text-muted);">${r[1]}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: 500;">${r[2]}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">${isDuty ? (r[3] || '-') : '-'}</td>
-                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: 600;">${r[5]}</td>
-                </tr>
-            `;
-        }).join('');
+    // Saved rows only carry the FULL shift label (e.g. "6:00 AM - 6:00 PM
+    // (Day)"), same as what the Generator's own preview looks up from
+    // SHIFT_TIME_OPTIONS -- reverse-looks-up the matching option for that
+    // branch to get its short form (e.g. "6AM-6PM") for a readable pivot
+    // cell; falls back to the full label untouched if no exact match is
+    // found (e.g. a branch/shift combo from before this app tracked it).
+    function getStaffScheduleShortShiftLabel(branch, fullLabel) {
+        const opts = SHIFT_TIME_OPTIONS[branch] || [];
+        const match = opts.find(o => o.label === fullLabel);
+        return match ? match.shortLabel : (fullLabel || 'Duty');
     }
 
-    function applyStaffScheduleListFilter() {
+    // Groups the cached full history into the Staff x Date pivot shape for
+    // the CURRENTLY selected Date From/To + Branch filters. Returns null if
+    // Date From/To aren't both set yet (see Fix 109 comment above).
+    function computeStaffScheduleListPivot() {
         const dateFrom = schedListFilterDateFrom ? schedListFilterDateFrom.value : '';
         const dateTo = schedListFilterDateTo ? schedListFilterDateTo.value : '';
         const branch = schedListFilterBranch ? schedListFilterBranch.value : '';
-        let filtered = staffScheduleListAllRecords;
-        if (dateFrom) filtered = filtered.filter(r => r[0] >= dateFrom);
-        if (dateTo) filtered = filtered.filter(r => r[0] <= dateTo);
+        if (!dateFrom || !dateTo) return null;
+
+        let filtered = staffScheduleListAllRecords.filter(r => r[0] >= dateFrom && r[0] <= dateTo);
         if (branch) filtered = filtered.filter(r => r[1] === branch);
-        // Sort by Date ascending, then Staff Name -- easiest to scan "sino
-        // naka-duty kailan" (who's on duty when), matching the user's own
-        // "para madali makita" (so it's easy to see) ask.
-        filtered = filtered.slice().sort((a, b) => {
-            if (a[0] !== b[0]) return a[0] < b[0] ? -1 : 1;
-            return String(a[2]).localeCompare(String(b[2]));
+
+        // Columns = sorted UNIQUE dates that actually have a saved entry in
+        // this filtered set -- "kung meron entry" -- not a full calendar
+        // walk of every day between dateFrom and dateTo.
+        const columns = Array.from(new Set(filtered.map(r => r[0]))).sort();
+
+        const rowMap = new Map(); // "branch||staffName" -> { branch, staffName, cellsByDate }
+        filtered.forEach(r => {
+            const key = r[1] + '||' + r[2];
+            if (!rowMap.has(key)) {
+                rowMap.set(key, { branch: r[1], staffName: r[2], cellsByDate: new Map() });
+            }
+            rowMap.get(key).cellsByDate.set(r[0], r);
         });
-        renderStaffScheduleListRows(filtered);
+        const rows = Array.from(rowMap.values()).sort((a, b) => {
+            if (a.branch !== b.branch) return a.branch.localeCompare(b.branch);
+            return a.staffName.localeCompare(b.staffName);
+        });
+
+        return { dateFrom, dateTo, branch, columns, rows };
+    }
+
+    function showStaffScheduleListMessage(msg) {
+        if (!staffScheduleListContainer) return;
+        staffScheduleListContainer.style.textAlign = 'center';
+        staffScheduleListContainer.style.color = 'var(--text-muted)';
+        staffScheduleListContainer.innerHTML = msg;
+        if (schedListPrintBtn) schedListPrintBtn.classList.add('hidden');
+    }
+
+    function renderStaffScheduleListPivot() {
+        if (!staffScheduleListContainer) return;
+        const pivot = computeStaffScheduleListPivot();
+        staffScheduleListLastPivot = pivot;
+        if (!pivot) {
+            showStaffScheduleListMessage('Piliin ang Date From at Date To para makita ang schedule.');
+            return;
+        }
+        if (pivot.rows.length === 0) {
+            showStaffScheduleListMessage(staffScheduleListAllRecords.length === 0 ? 'Wala pang na-save na schedule.' : 'Walang schedule na tumutugma sa napiling range/branch.');
+            return;
+        }
+        staffScheduleListContainer.style.textAlign = '';
+        staffScheduleListContainer.style.color = '';
+        let html = '<table style="border-collapse: collapse; font-size: 0.78em; min-width: 100%;"><thead><tr>';
+        html += '<th style="padding: 8px; text-align: left; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid var(--glass-border);">Staff</th>';
+        html += '<th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Branch</th>';
+        pivot.columns.forEach(dateStr => {
+            const d = new Date(dateStr + 'T00:00:00');
+            const label = `${d.getMonth() + 1}/${d.getDate()}`;
+            html += `<th style="padding: 6px; text-align: center; border-bottom: 1px solid var(--glass-border); min-width: 55px;">${label}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+        pivot.rows.forEach(row => {
+            html += '<tr>';
+            html += `<td style="padding: 8px; font-weight: 500; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staffName}</td>`;
+            html += `<td style="padding: 8px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.branch}</td>`;
+            pivot.columns.forEach(dateStr => {
+                const rec = row.cellsByDate.get(dateStr);
+                if (!rec) {
+                    html += '<td style="padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: #475569;">-</td>';
+                    return;
+                }
+                const isDuty = rec[5] === 'Duty';
+                const cellText = isDuty ? getStaffScheduleShortShiftLabel(row.branch, rec[3]) : 'Off';
+                const cellTitle = isDuty ? rec[3] : 'Day Off';
+                html += `<td title="${cellTitle}" style="padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: ${isDuty ? '600' : '400'};">${cellText}</td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody></table>';
+        staffScheduleListContainer.innerHTML = html;
+        if (schedListPrintBtn) schedListPrintBtn.classList.remove('hidden');
     }
 
     async function loadStaffScheduleList(forceRefresh) {
-        if (!staffScheduleListTableBody) return;
-        if (staffScheduleListLoaded && !forceRefresh) { applyStaffScheduleListFilter(); return; }
-        staffScheduleListTableBody.innerHTML = '<tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+        if (!staffScheduleListContainer) return;
+        if (staffScheduleListLoaded && !forceRefresh) { renderStaffScheduleListPivot(); return; }
+        showStaffScheduleListMessage('Loading...');
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
@@ -11642,16 +11723,120 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (result.status !== 'success') {
-                staffScheduleListTableBody.innerHTML = '<tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--error);">Error loading schedule.</td></tr>';
+                showStaffScheduleListMessage('Error loading schedule.');
                 staffScheduleListAllRecords = [];
                 return;
             }
             staffScheduleListAllRecords = result.data || [];
             staffScheduleListLoaded = true;
-            applyStaffScheduleListFilter();
+            renderStaffScheduleListPivot();
         } catch (error) {
             console.error('Error loading Staff Schedule list:', error);
-            staffScheduleListTableBody.innerHTML = '<tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--error);">Error connecting.</td></tr>';
+            showStaffScheduleListMessage('Error connecting.');
+        }
+    }
+
+    // Fix 109: Print button for the pivoted List of Schedule view, same
+    // html2pdf hidden-render pattern as printStaffSchedule (Fix 107), but
+    // sourced from staffScheduleListLastPivot (the currently rendered
+    // range+branch pivot) instead of the Generator's in-memory
+    // lastGeneratedSchedule.
+    function printStaffScheduleList() {
+        const pivot = staffScheduleListLastPivot;
+        if (!pivot || !pivot.rows.length) return;
+
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+            newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Schedule List PDF...</h3>');
+        } else {
+            alert('Popup blocked! Please allow popups for this site to view the PDF.');
+        }
+
+        try {
+            let theadHtml = '<tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">';
+            theadHtml += '<th style="padding:6px 8px; text-align:left; font-size:10.5px; color:#334155;">Staff</th>';
+            theadHtml += '<th style="padding:6px 8px; text-align:left; font-size:10.5px; color:#334155;">Branch</th>';
+            pivot.columns.forEach(dateStr => {
+                const d = new Date(dateStr + 'T00:00:00');
+                const label = `${d.getMonth() + 1}/${d.getDate()}`;
+                theadHtml += `<th style="padding:6px 4px; text-align:center; font-size:10.5px; color:#334155;">${label}</th>`;
+            });
+            theadHtml += '</tr>';
+
+            let tbodyHtml = '';
+            pivot.rows.forEach(row => {
+                tbodyHtml += '<tr>';
+                tbodyHtml += `<td style="padding:6px 8px; font-size:10.5px; font-weight:600; color:#1f2937; border-bottom:1px solid #e5e7eb;">${payslipEscapeHtml(row.staffName)}</td>`;
+                tbodyHtml += `<td style="padding:6px 8px; font-size:10.5px; color:#6b7280; border-bottom:1px solid #e5e7eb;">${payslipEscapeHtml(row.branch)}</td>`;
+                pivot.columns.forEach(dateStr => {
+                    const rec = row.cellsByDate.get(dateStr);
+                    if (!rec) {
+                        tbodyHtml += '<td style="padding:6px 4px; text-align:center; font-size:10.5px; border-bottom:1px solid #e5e7eb; color:#cbd5e1;">-</td>';
+                        return;
+                    }
+                    const isDuty = rec[5] === 'Duty';
+                    const cellText = isDuty ? getStaffScheduleShortShiftLabel(row.branch, rec[3]) : 'Off';
+                    tbodyHtml += `<td style="padding:6px 4px; text-align:center; font-size:10.5px; border-bottom:1px solid #e5e7eb; color:${isDuty ? '#059669' : '#94a3b8'}; font-weight:${isDuty ? '600' : '400'};">${cellText}</td>`;
+                });
+                tbodyHtml += '</tr>';
+            });
+
+            const branchLabel = pivot.branch ? pivot.branch : 'Lahat ng Branch';
+            const htmlString = `
+                <div id="staff-schedule-list-pdf-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 24px 30px;">
+                    <div style="text-align:center; margin-bottom: 16px;">
+                        <div style="font-size:19px; font-weight:800; color:#1f2937;">${MQ_BRAND.name}</div>
+                        <div style="font-size:11px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
+                        <h2 style="margin: 12px 0 0; font-size: 15px; letter-spacing: 0.5px; color:#2563eb;">STAFF SCHEDULE LIST</h2>
+                        <div style="font-size:11.5px; color:#6b7280; margin-top:4px;">${pivot.dateFrom} to ${pivot.dateTo} -- ${payslipEscapeHtml(branchLabel)}</div>
+                    </div>
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>${theadHtml}</thead>
+                        <tbody>${tbodyHtml}</tbody>
+                    </table>
+                    <div style="margin-top: 20px; font-size: 9.5px; color: #9ca3af; text-align:center;">
+                        Generated by ${payslipEscapeHtml(sessionStorage.getItem('loggedInUser') || '')} on ${new Date().toLocaleString()} -- ${MQ_BRAND.name}
+                    </div>
+                </div>
+            `;
+
+            const hiddenDiv = document.createElement('div');
+            hiddenDiv.innerHTML = htmlString;
+            hiddenDiv.style.position = 'absolute';
+            hiddenDiv.style.top = '-9999px';
+            hiddenDiv.style.left = '-9999px';
+            hiddenDiv.style.width = '1000px';
+            document.body.appendChild(hiddenDiv);
+
+            const element = hiddenDiv.querySelector('#staff-schedule-list-pdf-wrapper');
+            const opt = {
+                margin: 0.4,
+                filename: `Staff_Schedule_List_${pivot.dateFrom}_to_${pivot.dateTo}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' },
+                pagebreak: { mode: ['css'], avoid: ['tr'] }
+            };
+
+            const scrollXBeforeCapture = window.scrollX;
+            const scrollYBeforeCapture = window.scrollY;
+            window.scrollTo(0, 0);
+
+            html2pdf().set(opt).from(element).output('bloburl').then(function (pdfUrl) {
+                if (newTab) newTab.location.href = pdfUrl;
+                document.body.removeChild(hiddenDiv);
+                window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+            }).catch(function (error) {
+                console.error('Staff Schedule List PDF generation error:', error);
+                if (newTab) newTab.close();
+                document.body.removeChild(hiddenDiv);
+                window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                alert('Failed to generate PDF.');
+            });
+        } catch (error) {
+            console.error('Error generating Staff Schedule List PDF:', error);
+            if (newTab) newTab.close();
+            alert('Failed to generate PDF.');
         }
     }
 
@@ -11666,20 +11851,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (staffScheduleListModal) staffScheduleListModal.classList.add('hidden');
         });
     }
-    if (schedListFilterDateFrom) schedListFilterDateFrom.addEventListener('change', applyStaffScheduleListFilter);
-    if (schedListFilterDateTo) schedListFilterDateTo.addEventListener('change', applyStaffScheduleListFilter);
-    if (schedListFilterBranch) schedListFilterBranch.addEventListener('change', applyStaffScheduleListFilter);
+    if (schedListFilterDateFrom) schedListFilterDateFrom.addEventListener('change', renderStaffScheduleListPivot);
+    if (schedListFilterDateTo) schedListFilterDateTo.addEventListener('change', renderStaffScheduleListPivot);
+    if (schedListFilterBranch) schedListFilterBranch.addEventListener('change', renderStaffScheduleListPivot);
     if (schedListClearFiltersBtn) {
         schedListClearFiltersBtn.addEventListener('click', () => {
             if (schedListFilterDateFrom) schedListFilterDateFrom.value = '';
             if (schedListFilterDateTo) schedListFilterDateTo.value = '';
             if (schedListFilterBranch) schedListFilterBranch.value = '';
-            applyStaffScheduleListFilter();
+            renderStaffScheduleListPivot();
         });
     }
     if (schedListRefreshBtn) {
         schedListRefreshBtn.addEventListener('click', () => {
             loadStaffScheduleList(true);
+        });
+    }
+    if (schedListPrintBtn) {
+        schedListPrintBtn.addEventListener('click', () => {
+            printStaffScheduleList();
         });
     }
 
