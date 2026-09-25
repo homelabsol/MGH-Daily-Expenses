@@ -651,6 +651,7 @@
                     <div style="display: flex; gap: 8px;">
                         <button type="button" id="btn-view-all-attendance" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-list-alt"></i> View All</button>
                         <button type="button" id="btn-attendance-schedule" style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.4); color: #a78bfa; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-calendar-alt"></i> Schedule</button>
+                        <button type="button" id="btn-view-staff-schedule-list" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-list-alt"></i> List of Schedule</button>
                         <button type="button" id="btn-attendance-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-rotate"></i> Refresh</button>
                     </div>
                 </div>
@@ -6183,7 +6184,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=171"></script>
+    <script src="app.js?v=172"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -6592,6 +6593,65 @@
                 <div id="sched-warnings" style="margin-top: 15px;"></div>
 
                 <div id="sched-preview-container" style="margin-top: 20px; overflow-x: auto;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Staff Schedule LIST Modal (Fix 108) -- user's words, right after the
+         Print Schedule button shipped: "dito sa schedule pwede bang gumawa ka
+         nalng ng new button name List of Schedule tapos meron date na from at
+         to na filter para madali makita then lagyan ng filter ng branch din"
+         (can you make a new "List of Schedule" button with a Date From/To
+         filter so it's easy to see, plus a Branch filter too). Separate from
+         the Generator modal above -- this reads back whatever's already been
+         SAVED to the "Staff Schedule" sheet (via Save Schedule), not the
+         in-progress preview. -->
+    <div id="staffScheduleListModal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box; backdrop-filter: blur(5px);">
+        <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1000px; max-height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+            <div style="padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.3);">
+                <h2 style="margin: 0; font-size: 1.4em; color: #10b981;"><i class="fas fa-list-alt"></i> List of Schedule</h2>
+                <button type="button" id="close-staff-schedule-list-modal-btn" style="background: none; border: none; color: var(--text-muted); font-size: 1.5em; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+
+            <div style="padding: 20px; overflow-y: auto; flex: 1;">
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 14px;">
+                    <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+                        <label for="sched-list-filter-date-from">Date From</label>
+                        <input type="date" id="sched-list-filter-date-from">
+                    </div>
+                    <div class="form-group" style="margin: 0; flex: 1; min-width: 140px;">
+                        <label for="sched-list-filter-date-to">Date To</label>
+                        <input type="date" id="sched-list-filter-date-to">
+                    </div>
+                    <div class="form-group" style="margin: 0; flex: 1; min-width: 160px;">
+                        <label for="sched-list-filter-branch">Branch</label>
+                        <select id="sched-list-filter-branch">
+                            <option value="">All Branches</option>
+                            <option value="MGH Parang">MGH Parang</option>
+                            <option value="MGH Concepcion">MGH Concepcion</option>
+                            <option value="MarvsPCStufz">MarvsPCStufz</option>
+                        </select>
+                    </div>
+                    <button type="button" id="sched-list-clear-filters-btn" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 6px; padding: 9px 14px; font-size: 0.85em; cursor: pointer; white-space: nowrap;">Clear Filters</button>
+                    <button type="button" id="sched-list-refresh-btn" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 9px 14px; font-size: 0.85em; cursor: pointer; white-space: nowrap;"><i class="fas fa-rotate"></i> Refresh</button>
+                </div>
+
+                <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.82em;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.03);">
+                                <th style="padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Date</th>
+                                <th style="padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Branch</th>
+                                <th style="padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Staff Name</th>
+                                <th style="padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Shift</th>
+                                <th style="padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="staff-schedule-list-table-body">
+                            <tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

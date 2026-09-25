@@ -11532,6 +11532,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (result.status === 'success') {
                     showToast('Schedule saved successfully!', 'success');
+                    // Fix 108: invalidate the List of Schedule's cached fetch so
+                    // the next time it's opened, it re-fetches from the sheet
+                    // instead of silently missing the rows just saved.
+                    staffScheduleListLoaded = false;
                 } else {
                     showToast('Error saving schedule: ' + (result.message || 'Unknown error'), 'error');
                 }
@@ -11545,7 +11549,140 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    
+
+    // ======= Staff Schedule LIST (Fix 108) =======
+    // User's words, right after the Print Schedule button (Fix 107) shipped:
+    // "dito sa schedule pwede bang gumawa ka nalng ng new button name List of
+    // Schedule tapos meron date na from at to na filter para madali makita
+    // then lagyan ng filter ng branch din" (make a new "List of Schedule"
+    // button with a Date From/To filter so it's easy to see, plus a Branch
+    // filter too). This reads back whatever's already been SAVED to the
+    // "Staff Schedule" sheet (via Save Schedule above) -- separate from the
+    // Generator's own in-progress preview, which only ever shows the CURRENT
+    // unsaved batch and disappears once the modal is closed.
+    //
+    // Reuses the existing generic `getExpenseRecords` action (already live,
+    // no backend redeploy needed) with sheetName: "Staff Schedule" -- rather
+    // than adding a Branch column special-case to `fetchExpenseRecordsRows`
+    // in google_apps_script.js (which WOULD need a backend redeploy), the
+    // Branch filter is applied entirely CLIENT-SIDE against the raw rows
+    // returned (Branch is already column index 1 in every returned row
+    // regardless of what the backend's own branch filter does with it), same
+    // "fetch once, filter client-side" pattern already used for Rider
+    // Payslip's and the employee Payslip's own Records tables (Fix 105 and
+    // earlier). A wide sentinel date range (2000-01-01 to 2100-12-31) is
+    // passed server-side to fetch the FULL sheet history in one request; the
+    // user's own Date From/To picks then narrow that same cached array
+    // client-side too, so changing any filter never re-fetches.
+    const btnViewStaffScheduleList = document.getElementById('btn-view-staff-schedule-list');
+    const staffScheduleListModal = document.getElementById('staffScheduleListModal');
+    const closeStaffScheduleListModalBtn = document.getElementById('close-staff-schedule-list-modal-btn');
+    const staffScheduleListTableBody = document.getElementById('staff-schedule-list-table-body');
+    const schedListFilterDateFrom = document.getElementById('sched-list-filter-date-from');
+    const schedListFilterDateTo = document.getElementById('sched-list-filter-date-to');
+    const schedListFilterBranch = document.getElementById('sched-list-filter-branch');
+    const schedListClearFiltersBtn = document.getElementById('sched-list-clear-filters-btn');
+    const schedListRefreshBtn = document.getElementById('sched-list-refresh-btn');
+
+    let staffScheduleListAllRecords = [];
+    let staffScheduleListLoaded = false;
+
+    function renderStaffScheduleListRows(records) {
+        if (!staffScheduleListTableBody) return;
+        if (records.length === 0) {
+            staffScheduleListTableBody.innerHTML = `<tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">${staffScheduleListAllRecords.length === 0 ? 'Wala pang na-save na schedule.' : 'Walang schedule na tumutugma sa filter.'}</td></tr>`;
+            return;
+        }
+        staffScheduleListTableBody.innerHTML = records.map(r => {
+            const isDuty = r[5] === 'Duty';
+            return `
+                <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">${r[0]}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); color: var(--text-muted);">${r[1]}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: 500;">${r[2]}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">${isDuty ? (r[3] || '-') : '-'}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: 600;">${r[5]}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function applyStaffScheduleListFilter() {
+        const dateFrom = schedListFilterDateFrom ? schedListFilterDateFrom.value : '';
+        const dateTo = schedListFilterDateTo ? schedListFilterDateTo.value : '';
+        const branch = schedListFilterBranch ? schedListFilterBranch.value : '';
+        let filtered = staffScheduleListAllRecords;
+        if (dateFrom) filtered = filtered.filter(r => r[0] >= dateFrom);
+        if (dateTo) filtered = filtered.filter(r => r[0] <= dateTo);
+        if (branch) filtered = filtered.filter(r => r[1] === branch);
+        // Sort by Date ascending, then Staff Name -- easiest to scan "sino
+        // naka-duty kailan" (who's on duty when), matching the user's own
+        // "para madali makita" (so it's easy to see) ask.
+        filtered = filtered.slice().sort((a, b) => {
+            if (a[0] !== b[0]) return a[0] < b[0] ? -1 : 1;
+            return String(a[2]).localeCompare(String(b[2]));
+        });
+        renderStaffScheduleListRows(filtered);
+    }
+
+    async function loadStaffScheduleList(forceRefresh) {
+        if (!staffScheduleListTableBody) return;
+        if (staffScheduleListLoaded && !forceRefresh) { applyStaffScheduleListFilter(); return; }
+        staffScheduleListTableBody.innerHTML = '<tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({
+                    action: 'getExpenseRecords',
+                    sheetName: 'Staff Schedule',
+                    startDate: '2000-01-01',
+                    endDate: '2100-12-31'
+                })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') {
+                staffScheduleListTableBody.innerHTML = '<tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--error);">Error loading schedule.</td></tr>';
+                staffScheduleListAllRecords = [];
+                return;
+            }
+            staffScheduleListAllRecords = result.data || [];
+            staffScheduleListLoaded = true;
+            applyStaffScheduleListFilter();
+        } catch (error) {
+            console.error('Error loading Staff Schedule list:', error);
+            staffScheduleListTableBody.innerHTML = '<tr><td colspan="5" style="padding: 14px 10px; text-align: center; color: var(--error);">Error connecting.</td></tr>';
+        }
+    }
+
+    if (btnViewStaffScheduleList) {
+        btnViewStaffScheduleList.addEventListener('click', () => {
+            if (staffScheduleListModal) staffScheduleListModal.classList.remove('hidden');
+            loadStaffScheduleList(false);
+        });
+    }
+    if (closeStaffScheduleListModalBtn) {
+        closeStaffScheduleListModalBtn.addEventListener('click', () => {
+            if (staffScheduleListModal) staffScheduleListModal.classList.add('hidden');
+        });
+    }
+    if (schedListFilterDateFrom) schedListFilterDateFrom.addEventListener('change', applyStaffScheduleListFilter);
+    if (schedListFilterDateTo) schedListFilterDateTo.addEventListener('change', applyStaffScheduleListFilter);
+    if (schedListFilterBranch) schedListFilterBranch.addEventListener('change', applyStaffScheduleListFilter);
+    if (schedListClearFiltersBtn) {
+        schedListClearFiltersBtn.addEventListener('click', () => {
+            if (schedListFilterDateFrom) schedListFilterDateFrom.value = '';
+            if (schedListFilterDateTo) schedListFilterDateTo.value = '';
+            if (schedListFilterBranch) schedListFilterBranch.value = '';
+            applyStaffScheduleListFilter();
+        });
+    }
+    if (schedListRefreshBtn) {
+        schedListRefreshBtn.addEventListener('click', () => {
+            loadStaffScheduleList(true);
+        });
+    }
+
     if (clearAttendanceFilterBtn) {
         clearAttendanceFilterBtn.addEventListener('click', () => {
             if (attendanceFilterFrom) attendanceFilterFrom.value = '';
