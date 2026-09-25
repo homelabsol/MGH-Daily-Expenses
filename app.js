@@ -10765,11 +10765,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const schedStaffRows = document.getElementById('sched-staff-rows');
     const btnGenerateSchedule = document.getElementById('btn-generate-schedule');
     const btnSaveSchedule = document.getElementById('btn-save-schedule');
+    const btnPrintSchedule = document.getElementById('btn-print-schedule');
     const schedRotationPeriod = document.getElementById('sched-rotation-period');
     const schedStartDateInput = document.getElementById('sched-start-date');
     const schedEndDateInput = document.getElementById('sched-end-date');
     const schedStandardHint = document.getElementById('sched-standard-hint');
     let lastGeneratedSchedule = null;
+    // Shared with renderSchedulePreviewTable() AND printStaffSchedule() (Fix
+    // 107) so the printed PDF shows exactly the same days as the on-screen
+    // preview -- Standard Schedule generates a full 1-year range, and
+    // printing all 365+ days as one PDF would be both unreadable and huge,
+    // so printing mirrors whatever's actually shown on screen (with the
+    // same "preview truncated" disclaimer carried into the PDF) rather than
+    // silently producing a many-page document nobody asked to print.
+    const SCHEDULE_PREVIEW_MAX_DAYS = 14;
 
     // Staff Name dropdown (requested by the user, 2026-08-27): the per-staff
     // "Name" field used to be a free-text input, which let two rows for the
@@ -10927,6 +10936,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await ensureScheduleEmployeeListLoaded(); // usually already resolved (pre-warmed on modal open); this just covers a very fast click
             renderScheduleStaffRows(count);
             btnSaveSchedule.classList.add('hidden');
+            if (btnPrintSchedule) btnPrintSchedule.classList.add('hidden');
             document.getElementById('sched-preview-container').innerHTML = '';
             document.getElementById('sched-warnings').innerHTML = '';
         });
@@ -11205,6 +11215,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderSchedulePreviewTable();
 
             btnSaveSchedule.classList.remove('hidden');
+            if (btnPrintSchedule) btnPrintSchedule.classList.remove('hidden');
         });
     }
 
@@ -11229,7 +11240,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // a representative sample; the FULL range is still what actually gets
         // saved (lastGeneratedSchedule keeps the untouched full dates/schedule,
         // only the rendered HTML here is capped).
-        const PREVIEW_MAX_DAYS = 14;
+        const PREVIEW_MAX_DAYS = SCHEDULE_PREVIEW_MAX_DAYS;
         const previewDates = lastGeneratedSchedule.dates.slice(0, PREVIEW_MAX_DAYS);
         const isPreviewTruncated = lastGeneratedSchedule.dates.length > PREVIEW_MAX_DAYS;
         let tableHtml = '';
@@ -11261,6 +11272,129 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         tableHtml += '</tbody></table>';
         previewContainer.innerHTML = tableHtml;
+    }
+
+    // Fix 107 (2026-09-25): Print button for the Staff Schedule Generator --
+    // user's words, right after generating a schedule for MGH Concepcion (5
+    // staff, 09/27-10/03/2026): "pwede mo ba lagyan ng print button yan at
+    // para ma print yung schedule?" (can you add a print button so the
+    // schedule can be printed?). Previously the only way to get this
+    // schedule onto paper was a manual browser print of the in-app preview
+    // (which also carries the modal chrome, drag handles, tip text, etc.) --
+    // this generates a clean, letterhead-branded PDF of just the schedule
+    // itself, using the same html2pdf hidden-render pattern already used
+    // everywhere else in this app (Payslip, Attendance Report, etc.), in
+    // landscape so the date columns have room to breathe.
+    function printStaffSchedule() {
+        if (!lastGeneratedSchedule) return;
+
+        const newTab = window.open('', '_blank');
+        if (newTab) {
+            newTab.document.write('<h3 style="font-family: sans-serif; text-align: center; margin-top: 50px;">Generating Staff Schedule PDF...</h3>');
+        } else {
+            alert('Popup blocked! Please allow popups for this site to view the PDF.');
+        }
+
+        try {
+            // Mirrors renderSchedulePreviewTable()'s own truncation exactly
+            // (same SCHEDULE_PREVIEW_MAX_DAYS constant) so the printed PDF
+            // never shows a different set of days than what's on screen --
+            // Standard Schedule generates a full 1-year range, and silently
+            // printing all 365+ days as one huge PDF would be both unreadable
+            // and slow to generate.
+            const printDates = lastGeneratedSchedule.dates.slice(0, SCHEDULE_PREVIEW_MAX_DAYS);
+            const isTruncated = lastGeneratedSchedule.dates.length > SCHEDULE_PREVIEW_MAX_DAYS;
+
+            let theadHtml = '<tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">';
+            theadHtml += '<th style="padding:6px 8px; text-align:left; font-size:10.5px; color:#334155;">Staff</th>';
+            theadHtml += '<th style="padding:6px 8px; text-align:left; font-size:10.5px; color:#334155;">Branch</th>';
+            printDates.forEach(d => {
+                const label = `${d.getMonth() + 1}/${d.getDate()}`;
+                theadHtml += `<th style="padding:6px 4px; text-align:center; font-size:10.5px; color:#334155;">${label}</th>`;
+            });
+            theadHtml += '</tr>';
+
+            let tbodyHtml = '';
+            lastGeneratedSchedule.schedule.forEach(row => {
+                tbodyHtml += '<tr>';
+                tbodyHtml += `<td style="padding:6px 8px; font-size:10.5px; font-weight:600; color:#1f2937; border-bottom:1px solid #e5e7eb;">${row.staff.name}</td>`;
+                tbodyHtml += `<td style="padding:6px 8px; font-size:10.5px; color:#6b7280; border-bottom:1px solid #e5e7eb;">${row.staff.branch}</td>`;
+                row.cells.slice(0, SCHEDULE_PREVIEW_MAX_DAYS).forEach(cell => {
+                    const isDuty = cell.status === 'Duty';
+                    const cellText = isDuty ? (cell.shift ? cell.shift.shortLabel : 'Duty') : 'Off';
+                    tbodyHtml += `<td style="padding:6px 4px; text-align:center; font-size:10.5px; border-bottom:1px solid #e5e7eb; color:${isDuty ? '#059669' : '#94a3b8'}; font-weight:${isDuty ? '600' : '400'};">${cellText}</td>`;
+                });
+                tbodyHtml += '</tr>';
+            });
+
+            const htmlString = `
+                <div id="staff-schedule-pdf-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 24px 30px;">
+                    <div style="text-align:center; margin-bottom: 16px;">
+                        <div style="font-size:19px; font-weight:800; color:#1f2937;">${MQ_BRAND.name}</div>
+                        <div style="font-size:11px; color:#6b7280; margin-top:2px;">${MQ_BRAND.tagline}</div>
+                        <h2 style="margin: 12px 0 0; font-size: 15px; letter-spacing: 0.5px; color:#2563eb;">STAFF SCHEDULE</h2>
+                        <div style="font-size:11.5px; color:#6b7280; margin-top:4px;">${lastGeneratedSchedule.startDate} to ${lastGeneratedSchedule.endDate}</div>
+                    </div>
+                    ${isTruncated ? `<div style="margin-bottom:10px; font-size:10.5px; color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:6px 10px;"><i class="fas fa-info-circle"></i> Ang unang ${SCHEDULE_PREVIEW_MAX_DAYS} araw lang ang nasa PDF na ito (${lastGeneratedSchedule.dates.length} araw total ang na-save/isesave, ${lastGeneratedSchedule.startDate} hanggang ${lastGeneratedSchedule.endDate}).</div>` : ''}
+                    <table style="width:100%; border-collapse:collapse;">
+                        <thead>${theadHtml}</thead>
+                        <tbody>${tbodyHtml}</tbody>
+                    </table>
+                    <div style="margin-top: 20px; font-size: 9.5px; color: #9ca3af; text-align:center;">
+                        Generated by ${payslipEscapeHtml(sessionStorage.getItem('loggedInUser') || '')} on ${new Date().toLocaleString()} -- ${MQ_BRAND.name}
+                    </div>
+                </div>
+            `;
+
+            const hiddenDiv = document.createElement('div');
+            hiddenDiv.innerHTML = htmlString;
+            hiddenDiv.style.position = 'absolute';
+            hiddenDiv.style.top = '-9999px';
+            hiddenDiv.style.left = '-9999px';
+            hiddenDiv.style.width = '1000px';
+            document.body.appendChild(hiddenDiv);
+
+            const element = hiddenDiv.querySelector('#staff-schedule-pdf-wrapper');
+            const opt = {
+                margin: 0.4,
+                filename: `Staff_Schedule_${lastGeneratedSchedule.startDate}_to_${lastGeneratedSchedule.endDate}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' },
+                pagebreak: { mode: ['css'], avoid: ['tr'] }
+            };
+
+            // Same scroll-reset discipline as this app's other hidden-render
+            // PDF generators (see generatePayslipPdf's "scrollXBeforeCapture")
+            // -- html2canvas captures relative to the window's CURRENT scroll
+            // position even for an off-screen render target, so a scrolled
+            // page would otherwise produce a blank/offset capture.
+            const scrollXBeforeCapture = window.scrollX;
+            const scrollYBeforeCapture = window.scrollY;
+            window.scrollTo(0, 0);
+
+            html2pdf().set(opt).from(element).output('bloburl').then(function (pdfUrl) {
+                if (newTab) newTab.location.href = pdfUrl;
+                document.body.removeChild(hiddenDiv);
+                window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+            }).catch(function (error) {
+                console.error('Staff Schedule PDF generation error:', error);
+                if (newTab) newTab.close();
+                document.body.removeChild(hiddenDiv);
+                window.scrollTo(scrollXBeforeCapture, scrollYBeforeCapture);
+                alert('Failed to generate PDF.');
+            });
+        } catch (error) {
+            console.error('Error generating Staff Schedule PDF:', error);
+            if (newTab) newTab.close();
+            alert('Failed to generate PDF.');
+        }
+    }
+
+    if (btnPrintSchedule) {
+        btnPrintSchedule.addEventListener('click', () => {
+            printStaffSchedule();
+        });
     }
 
     let scheduleDragSourceIndex = null;
