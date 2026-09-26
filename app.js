@@ -10889,8 +10889,22 @@ document.addEventListener('DOMContentLoaded', () => {
             { value: '10PM-7AM', label: '10:00 PM - 7:00 AM', shortLabel: '10-7', hours: 9, minCoverage: 2, isNight: true }
         ],
         'MGH Concepcion': [
-            { value: '6AM-6PM', label: '6:00 AM - 6:00 PM (Day)', shortLabel: '6AM-6PM', hours: 12, minCoverage: 2 },
-            { value: '6PM-6AM', label: '6:00 PM - 6:00 AM (Night)', shortLabel: '6PM-6AM', hours: 12, minCoverage: 2, isNight: true }
+            // Fix 111 (2026-09-26): shifted from 6AM-6PM/6PM-6AM to
+            // 9AM-9PM/9PM-9AM -- user's words: "instead na 6 to 6 sila
+            // gagawin 9am to 9pm and 9pm to 9am pwede ba?" (instead of 6 to
+            // 6, can they be made 9am to 9pm and 9pm to 9am?). Still a
+            // 12-hour shift, same 2-staff minimum coverage per shift -- only
+            // the START/END clock times moved by 3 hours; the actual
+            // rotation/coverage LOGIC in generateStaffSchedule() only ever
+            // compares these entries by `value` (an opaque string) and
+            // `hours` (still 12), never parses "6AM"/"9AM" as real times, so
+            // this is a config-only change with no logic risk. A schedule
+            // already SAVED under the old 6AM-6PM/6PM-6AM labels keeps
+            // showing its original saved text everywhere it's read back
+            // (List of Schedule, printed PDFs, etc.) -- only NEWLY generated
+            // schedules from here on use the new 9AM-9PM/9PM-9AM shift.
+            { value: '9AM-9PM', label: '9:00 AM - 9:00 PM (Day)', shortLabel: '9AM-9PM', hours: 12, minCoverage: 2 },
+            { value: '9PM-9AM', label: '9:00 PM - 9:00 AM (Night)', shortLabel: '9PM-9AM', hours: 12, minCoverage: 2, isNight: true }
         ],
         'MarvsPCStufz': [
             { value: '9AM-6PM', label: '9:00 AM - 6:00 PM', shortLabel: '9-6', hours: 9, minCoverage: 1 }
