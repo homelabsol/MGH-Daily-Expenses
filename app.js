@@ -11675,29 +11675,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         staffScheduleListContainer.style.textAlign = '';
         staffScheduleListContainer.style.color = '';
-        let html = '<table style="border-collapse: collapse; font-size: 0.78em; min-width: 100%;"><thead><tr>';
-        html += '<th style="padding: 8px; text-align: left; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid var(--glass-border);">Staff</th>';
-        html += '<th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--glass-border);">Branch</th>';
+        // Fix 110: font size trimmed down a notch (0.78em -> 0.7em) plus
+        // tighter cell padding, per the user's own "liitan ng konti ang
+        // fonts" (make the fonts a little smaller) ask -- a denser, more
+        // "professional" table instead of oversized cells.
+        let html = '<table style="border-collapse: collapse; font-size: 0.7em; min-width: 100%;"><thead><tr>';
+        html += '<th style="padding: 7px; text-align: left; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid var(--glass-border);">Staff</th>';
+        html += '<th style="padding: 7px; text-align: left; border-bottom: 1px solid var(--glass-border);">Branch</th>';
         pivot.columns.forEach(dateStr => {
             const d = new Date(dateStr + 'T00:00:00');
             const label = `${d.getMonth() + 1}/${d.getDate()}`;
-            html += `<th style="padding: 6px; text-align: center; border-bottom: 1px solid var(--glass-border); min-width: 55px;">${label}</th>`;
+            html += `<th style="padding: 5px; text-align: center; border-bottom: 1px solid var(--glass-border); min-width: 50px;">${label}</th>`;
         });
         html += '</tr></thead><tbody>';
         pivot.rows.forEach(row => {
             html += '<tr>';
-            html += `<td style="padding: 8px; font-weight: 500; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staffName}</td>`;
-            html += `<td style="padding: 8px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.branch}</td>`;
+            html += `<td style="padding: 7px; font-weight: 500; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staffName}</td>`;
+            html += `<td style="padding: 7px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.branch}</td>`;
             pivot.columns.forEach(dateStr => {
                 const rec = row.cellsByDate.get(dateStr);
                 if (!rec) {
-                    html += '<td style="padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: #475569;">-</td>';
+                    html += '<td style="padding: 5px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: #475569;">-</td>';
                     return;
                 }
                 const isDuty = rec[5] === 'Duty';
                 const cellText = isDuty ? getStaffScheduleShortShiftLabel(row.branch, rec[3]) : 'Off';
                 const cellTitle = isDuty ? rec[3] : 'Day Off';
-                html += `<td title="${cellTitle}" style="padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: ${isDuty ? '600' : '400'};">${cellText}</td>`;
+                html += `<td title="${cellTitle}" style="padding: 5px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: ${isDuty ? '600' : '400'};">${cellText}</td>`;
             });
             html += '</tr>';
         });

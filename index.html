@@ -648,11 +648,28 @@
             <div style="margin-top: 26px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                     <h2 style="margin: 0;">Today's Attendance</h2>
-                    <div style="display: flex; gap: 8px;">
-                        <button type="button" id="btn-view-all-attendance" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-list-alt"></i> View All</button>
-                        <button type="button" id="btn-attendance-schedule" style="background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.4); color: #a78bfa; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-calendar-alt"></i> Schedule</button>
-                        <button type="button" id="btn-view-staff-schedule-list" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #10b981; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"><i class="fas fa-list-alt"></i> List of Schedule</button>
-                        <button type="button" id="btn-attendance-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-rotate"></i> Refresh</button>
+                    <!-- Fix 110: unified button styling -- user's words: "tignan mo
+                         mga button sa baba lalo na yung list view dapat pantay
+                         pantay pati mga kulang ng box pare parehas parang bata eh
+                         iba iba kulay hindi dapat ganyan. dapat professional
+                         level tayo" (look at the buttons below, especially the
+                         list view, they should be even/aligned and consistent
+                         boxes -- it looks childish with different colors, we
+                         should be professional level). Every utility button in
+                         this row used to have its OWN accent color (blue/purple/
+                         green/gray outlines) with no semantic meaning behind the
+                         difference -- none of these are a primary/save/delete
+                         action, they're all just "open a view" buttons -- so all
+                         4 now share ONE neutral style (same as this row's
+                         pre-existing Refresh button), with `white-space: nowrap`
+                         so a longer label ("List of Schedule") never wraps to 2
+                         lines and silently makes its own box taller than its
+                         neighbors. -->
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" id="btn-view-all-attendance" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 6px; padding: 6px 12px; font-size: 0.76em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-list-alt"></i> View All</button>
+                        <button type="button" id="btn-attendance-schedule" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 6px; padding: 6px 12px; font-size: 0.76em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-calendar-alt"></i> Schedule</button>
+                        <button type="button" id="btn-view-staff-schedule-list" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 6px; padding: 6px 12px; font-size: 0.76em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-list-alt"></i> List of Schedule</button>
+                        <button type="button" id="btn-attendance-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 6px; padding: 6px 12px; font-size: 0.76em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-rotate"></i> Refresh</button>
                     </div>
                 </div>
                 <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
@@ -6184,7 +6201,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=173"></script>
+    <script src="app.js?v=174"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -6584,7 +6601,7 @@
                         <span class="btn-text"><i class="fas fa-save"></i> Save Schedule</span>
                         <div class="spinner hidden"></div>
                     </button>
-                    <button type="button" id="btn-print-schedule" class="submit-btn hidden" style="margin: 0; background: linear-gradient(135deg, #3b82f6, #2563eb);">
+                    <button type="button" id="btn-print-schedule" class="submit-btn hidden" style="margin: 0; background: linear-gradient(135deg, var(--primary), var(--secondary));">
                         <span class="btn-text"><i class="fas fa-print"></i> Print Schedule</span>
                         <div class="spinner hidden"></div>
                     </button>
@@ -6632,9 +6649,19 @@
                             <option value="MarvsPCStufz">MarvsPCStufz</option>
                         </select>
                     </div>
-                    <button type="button" id="sched-list-clear-filters-btn" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 6px; padding: 9px 14px; font-size: 0.85em; cursor: pointer; white-space: nowrap;">Clear Filters</button>
-                    <button type="button" id="sched-list-refresh-btn" style="background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #3b82f6; border-radius: 6px; padding: 9px 14px; font-size: 0.85em; cursor: pointer; white-space: nowrap;"><i class="fas fa-rotate"></i> Refresh</button>
-                    <button type="button" id="sched-list-print-btn" class="hidden" style="background: linear-gradient(135deg, #3b82f6, #2563eb); border: none; color: #fff; border-radius: 6px; padding: 9px 14px; font-size: 0.85em; font-weight: 600; cursor: pointer; white-space: nowrap;"><i class="fas fa-print"></i> Print</button>
+                    <!-- Fix 110: Clear Filters + Refresh are both plain utility
+                         actions (no semantic meaning), so they share the SAME
+                         neutral style as the Attendance page's own button row
+                         above -- Print is the one PRIMARY action here, so it
+                         uses the app's own established brand gradient
+                         (var(--primary) -> var(--secondary), the same colors
+                         Generate Schedule/every other main submit button uses)
+                         instead of an unrelated ad-hoc blue, so it reads as
+                         "the one main action" rather than just another random
+                         color in the row. -->
+                    <button type="button" id="sched-list-clear-filters-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 6px; padding: 8px 14px; font-size: 0.8em; font-weight: 500; cursor: pointer; white-space: nowrap; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'">Clear Filters</button>
+                    <button type="button" id="sched-list-refresh-btn" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 6px; padding: 8px 14px; font-size: 0.8em; font-weight: 500; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="fas fa-rotate"></i> Refresh</button>
+                    <button type="button" id="sched-list-print-btn" class="hidden" style="background: linear-gradient(135deg, var(--primary), var(--secondary)); border: none; color: #fff; border-radius: 6px; padding: 8px 14px; font-size: 0.8em; font-weight: 600; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-print"></i> Print</button>
                 </div>
 
                 <!-- Fix 109: pivoted (Staff x Date) view instead of one row per
@@ -6647,7 +6674,7 @@
                      same "container the whole table gets written into"
                      pattern as the Staff Schedule Generator's own
                      #sched-preview-container. -->
-                <div id="staff-schedule-list-container" style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px; padding: 14px; color: var(--text-muted); text-align: center;">
+                <div id="staff-schedule-list-container" style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px; padding: 14px; color: var(--text-muted); text-align: center; font-size: 0.85em;">
                     Piliin ang Date From at Date To para makita ang schedule.
                 </div>
             </div>
