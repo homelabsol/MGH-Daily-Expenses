@@ -10883,10 +10883,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const SHIFT_TIME_OPTIONS = {
+        // Fix 116 (2026-09-26): MGH Parang's 3 shifts renamed/retimed --
+        // user's words: "sa parang pwede bang ganto gawin natin? Morning
+        // shift (6am-3pm) Mid shift (12nn-9pm) Night shift (9pm-6am)".
+        // Morning keeps its old 6AM-3PM clock times (just gets an explicit
+        // "(Morning)" label now, to match Concepcion's Day/Night naming
+        // style); Mid moves from 2PM-11PM to 12NN-9PM; Night moves from
+        // 10PM-7AM to 9PM-6AM. All 3 stay 9-hour shifts, same 2-staff
+        // minCoverage per shift -- config-only change (values/labels), same
+        // as Fix 111 was for Concepcion: generateStaffSchedule() only ever
+        // compares these by `value` and `hours`, never parses clock text, so
+        // this carries no scheduling-logic risk. A schedule already SAVED
+        // under the old 2PM-11PM/10PM-7AM labels keeps showing its original
+        // saved text wherever it's read back -- only NEWLY generated
+        // schedules from here on use the new Mid/Night times.
         'MGH Parang': [
-            { value: '6AM-3PM', label: '6:00 AM - 3:00 PM', shortLabel: '6-3', hours: 9, minCoverage: 2 },
-            { value: '2PM-11PM', label: '2:00 PM - 11:00 PM', shortLabel: '2-11', hours: 9, minCoverage: 2 },
-            { value: '10PM-7AM', label: '10:00 PM - 7:00 AM', shortLabel: '10-7', hours: 9, minCoverage: 2, isNight: true }
+            { value: '6AM-3PM', label: '6:00 AM - 3:00 PM (Morning)', shortLabel: '6-3', hours: 9, minCoverage: 2 },
+            { value: '12NN-9PM', label: '12:00 NN - 9:00 PM (Mid)', shortLabel: '12-9', hours: 9, minCoverage: 2 },
+            { value: '9PM-6AM', label: '9:00 PM - 6:00 AM (Night)', shortLabel: '9-6', hours: 9, minCoverage: 2, isNight: true }
         ],
         'MGH Concepcion': [
             // Fix 111 (2026-09-26): shifted from 6AM-6PM/6PM-6AM to
