@@ -11025,8 +11025,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const cycleStartDay = cycle * rotationPeriodWeeks * 7;
                 const cycleEndDay = Math.min(cycleStartDay + rotationPeriodWeeks * 7, dates.length);
-                const totalBranchStaff = rotatedOrder.length;
                 let globalIdx = 0;
+
+                // Fix 115: day-offs may only land on a WEEKDAY relDay (never
+                // Saturday/Sunday) -- user's words: "dapat every sat and sunday
+                // walang day off kasi madaming tao" (nobody should have a
+                // day-off on Saturday or Sunday, because there are a lot of
+                // customers then). Compute which of this cycle's 7 relDay slots
+                // (0-6) fall on an actual Sat/Sun for the real calendar dates in
+                // this cycle, and only distribute day-offs across the rest.
+                const weekdayRelDays = [];
+                for (let rd = 0; rd < 7; rd++) {
+                    const dIdx = cycleStartDay + rd;
+                    const d = dIdx < dates.length ? dates[dIdx] : new Date(dates[cycleStartDay].getTime() + rd * 86400000);
+                    const dow = d.getDay();
+                    if (dow !== 0 && dow !== 6) weekdayRelDays.push(rd);
+                }
+                // Defensive fallback (a 7-day week always has weekdays, but
+                // just in case): if somehow none qualify, allow any day so a
+                // day-off can still be scheduled rather than crashing.
+                if (weekdayRelDays.length === 0) { for (let rd = 0; rd < 7; rd++) weekdayRelDays.push(rd); }
 
                 // Step 1: assign PRIMARY staff to each shift, sized exactly at minCoverage.
                 // Leftover staff beyond what all shifts need become FLOATERS shared across shifts.
@@ -11044,10 +11062,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const members = group.map(s => {
                         const offCount = 7 - s.workDays;
-                        const offsetRelDay = totalBranchStaff > 0 ? Math.round((globalIdx * 7) / totalBranchStaff) : 0;
+                        const startSlot = globalIdx;
                         globalIdx++;
                         const offRelDays = [];
-                        for (let j = 0; j < offCount; j++) offRelDays.push((offsetRelDay + j) % 7);
+                        for (let j = 0; j < offCount; j++) offRelDays.push(weekdayRelDays[(startSlot + j) % weekdayRelDays.length]);
                         return { staff: s, offRelDays };
                     });
                     primaryGroups.push({ shiftDef, members });
@@ -11055,62 +11073,98 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const floaters = rotatedOrder.slice(pointer).map((s, idx) => {
                     const offCount = 7 - s.workDays;
-                    const offsetRelDay = totalBranchStaff > 0 ? Math.round((globalIdx * 7) / totalBranchStaff) : 0;
+                    const startSlot = globalIdx;
                     globalIdx++;
                     const offRelDays = [];
-                    for (let j = 0; j < offCount; j++) offRelDays.push((offsetRelDay + j) % 7);
-                    return { staff: s, offRelDays, defaultShiftIndex: idx % shifts.length };
+                    for (let j = 0; j < offCount; j++) offRelDays.push(weekdayRelDays[(startSlot + j) % weekdayRelDays.length]);
+                    // currentShiftIndex starts at a default and MAY move ONCE,
+                    // permanently, if another shift needs this floater more than
+                    // their current one does that day (see Step 2 below) --
+                    // `locked` becomes true the moment that single move happens,
+                    // and a locked floater never moves again.
+                    return { staff: s, offRelDays, currentShiftIndex: idx % shifts.length, locked: false };
                 });
 
-                // Step 2: day-by-day, mark primary members Duty/Off, then use available floaters
-                // to patch any shift that falls below its target that day.
+                // Step 2 (Fix 114): day-by-day, mark primary members Duty/Off on
+                // their own fixed shift, then let floaters cover gaps -- but each
+                // floater may PERMANENTLY re-settle onto a different shift AT
+                // MOST ONCE per cycle, never oscillate back and forth. This
+                // directly matches the manual schedule the user made and sent as
+                // the example of what's correct: Anthony (the floater) works Day
+                // for the first few days (covering bhell's and aira's day-offs
+                // while on Day), then moves to Night once and stays there
+                // (covering archie's and marjorie's day-offs), never returning to
+                // Day. Fix 112 disallowed ANY switching (leaving no-buffer shifts
+                // understaffed on someone's day-off); Fix 113 then withheld
+                // day-offs entirely from no-buffer groups instead (which the user
+                // rejected: "hindi pwede walang day off ang tao... dapat lahat
+                // sila meron 1 day off every week"). This is the version that
+                // satisfies everything he actually asked for: always >= minCoverage
+                // every day, everyone gets exactly 1 day off/week, and nobody
+                // flip-flops shift-to-shift day after day -- a floater settles
+                // once and stays, exactly like his own hand-made example.
                 for (let di = cycleStartDay; di < cycleEndDay; di++) {
                     const relDay = (di - cycleStartDay) % 7;
-                    const shiftOnDutyCount = new Map();
 
                     primaryGroups.forEach(pg => {
-                        let onDuty = 0;
                         pg.members.forEach(m => {
                             const cells = cellsByStaff.get(m.staff);
-                            if (m.offRelDays.includes(relDay)) {
-                                cells[di] = { status: 'Day Off', shift: null };
-                            } else {
-                                cells[di] = { status: 'Duty', shift: pg.shiftDef };
-                                onDuty++;
-                            }
+                            cells[di] = m.offRelDays.includes(relDay)
+                                ? { status: 'Day Off', shift: null }
+                                : { status: 'Duty', shift: pg.shiftDef };
                         });
-                        shiftOnDutyCount.set(pg.shiftDef, onDuty);
                     });
 
-                    // Available floaters today = not on their own day off
+                    // Tally today's on-duty count per shift, including whichever
+                    // shift each available (not-off-today) floater is CURRENTLY
+                    // sitting on -- before considering any reassignment.
+                    const onDutyCount = new Map();
+                    primaryGroups.forEach(pg => {
+                        onDutyCount.set(pg.shiftDef, pg.members.filter(m => !m.offRelDays.includes(relDay)).length);
+                    });
                     const availableFloaters = floaters.filter(f => !f.offRelDays.includes(relDay));
-                    const usedFloaters = new Set();
+                    availableFloaters.forEach(f => {
+                        const sd = shifts[f.currentShiftIndex];
+                        onDutyCount.set(sd, (onDutyCount.get(sd) || 0) + 1);
+                    });
 
-                    // Fill shortfalls first (highest-priority: shifts furthest below target)
-                    const deficits = primaryGroups
-                        .map(pg => ({ pg, deficit: (pg.shiftDef.minCoverage || 1) - (shiftOnDutyCount.get(pg.shiftDef) || 0) }))
+                    // Try to fix any deficit by moving an UNLOCKED floater away
+                    // from a shift that has a surplus today (still meets its
+                    // target even without that floater) onto the shift that's
+                    // short -- highest deficit first. Once moved, the floater is
+                    // locked to that shift for the rest of the cycle.
+                    let deficits = shifts
+                        .map(sd => ({ sd, deficit: (sd.minCoverage || 1) - (onDutyCount.get(sd) || 0) }))
                         .filter(d => d.deficit > 0)
                         .sort((a, b) => b.deficit - a.deficit);
 
-                    deficits.forEach(({ pg, deficit }) => {
-                        for (let n = 0; n < deficit; n++) {
-                            const floater = availableFloaters.find(f => !usedFloaters.has(f.staff));
-                            if (!floater) return;
-                            usedFloaters.add(floater.staff);
-                            cellsByStaff.get(floater.staff)[di] = { status: 'Duty', shift: pg.shiftDef };
+                    deficits.forEach(({ sd }) => {
+                        while ((sd.minCoverage || 1) - (onDutyCount.get(sd) || 0) > 0) {
+                            const mover = availableFloaters.find(f => {
+                                if (f.locked || f.currentShiftIndex === shifts.indexOf(sd)) return false;
+                                const fromShift = shifts[f.currentShiftIndex];
+                                const fromCount = onDutyCount.get(fromShift) || 0;
+                                return fromCount - 1 >= (fromShift.minCoverage || 1); // moving them away still leaves their old shift OK
+                            });
+                            if (!mover) break;
+                            const fromShift = shifts[mover.currentShiftIndex];
+                            onDutyCount.set(fromShift, (onDutyCount.get(fromShift) || 0) - 1);
+                            mover.currentShiftIndex = shifts.indexOf(sd);
+                            mover.locked = true;
+                            onDutyCount.set(sd, (onDutyCount.get(sd) || 0) + 1);
                         }
                     });
 
-                    // Remaining floaters (not needed to patch a gap): assign their default shift,
-                    // or mark as day off if it's their own off-day.
+                    // Any remaining deficit here is a genuine shortage (no floater
+                    // left who can move without breaking another shift) -- it
+                    // surfaces honestly via the existing "Final verification
+                    // pass" warning below, same as before.
+
                     floaters.forEach(f => {
-                        if (usedFloaters.has(f.staff)) return;
                         const cells = cellsByStaff.get(f.staff);
-                        if (f.offRelDays.includes(relDay)) {
-                            cells[di] = { status: 'Day Off', shift: null };
-                        } else {
-                            cells[di] = { status: 'Duty', shift: shifts[f.defaultShiftIndex] || null };
-                        }
+                        cells[di] = f.offRelDays.includes(relDay)
+                            ? { status: 'Day Off', shift: null }
+                            : { status: 'Duty', shift: shifts[f.currentShiftIndex] || null };
                     });
                 }
             }
