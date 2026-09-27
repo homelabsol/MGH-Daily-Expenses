@@ -10925,6 +10925,33 @@ document.addEventListener('DOMContentLoaded', () => {
         ]
     };
 
+    // Fix 118 (2026-09-27): whether a branch's Staff Schedule Generator may
+    // ever place a day-off on a Saturday or Sunday. Fix 115 made this a
+    // blanket "never" rule after the user's words for MGH Concepcion ("dapat
+    // every sat and sunday walang day off kasi madaming tao" -- weekends are
+    // too busy there for anyone to be off). When the user later shared his
+    // own real hand-made MGH Parang schedule and asked the generator to
+    // match it ("ito yung nagawa ko dati na schedule pwede kaba mag pattern
+    // dito?"), that schedule gave EVERY one of the 7 Parang staff their day
+    // off on a DIFFERENT day of the week, including Saturday and Sunday --
+    // exactly 1 person off per day, every day, with zero doubling. Asked
+    // directly, the user confirmed Parang should be allowed weekend
+    // day-offs (unlike Concepcion). This turns out to matter a lot for
+    // Parang specifically: with exactly 7 staff and 5 weekday-only slots,
+    // 2 people are always forced off on the same day (pigeonhole), which is
+    // exactly what caused Fix 117's 2 remaining unavoidable coverage gaps.
+    // Spreading the same 7 people's day-offs across all 7 days removes that
+    // doubling entirely -- so allowing weekend day-offs for Parang, combined
+    // with the existing settle-forward floater logic (Fix 114/117), closes
+    // ALL of Parang's coverage gaps outright, with no other logic change
+    // needed. Branches not listed here default to the original Fix 115
+    // behavior (no weekend day-offs) -- MGH Concepcion is listed explicitly
+    // below for clarity even though that's already its default.
+    const BRANCH_ALLOWS_WEEKEND_DAYOFF = {
+        'MGH Parang': true,
+        'MGH Concepcion': false
+    };
+
     function renderScheduleStaffRows(count) {
         schedStaffRows.innerHTML = '';
         // Staff Name is now a dropdown sourced from the real Account sheet
@@ -11041,19 +11068,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cycleEndDay = Math.min(cycleStartDay + rotationPeriodWeeks * 7, dates.length);
                 let globalIdx = 0;
 
-                // Fix 115: day-offs may only land on a WEEKDAY relDay (never
-                // Saturday/Sunday) -- user's words: "dapat every sat and sunday
-                // walang day off kasi madaming tao" (nobody should have a
-                // day-off on Saturday or Sunday, because there are a lot of
-                // customers then). Compute which of this cycle's 7 relDay slots
-                // (0-6) fall on an actual Sat/Sun for the real calendar dates in
-                // this cycle, and only distribute day-offs across the rest.
+                // Fix 115 (now branch-specific per Fix 118): day-offs may only
+                // land on a WEEKDAY relDay (never Saturday/Sunday) for
+                // branches where BRANCH_ALLOWS_WEEKEND_DAYOFF is false --
+                // user's original words, for MGH Concepcion: "dapat every sat
+                // and sunday walang day off kasi madaming tao" (nobody should
+                // have a day-off on Saturday or Sunday, because there are a
+                // lot of customers then). For a branch where the flag is
+                // true (MGH Parang, per Fix 118), every day of the week is an
+                // eligible day-off slot -- compute which of this cycle's 7
+                // relDay slots (0-6) actually qualify for THIS branch, given
+                // the real calendar dates in this cycle.
+                const allowWeekendDayOff = !!BRANCH_ALLOWS_WEEKEND_DAYOFF[branchName];
                 const weekdayRelDays = [];
                 for (let rd = 0; rd < 7; rd++) {
                     const dIdx = cycleStartDay + rd;
                     const d = dIdx < dates.length ? dates[dIdx] : new Date(dates[cycleStartDay].getTime() + rd * 86400000);
                     const dow = d.getDay();
-                    if (dow !== 0 && dow !== 6) weekdayRelDays.push(rd);
+                    if (allowWeekendDayOff || (dow !== 0 && dow !== 6)) weekdayRelDays.push(rd);
                 }
                 // Defensive fallback (a 7-day week always has weekdays, but
                 // just in case): if somehow none qualify, allow any day so a
@@ -11095,7 +11127,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     // permanently, if another shift needs this floater more than
                     // their current one does that day (see Step 2 below) --
                     // `locked` becomes true the moment that single move happens,
-                    // and a locked floater never moves again.
+                    // and a locked floater never moves again in THIS pass (Fix 117
+                    // adds a second, opportunistic pass afterwards that can move a
+                    // floater again in specific branches where one settle isn't
+                    // enough -- see below).
                     return { staff: s, offRelDays, currentShiftIndex: idx % shifts.length, locked: false };
                 });
 
@@ -11179,6 +11214,86 @@ document.addEventListener('DOMContentLoaded', () => {
                         cells[di] = f.offRelDays.includes(relDay)
                             ? { status: 'Day Off', shift: null }
                             : { status: 'Duty', shift: shifts[f.currentShiftIndex] || null };
+                    });
+                }
+
+                // Fix 117: a second, opportunistic pass over the SAME cycle.
+                // Fix 114's single settle-and-lock above works perfectly when a
+                // branch has 2 shifts and one shared floater (there's only ever
+                // one place left to go). With 3+ shifts sharing a thin floater
+                // pool (real example: MGH Parang, 7 staff / 3 shifts / 1
+                // floater), the floater can hit a SECOND, later coverage gap in a
+                // DIFFERENT shift after it's already locked elsewhere -- even
+                // though, by then, its original shift no longer needs it at all
+                // (sometimes because another floater already covered it there).
+                // This pass looks at the schedule as Fix 114 actually finished
+                // it -- so it correctly knows whether some OTHER floater already
+                // took care of a shift's remaining gaps -- and lets a floater
+                // move AGAIN, but ONLY forward and ONLY when both are true: (a)
+                // today, their current shift doesn't need them, and (b) for
+                // every remaining day this cycle, their current shift's
+                // coverage holds up fine without them. That second condition is
+                // exactly what makes this safe: a floater can never be pulled
+                // back to a shift it already left, it can only ever move
+                // forward to somewhere still short. When nothing is left short
+                // after Fix 114's pass (every branch we've tested so far), this
+                // pass finds zero deficits and changes nothing.
+                for (let di = cycleStartDay; di < cycleEndDay; di++) {
+                    const relDay = (di - cycleStartDay) % 7;
+
+                    const onDutyCount2 = new Map();
+                    shifts.forEach(sd => onDutyCount2.set(sd, 0));
+                    branchStaff.forEach(s => {
+                        const cell = cellsByStaff.get(s)[di];
+                        if (cell.status === 'Duty' && cell.shift) {
+                            onDutyCount2.set(cell.shift, (onDutyCount2.get(cell.shift) || 0) + 1);
+                        }
+                    });
+
+                    let deficits2 = shifts
+                        .map(sd => ({ sd, deficit: (sd.minCoverage || 1) - (onDutyCount2.get(sd) || 0) }))
+                        .filter(d => d.deficit > 0)
+                        .sort((a, b) => b.deficit - a.deficit);
+                    if (deficits2.length === 0) continue;
+
+                    deficits2.forEach(({ sd }) => {
+                        while ((sd.minCoverage || 1) - (onDutyCount2.get(sd) || 0) > 0) {
+                            let found = null;
+                            for (const f of floaters) {
+                                if (f.offRelDays.includes(relDay)) continue;
+                                const fCell = cellsByStaff.get(f.staff)[di];
+                                if (!fCell.shift || fCell.shift === sd) continue;
+                                const fromShift = fCell.shift;
+                                const fromCountToday = onDutyCount2.get(fromShift) || 0;
+                                if (fromCountToday - 1 < (fromShift.minCoverage || 1)) continue; // still needed today
+
+                                let safeForRest = true;
+                                for (let futureDi = di + 1; futureDi < cycleEndDay; futureDi++) {
+                                    let futureCount = 0;
+                                    branchStaff.forEach(s2 => {
+                                        const c2 = cellsByStaff.get(s2)[futureDi];
+                                        if (c2.status === 'Duty' && c2.shift === fromShift) futureCount++;
+                                    });
+                                    const fFutureCell = cellsByStaff.get(f.staff)[futureDi];
+                                    const fPresentThere = fFutureCell.status === 'Duty' && fFutureCell.shift === fromShift;
+                                    const countWithoutF = fPresentThere ? futureCount - 1 : futureCount;
+                                    if (countWithoutF < (fromShift.minCoverage || 1)) { safeForRest = false; break; }
+                                }
+                                if (!safeForRest) continue;
+
+                                found = { f, fromShift };
+                                break;
+                            }
+                            if (!found) break;
+                            const { f, fromShift } = found;
+                            for (let dj = di; dj < cycleEndDay; dj++) {
+                                const djRelDay = (dj - cycleStartDay) % 7;
+                                if (f.offRelDays.includes(djRelDay)) continue;
+                                cellsByStaff.get(f.staff)[dj] = { status: 'Duty', shift: sd };
+                            }
+                            onDutyCount2.set(fromShift, (onDutyCount2.get(fromShift) || 0) - 1);
+                            onDutyCount2.set(sd, (onDutyCount2.get(sd) || 0) + 1);
+                        }
                     });
                 }
             }
