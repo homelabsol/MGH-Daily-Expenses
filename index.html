@@ -3313,7 +3313,32 @@
                 </button>
                 <button type="button" class="submit-btn" id="ds-next-week-btn" style="width: auto; margin: 0; padding: 9px 15px;">Next Week &raquo;</button>
             </div>
+
+            <!-- Fix 119: custom date-range filter (From/To), separate from the
+                 Mon-Sat weekly nav above -- user's words: "itong daily sales
+                 pwede mo ba lagyan ng filter ng date from and to din para
+                 pwede ako mag filter ng monthly?" (can you also add a from/to
+                 date filter on this Daily Sales so I can filter monthly?).
+                 Independent of the week-picker/Prev/Next Week controls, which
+                 keep working exactly as before for a quick single-week check. -->
+            <div class="form-row" style="align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="ds-range-start">O piliin ang sariling range &mdash; Mula (From)</label>
+                    <input type="date" id="ds-range-start">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 140px;">
+                    <label for="ds-range-end">Hanggang (To)</label>
+                    <input type="date" id="ds-range-end">
+                </div>
+                <button type="button" class="submit-btn" id="ds-range-load-btn" style="width: auto; margin: 0; padding: 9px 15px;">
+                    <span class="btn-text">Load Range</span>
+                    <div class="spinner hidden" style="width: 16px; height: 16px; border-width: 2px;"></div>
+                </button>
+            </div>
+            <p id="ds-range-error" style="color: #ef4444; margin-top: 8px; font-size: 0.85em; display: none;"></p>
+
             <p id="ds-week-range-label" style="color: var(--text-muted); margin-top: 12px; font-size: 0.9em;"></p>
+            <div style="max-height: 420px; overflow-y: auto;">
             <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.95em;">
                 <thead>
                     <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-muted); text-align: left;">
@@ -3327,11 +3352,12 @@
                 </tbody>
                 <tfoot>
                     <tr style="border-top: 1px solid rgba(255,255,255,0.1); font-weight: 600;">
-                        <td style="padding: 8px;" colspan="2">Total (Mon–Sat)</td>
+                        <td style="padding: 8px;" colspan="2" id="ds-total-label">Total (Mon–Sat)</td>
                         <td style="padding: 8px;" id="ds-total-cell">0</td>
                     </tr>
                 </tfoot>
             </table>
+            </div>
 
             <!-- Fix 33: Top Performers -- Top Sales Admin (Column P), Top Customer
                  (Column B), Top Page (Column Q), Top Build Type (Column F), all
@@ -6201,7 +6227,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=182"></script>
+    <script src="app.js?v=183"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

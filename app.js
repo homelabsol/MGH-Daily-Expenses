@@ -1600,6 +1600,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const dsTopPageCount = document.getElementById('ds-top-page-count');
     const dsTopBuildTypeName = document.getElementById('ds-top-buildtype-name');
     const dsTopBuildTypeCount = document.getElementById('ds-top-buildtype-count');
+    // Fix 119: custom From/To date-range filter, alongside the existing
+    // Mon-Sat weekly nav -- lets the user load an arbitrary range (e.g. a
+    // full calendar month) instead of being limited to one week at a time.
+    const dsRangeStart = document.getElementById('ds-range-start');
+    const dsRangeEnd = document.getElementById('ds-range-end');
+    const dsRangeLoadBtn = document.getElementById('ds-range-load-btn');
+    const dsRangeError = document.getElementById('ds-range-error');
+    const dsTotalLabel = document.getElementById('ds-total-label');
 
     // Fix 33: Top Performers -- for a given Customer Information Sheet
     // column index, sum "Number of Builds" (column E, index 4) grouped by
@@ -1675,6 +1683,53 @@ document.addEventListener('DOMContentLoaded', () => {
         return date;
     }
 
+    // Fix 25b: "Daily Sales" for a date is the SUM of "Number of Builds"
+    // (column E, index 4) across every row on that date -- NOT a plain row
+    // count. A single customer entry can represent multiple builds (e.g.
+    // "11" in one row), so summing that column is what actually reflects
+    // sales volume for the day, not just how many customers/orders came in.
+    function dsBuildCountsByDate(rows) {
+        const countsByDate = {};
+        (rows || []).forEach(row => {
+            const dateStr = (row[0] || '').toString().split(/[T ]/)[0];
+            if (!dateStr) return;
+            const numBuilds = parseInt(row[4], 10) || 0;
+            countsByDate[dateStr] = (countsByDate[dateStr] || 0) + numBuilds;
+        });
+        return countsByDate;
+    }
+
+    const DS_FULL_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    // Fix 119: shared row-builder for BOTH the Mon-Sat weekly view and the
+    // custom From/To range view -- iterates every calendar day from
+    // startDate to endDateInclusive (both Date objects), skipping Sundays
+    // (the shop has no Sunday hours -- MarvsPCStufz's own fixed schedule is
+    // Mon-Sat, same spec the original weekly view already followed), and
+    // returns the built table rows HTML plus the summed total.
+    function dsRenderDailyRows(startDate, endDateInclusive) {
+        const todayStr = dsFormatDate(new Date());
+        let rowsHtml = '';
+        let total = 0;
+        const d = new Date(startDate);
+        while (d <= endDateInclusive) {
+            if (d.getDay() !== 0) { // skip Sunday
+                const dStr = dsFormatDate(d);
+                const count = dsLatestCountsByDate[dStr] || 0;
+                total += count;
+                const isToday = dStr === todayStr;
+                rowsHtml += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);${isToday ? ' background: rgba(59,130,246,0.12);' : ''}">
+                    <td style="padding: 8px;">${DS_FULL_DAY_NAMES[d.getDay()]}</td>
+                    <td style="padding: 8px;">${dStr}</td>
+                    <td style="padding: 8px; font-weight: 600;">${count}</td>
+                </tr>`;
+            }
+            d.setDate(d.getDate() + 1);
+        }
+        return { rowsHtml, total };
+    }
+    let dsLatestCountsByDate = {}; // set fresh by each load before calling dsRenderDailyRows
+
     async function dsLoadWeek() {
         if (!dsWeekPick || !dsWeekPick.value) return;
         const picked = new Date(dsWeekPick.value + 'T00:00:00');
@@ -1685,6 +1740,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const startStr = dsFormatDate(monday);
         const endStr = dsFormatDate(saturday);
         if (dsWeekRangeLabel) dsWeekRangeLabel.textContent = `Linggo: ${startStr} (Mon) hanggang ${endStr} (Sat)`;
+        if (dsTotalLabel) dsTotalLabel.textContent = 'Total (Mon–Sat)';
+        if (dsRangeError) dsRangeError.style.display = 'none';
 
         const btnText = dsLoadBtn ? dsLoadBtn.querySelector('.btn-text') : null;
         const spinner = dsLoadBtn ? dsLoadBtn.querySelector('.spinner') : null;
@@ -1709,36 +1766,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Fix 25b: "Daily Sales" for a date is the SUM of "Number of Builds"
-            // (column E, index 4) across every row on that date -- NOT a plain row
-            // count. A single customer entry can represent multiple builds (e.g.
-            // "11" in one row), so summing that column is what actually reflects
-            // sales volume for the day, not just how many customers/orders came in.
-            const countsByDate = {};
-            (result.data || []).forEach(row => {
-                const dateStr = (row[0] || '').toString().split(/[T ]/)[0];
-                if (!dateStr) return;
-                const numBuilds = parseInt(row[4], 10) || 0;
-                countsByDate[dateStr] = (countsByDate[dateStr] || 0) + numBuilds;
-            });
-
-            const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            const todayStr = dsFormatDate(new Date());
-            let rowsHtml = '';
-            let total = 0;
-            for (let i = 0; i < 6; i++) {
-                const d = new Date(monday);
-                d.setDate(monday.getDate() + i);
-                const dStr = dsFormatDate(d);
-                const count = countsByDate[dStr] || 0;
-                total += count;
-                const isToday = dStr === todayStr;
-                rowsHtml += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.05);${isToday ? ' background: rgba(59,130,246,0.12);' : ''}">
-                    <td style="padding: 8px;">${dayNames[i]}</td>
-                    <td style="padding: 8px;">${dStr}</td>
-                    <td style="padding: 8px; font-weight: 600;">${count}</td>
-                </tr>`;
-            }
+            dsLatestCountsByDate = dsBuildCountsByDate(result.data);
+            const { rowsHtml, total } = dsRenderDailyRows(monday, saturday);
             if (dsTableBody) dsTableBody.innerHTML = rowsHtml;
             if (dsTotalCell) dsTotalCell.textContent = total;
             dsRenderTopPerformers(result.data || []);
@@ -1763,6 +1792,85 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnText) btnText.classList.remove('hidden');
             if (spinner) spinner.classList.add('hidden');
         }
+    }
+
+    // Fix 119: load an arbitrary custom From/To date range (e.g. a full
+    // calendar month) instead of a fixed Mon-Sat week -- user's words:
+    // "itong daily sales pwede mo ba lagyan ng filter ng date from and to
+    // din para pwede ako mag filter ng monthly?" Reuses the exact same
+    // backend call and row-rendering helpers as dsLoadWeek above; only the
+    // date boundaries and labels differ.
+    async function dsLoadRange() {
+        if (dsRangeError) dsRangeError.style.display = 'none';
+        if (!dsRangeStart || !dsRangeEnd || !dsRangeStart.value || !dsRangeEnd.value) {
+            if (dsRangeError) {
+                dsRangeError.textContent = 'Kailangan punan pareho ang From at To.';
+                dsRangeError.style.display = 'block';
+            }
+            return;
+        }
+        const startDate = new Date(dsRangeStart.value + 'T00:00:00');
+        const endDate = new Date(dsRangeEnd.value + 'T00:00:00');
+        if (startDate > endDate) {
+            if (dsRangeError) {
+                dsRangeError.textContent = 'Ang From date ay hindi dapat lagpas sa To date.';
+                dsRangeError.style.display = 'block';
+            }
+            return;
+        }
+
+        const startStr = dsFormatDate(startDate);
+        const endStr = dsFormatDate(endDate);
+        if (dsWeekRangeLabel) dsWeekRangeLabel.textContent = `Range: ${startStr} hanggang ${endStr} (hindi kasama ang Linggo, walang business ang Linggo)`;
+        if (dsTotalLabel) dsTotalLabel.textContent = `Total (${startStr} – ${endStr})`;
+
+        const btnText = dsRangeLoadBtn ? dsRangeLoadBtn.querySelector('.btn-text') : null;
+        const spinner = dsRangeLoadBtn ? dsRangeLoadBtn.querySelector('.spinner') : null;
+        if (dsRangeLoadBtn) dsRangeLoadBtn.disabled = true;
+        if (btnText) btnText.classList.add('hidden');
+        if (spinner) spinner.classList.remove('hidden');
+        if (dsTableBody) dsTableBody.innerHTML = '<tr><td colspan="3" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading... (pwedeng matagal kung malayo o mabagal ang connection)</td></tr>';
+
+        try {
+            const result = await postToScriptWithRetry({
+                action: 'getExpenseRecords',
+                sheetName: 'Customer Information Sheet',
+                startDate: startStr,
+                endDate: endStr,
+                branch: 'All',
+                noCache: true
+            });
+            if (result.status !== 'success') {
+                if (dsTableBody) dsTableBody.innerHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load records'}</td></tr>`;
+                if (dsTotalCell) dsTotalCell.textContent = '0';
+                dsResetTopPerformers();
+                return;
+            }
+
+            dsLatestCountsByDate = dsBuildCountsByDate(result.data);
+            const { rowsHtml, total } = dsRenderDailyRows(startDate, endDate);
+            if (dsTableBody) dsTableBody.innerHTML = rowsHtml;
+            if (dsTotalCell) dsTotalCell.textContent = total;
+            dsRenderTopPerformers(result.data || []);
+        } catch (error) {
+            const isNetworkError = error && (error.name === 'AbortError' || /fetch/i.test(error.message || ''));
+            const friendlyMsg = isNetworkError
+                ? 'Hindi ma-contact ang server (baka mabagal ang connection o nag-timeout). Subukan ulit.'
+                : `Error: ${error.message}`;
+            if (dsTableBody) dsTableBody.innerHTML = `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #ef4444;">${friendlyMsg} <button type="button" id="ds-range-retry-btn" style="margin-left: 8px; background: #ef4444; color: white; border: none; border-radius: 6px; padding: 4px 10px; cursor: pointer;">Retry</button></td></tr>`;
+            if (dsTotalCell) dsTotalCell.textContent = '0';
+            dsResetTopPerformers();
+            const retryBtn = document.getElementById('ds-range-retry-btn');
+            if (retryBtn) retryBtn.addEventListener('click', dsLoadRange);
+        } finally {
+            if (dsRangeLoadBtn) dsRangeLoadBtn.disabled = false;
+            if (btnText) btnText.classList.remove('hidden');
+            if (spinner) spinner.classList.add('hidden');
+        }
+    }
+
+    if (dsRangeLoadBtn) {
+        dsRangeLoadBtn.addEventListener('click', dsLoadRange);
     }
 
     if (menuMarvsPcCustomerSupportBtn) {
