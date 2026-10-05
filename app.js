@@ -10878,6 +10878,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const schedStartDateInput = document.getElementById('sched-start-date');
     const schedEndDateInput = document.getElementById('sched-end-date');
     const schedStandardHint = document.getElementById('sched-standard-hint');
+    const schedManualHint = document.getElementById('sched-manual-hint');
     let lastGeneratedSchedule = null;
     // Shared with renderSchedulePreviewTable() AND printStaffSchedule() (Fix
     // 107) so the printed PDF shows exactly the same days as the on-screen
@@ -10960,12 +10961,91 @@ document.addEventListener('DOMContentLoaded', () => {
         return { startDate: formatLocalDateYMD(today), endDate: formatLocalDateYMD(oneYearLater) };
     }
 
+    // ---- Fix 122 (2026-10-05): manual schedule entry + editable cells ----
+    // Marvin: "pwede din bang gawin manual yung pag gawa ng schedule dito para
+    // dito nalang sila gagawa? para ma identify din kasi natin sila if late o
+    // hindi". The saved schedule is now the source of truth for who is late.
+    const SCHEDULE_MANUAL_MAX_DAYS = 31;
+    const SCHEDULE_CUSTOM_CHOICE = '__CUSTOM__';
+
+    function scheduleClock12(totalMins) {
+        const h24 = Math.floor(totalMins / 60) % 24;
+        const m = totalMins % 60;
+        const ap = h24 >= 12 ? 'PM' : 'AM';
+        const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+        return `${h12}:${('0' + m).slice(-2)} ${ap}`;
+    }
+
+    // "8AM-5PM", "8:30 AM - 5:30 PM", "9PM-6AM" -> a shift object shaped like
+    // the SHIFT_TIME_OPTIONS entries (label starts with the start time, which
+    // is exactly what the backend reads to judge Late). Returns null if the
+    // text can't be understood.
+    function parseCustomShiftInput(text) {
+        const part = '(\\d{1,2})(?::(\\d{2}))?\\s*(AM|PM|NN)';
+        const m = String(text || '').trim().match(new RegExp('^' + part + '\\s*(?:-|\\u2013|to)\\s*' + part + '$', 'i'));
+        if (!m) return null;
+        const toMins = (h, mm, ap) => {
+            let hh = parseInt(h, 10);
+            const mi = mm ? parseInt(mm, 10) : 0;
+            ap = ap.toUpperCase();
+            if (hh < 1 || hh > 12 || mi > 59) return -1;
+            if (ap === 'NN') hh = 12;
+            else if (ap === 'AM') { if (hh === 12) hh = 0; }
+            else if (hh !== 12) hh += 12;
+            return hh * 60 + mi;
+        };
+        const start = toMins(m[1], m[2], m[3]);
+        const end = toMins(m[4], m[5], m[6]);
+        if (start < 0 || end < 0 || start === end) return null;
+        const hours = Math.round((((end - start) + 1440) % 1440) / 60 * 100) / 100;
+        const label = `${scheduleClock12(start)} - ${scheduleClock12(end)} (Custom)`;
+        const short = (mins) => { const h = Math.floor(mins / 60) % 12 || 12; const mi = mins % 60; return mi ? `${h}:${('0' + mi).slice(-2)}` : `${h}`; };
+        return { value: 'CUSTOM|' + label, label, shortLabel: `${short(start)}-${short(end)}`, hours, custom: true };
+    }
+
+    function buildScheduleDates(startDate, endDate) {
+        const out = [];
+        const cur = new Date(startDate + 'T00:00:00');
+        const end = new Date(endDate + 'T00:00:00');
+        while (cur <= end) { out.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
+        return out;
+    }
+
+    function scheduleCellSelectHtml(branch, rowIdx, colIdx, cell) {
+        const shifts = SHIFT_TIME_OPTIONS[branch] || [];
+        const isDuty = cell.status === 'Duty' && cell.shift;
+        const isOff = cell.status === 'Day Off' || cell.status === 'Off';
+        const selVal = isDuty ? cell.shift.value : (isOff ? 'OFF' : '');
+        let opts = `<option value=""${selVal === '' ? ' selected' : ''}>—</option>`;
+        opts += `<option value="OFF"${selVal === 'OFF' ? ' selected' : ''}>Off</option>`;
+        let selectedIsListed = false;
+        shifts.forEach(sh => {
+            const sel = selVal === sh.value;
+            if (sel) selectedIsListed = true;
+            opts += `<option value="${sh.value}" title="${sh.label}"${sel ? ' selected' : ''}>${sh.shortLabel}</option>`;
+        });
+        if (isDuty && !selectedIsListed) {
+            opts += `<option value="${cell.shift.value}" selected>${cell.shift.shortLabel}</option>`;
+        }
+        opts += `<option value="${SCHEDULE_CUSTOM_CHOICE}">Custom…</option>`;
+        const color = isDuty ? '#10b981' : (isOff ? '#64748b' : '#f59e0b');
+        const title = isDuty ? cell.shift.label : (isOff ? 'Day Off' : 'Wala pang naka-assign');
+        return `<select class="sched-cell-select" data-row="${rowIdx}" data-col="${colIdx}" title="${title}" style="background: transparent; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: ${color}; font-weight: ${isDuty ? '600' : '400'}; font-size: 1em; padding: 2px 0; max-width: 64px; cursor: pointer;">${opts}</select>`;
+    }
+
     function updateScheduleDateFieldsForRotationMode() {
         if (!schedRotationPeriod) return;
         const isStandard = schedRotationPeriod.value === 'standard';
         if (schedStartDateInput) schedStartDateInput.disabled = isStandard;
         if (schedEndDateInput) schedEndDateInput.disabled = isStandard;
         if (schedStandardHint) schedStandardHint.classList.toggle('hidden', !isStandard);
+        // Fix 122: Manual mode hint + Generate button label
+        const isManual = schedRotationPeriod.value === 'manual';
+        if (schedManualHint) schedManualHint.classList.toggle('hidden', !isManual);
+        if (btnGenerateSchedule) {
+            const t = btnGenerateSchedule.querySelector('.btn-text');
+            if (t) t.innerHTML = isManual ? '<i class="fas fa-table"></i> Gumawa ng Manual Grid' : '<i class="fas fa-magic"></i> Generate Schedule';
+        }
         if (isStandard) {
             const range = computeStandardScheduleDateRange();
             if (schedStartDateInput) schedStartDateInput.value = range.startDate;
@@ -11211,7 +11291,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     pointer += groupSize;
 
                     if (groupSize < need) {
-                        warnings.push(`${branchName} (${shiftDef.label}): kulang ang staff, ${groupSize}/${need} lang ang naka-assign sa cycle simula ${dates[cycleStartDay] ? dates[cycleStartDay].toISOString().split('T')[0] : ''}`);
+                        warnings.push(`${branchName} (${shiftDef.label}): kulang ang staff, ${groupSize}/${need} lang ang naka-assign sa cycle simula ${dates[cycleStartDay] ? formatLocalDateYMD(dates[cycleStartDay]) : ''}`);
                     }
 
                     const members = group.map(s => {
@@ -11411,7 +11491,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Final verification pass: check actual per-day coverage against target (in case of edge cases)
         dates.forEach((d, di) => {
-            const dStr = d.toISOString().split('T')[0];
+            const dStr = formatLocalDateYMD(d);
             Object.keys(branchGroups).forEach(branchName => {
                 const shifts = SHIFT_TIME_OPTIONS[branchName] || [];
                 const staffInBranch = schedule.filter(row => row.staff.branch === branchName);
@@ -11496,12 +11576,31 @@ document.addEventListener('DOMContentLoaded', () => {
             // normal 2-week rotation default (their existing shift options
             // are intentionally left untouched by this feature).
             const rotationPeriodWeeks = isStandardSchedule ? 2 : (parseInt(rotationValue) || 2);
-            const result = generateStaffSchedule(staffList, startDate, endDate, rotationPeriodWeeks);
+            let result;
+            if (rotationValue === 'manual') {
+                // Fix 122: Manual mode -- an empty grid (staff x dates) where every
+                // cell is picked by hand. Blank cells are NOT saved.
+                const manualDates = buildScheduleDates(startDate, endDate);
+                if (manualDates.length > SCHEDULE_MANUAL_MAX_DAYS) {
+                    alert(`Sa Manual mode, hanggang ${SCHEDULE_MANUAL_MAX_DAYS} araw lang ang isang beses (${manualDates.length} ang napili). Paliitin ang Date From/To.`);
+                    return;
+                }
+                result = {
+                    manual: true,
+                    dates: manualDates,
+                    schedule: staffList.map(s => ({ staff: s, cells: manualDates.map(() => ({ status: null, shift: null })) })),
+                    warnings: []
+                };
+            } else {
+                result = generateStaffSchedule(staffList, startDate, endDate, rotationPeriodWeeks);
+            }
             lastGeneratedSchedule = { ...result, startDate, endDate };
 
             // Render warnings
             const warningsEl = document.getElementById('sched-warnings');
-            if (result.warnings.length > 0) {
+            if (result.manual) {
+                warningsEl.innerHTML = `<div style="background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.3); border-radius: 8px; padding: 8px 14px; color: #c4b5fd; font-size: 0.85em;"><i class="fas fa-hand-pointer"></i> Manual mode: pumili ng shift (o Off) sa bawat araw ng bawat staff. Ang blangko (—) ay hindi ise-save. Walang auto coverage check dito.</div>`;
+            } else if (result.warnings.length > 0) {
                 warningsEl.innerHTML = `
                     <div style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 10px 14px; color: #fca5a5; font-size: 0.85em;">
                         <strong><i class="fas fa-triangle-exclamation"></i> Walang Coverage Warning:</strong>
@@ -11545,7 +11644,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // a representative sample; the FULL range is still what actually gets
         // saved (lastGeneratedSchedule keeps the untouched full dates/schedule,
         // only the rendered HTML here is capped).
-        const PREVIEW_MAX_DAYS = SCHEDULE_PREVIEW_MAX_DAYS;
+        const PREVIEW_MAX_DAYS = lastGeneratedSchedule.manual ? lastGeneratedSchedule.dates.length : SCHEDULE_PREVIEW_MAX_DAYS;
         const previewDates = lastGeneratedSchedule.dates.slice(0, PREVIEW_MAX_DAYS);
         const isPreviewTruncated = lastGeneratedSchedule.dates.length > PREVIEW_MAX_DAYS;
         let tableHtml = '';
@@ -11553,6 +11652,7 @@ document.addEventListener('DOMContentLoaded', () => {
             tableHtml += `<div style="margin-bottom: 10px; color: var(--text-muted); font-size: 0.85em;"><i class="fas fa-info-circle"></i> Preview lang ang unang ${PREVIEW_MAX_DAYS} araw (${lastGeneratedSchedule.dates.length} araw total ang isesave, ${lastGeneratedSchedule.startDate} hanggang ${lastGeneratedSchedule.endDate}).</div>`;
         }
         if (lastGeneratedSchedule.schedule.length > 1) {
+            tableHtml += `<div style="margin-bottom: 10px; color: var(--text-muted); font-size: 0.85em;"><i class="fas fa-pen"></i> Pwede mong baguhin ang kahit anong araw sa pamamagitan ng dropdown sa bawat cell.</div>`;
             tableHtml += `<div style="margin-bottom: 10px; color: var(--text-muted); font-size: 0.85em;"><i class="fas fa-arrows-up-down"></i> Tip: i-drag ang pangalan ng staff papunta sa ibang staff para magpalitan ang buong schedule nila (kung sino ang papalit).</div>`;
         }
         tableHtml += '<table style="border-collapse: collapse; font-size: 0.78em; min-width: 100%;"><thead><tr>';
@@ -11567,11 +11667,9 @@ document.addEventListener('DOMContentLoaded', () => {
             tableHtml += `<tr class="sched-staff-row-preview" data-row-index="${idx}">`;
             tableHtml += `<td class="sched-staff-name-cell" draggable="true" data-row-index="${idx}" title="I-drag papunta sa ibang staff para magpalitan ng schedule" style="padding: 8px; font-weight: 500; position: sticky; left: 0; background: var(--bg-dark); border-bottom: 1px solid rgba(255,255,255,0.05); cursor: grab;"><i class="fas fa-grip-vertical" style="opacity: 0.4; margin-right: 6px; font-size: 0.85em;"></i>${row.staff.name}</td>`;
             tableHtml += `<td style="padding: 8px; color: var(--text-muted); border-bottom: 1px solid rgba(255,255,255,0.05);">${row.staff.branch}</td>`;
-            row.cells.slice(0, PREVIEW_MAX_DAYS).forEach(cell => {
-                const isDuty = cell.status === 'Duty';
-                const cellText = isDuty ? (cell.shift ? cell.shift.shortLabel : 'Duty') : 'Off';
-                const cellTitle = isDuty && cell.shift ? cell.shift.label : 'Day Off';
-                tableHtml += `<td title="${cellTitle}" style="padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); color: ${isDuty ? '#10b981' : '#64748b'}; font-weight: ${isDuty ? '600' : '400'};">${cellText}</td>`;
+            row.cells.slice(0, PREVIEW_MAX_DAYS).forEach((cell, ci) => {
+                // Fix 122: every cell is an editable dropdown (shift / Off / Custom)
+                tableHtml += `<td style="padding: 4px 3px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05);">${scheduleCellSelectHtml(row.staff.branch, idx, ci, cell)}</td>`;
             });
             tableHtml += '</tr>';
         });
@@ -11607,8 +11705,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Standard Schedule generates a full 1-year range, and silently
             // printing all 365+ days as one huge PDF would be both unreadable
             // and slow to generate.
-            const printDates = lastGeneratedSchedule.dates.slice(0, SCHEDULE_PREVIEW_MAX_DAYS);
-            const isTruncated = lastGeneratedSchedule.dates.length > SCHEDULE_PREVIEW_MAX_DAYS;
+            const printLimit = lastGeneratedSchedule.manual ? lastGeneratedSchedule.dates.length : SCHEDULE_PREVIEW_MAX_DAYS;
+            const printDates = lastGeneratedSchedule.dates.slice(0, printLimit);
+            const isTruncated = lastGeneratedSchedule.dates.length > printLimit;
 
             let theadHtml = '<tr style="background:#f1f5f9; border-bottom:2px solid #cbd5e1;">';
             theadHtml += '<th style="padding:6px 8px; text-align:left; font-size:10.5px; color:#334155;">Staff</th>';
@@ -11624,9 +11723,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 tbodyHtml += '<tr>';
                 tbodyHtml += `<td style="padding:6px 8px; font-size:10.5px; font-weight:600; color:#1f2937; border-bottom:1px solid #e5e7eb;">${row.staff.name}</td>`;
                 tbodyHtml += `<td style="padding:6px 8px; font-size:10.5px; color:#6b7280; border-bottom:1px solid #e5e7eb;">${row.staff.branch}</td>`;
-                row.cells.slice(0, SCHEDULE_PREVIEW_MAX_DAYS).forEach(cell => {
+                row.cells.slice(0, printLimit).forEach(cell => {
                     const isDuty = cell.status === 'Duty';
-                    const cellText = isDuty ? (cell.shift ? cell.shift.shortLabel : 'Duty') : 'Off';
+                    const cellText = isDuty ? (cell.shift ? cell.shift.shortLabel : 'Duty') : (cell.status ? 'Off' : '-');
                     tbodyHtml += `<td style="padding:6px 4px; text-align:center; font-size:10.5px; border-bottom:1px solid #e5e7eb; color:${isDuty ? '#059669' : '#94a3b8'}; font-weight:${isDuty ? '600' : '400'};">${cellText}</td>`;
                 });
                 tbodyHtml += '</tr>';
@@ -11711,6 +11810,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 r.style.background = '';
             });
         }
+        // Fix 122: editing a single cell via its dropdown
+        schedPreviewContainerEl.addEventListener('change', (e) => {
+            const sel = e.target.closest ? e.target.closest('.sched-cell-select') : null;
+            if (!sel || !lastGeneratedSchedule) return;
+            const ri = parseInt(sel.getAttribute('data-row'), 10);
+            const ci = parseInt(sel.getAttribute('data-col'), 10);
+            const row = lastGeneratedSchedule.schedule[ri];
+            if (!row || !row.cells[ci]) return;
+            const v = sel.value;
+            if (v === '') {
+                row.cells[ci] = { status: null, shift: null };
+            } else if (v === 'OFF') {
+                row.cells[ci] = { status: 'Day Off', shift: null };
+            } else if (v === SCHEDULE_CUSTOM_CHOICE) {
+                const typed = prompt('Ilagay ang oras ng duty (halimbawa: 8AM-5PM o 9PM-6AM):', '');
+                const custom = typed ? parseCustomShiftInput(typed) : null;
+                if (custom) {
+                    row.cells[ci] = { status: 'Duty', shift: custom };
+                } else if (typed) {
+                    alert('Hindi maintindihan ang oras. Gamitin ang ganitong format: 8AM-5PM, 8:30AM-5:30PM, o 9PM-6AM.');
+                }
+            } else {
+                const known = (SHIFT_TIME_OPTIONS[row.staff.branch] || []).find(sh => sh.value === v);
+                if (known) row.cells[ci] = { status: 'Duty', shift: known };
+                // else: it was an already-set Custom entry re-selected -- keep as is
+            }
+            const keepScroll = schedPreviewContainerEl.scrollLeft;
+            renderSchedulePreviewTable();
+            schedPreviewContainerEl.scrollLeft = keepScroll;
+            // A hand edit invalidates the generator's coverage check, so say so.
+            const warningsEl = document.getElementById('sched-warnings');
+            if (warningsEl && !lastGeneratedSchedule.manual && !document.getElementById('sched-edit-note')) {
+                const note = document.createElement('div');
+                note.id = 'sched-edit-note';
+                note.style.cssText = 'margin-top: 8px; background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 8px 14px; color: #fcd34d; font-size: 0.85em;';
+                note.innerHTML = '<i class="fas fa-pen"></i> May mga cell na na-edit nang manual -- hindi na auto-checked ang coverage ng schedule na ito.';
+                warningsEl.appendChild(note);
+            }
+        });
         schedPreviewContainerEl.addEventListener('dragstart', (e) => {
             const cell = e.target.closest('.sched-staff-name-cell');
             if (!cell) { e.preventDefault(); return; }
@@ -11810,11 +11948,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             try {
                 const rows = [];
+                let blankCount = 0;
                 lastGeneratedSchedule.schedule.forEach(row => {
                     lastGeneratedSchedule.dates.forEach((d, di) => {
                         const cell = row.cells[di];
+                        if (!cell.status) { blankCount++; return; } // Fix 122: blank manual cells are not saved
                         rows.push({
-                            date: d.toISOString().split('T')[0],
+                            // Fix 122: local calendar date (toISOString() shifts it back a day in Manila time)
+                            date: formatLocalDateYMD(d),
                             branch: row.staff.branch,
                             staffName: row.staff.name,
                             shiftTime: cell.shift ? cell.shift.label : '',
@@ -11824,11 +11965,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 });
 
+                if (rows.length === 0) {
+                    showToast('Wala pang naka-assign na shift o Off. Pumili muna bago i-save.', 'error');
+                    return;
+                }
+                if (blankCount > 0 && !confirm(`May ${blankCount} na blangko (—) na cell na HINDI ise-save. Kapag naka-on na ang schedule rule, ang araw na walang schedule ay hindi makakapag-Time In. Ituloy ang pag-save?`)) {
+                    return;
+                }
+
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                     body: JSON.stringify({
                         action: 'saveStaffSchedule',
+                        replace: true, // Fix 122: re-saving the same staff/date replaces the old row
                         rows: rows,
                         encodedBy: sessionStorage.getItem('loggedInUser')
                     })
@@ -18744,7 +18894,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             let calcLate = row[9] || '0'; // col 9 is Late
                             
                             // Dynamically recalculate Hours and Late based on 9AM rule for Report View
-                            if (tIn && tOut) {
+                            // Fix 121/122: only MarvsPCStufz uses this 9AM recompute. For MGH Parang /
+                            // MGH Concepcion the backend already returns the right Late (schedule-based, or 0).
+                            if (/marvspcstufz/i.test(b) && tIn && tOut) {
                                 const parseTime = (timeStr) => {
                                     const parts = timeStr.split(':');
                                     if (parts.length >= 2) {
