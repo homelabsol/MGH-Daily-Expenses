@@ -11000,7 +11000,77 @@ document.addEventListener('DOMContentLoaded', () => {
         const hours = Math.round((((end - start) + 1440) % 1440) / 60 * 100) / 100;
         const label = `${scheduleClock12(start)} - ${scheduleClock12(end)} (Custom)`;
         const short = (mins) => { const h = Math.floor(mins / 60) % 12 || 12; const mi = mins % 60; return mi ? `${h}:${('0' + mi).slice(-2)}` : `${h}`; };
-        return { value: 'CUSTOM|' + label, label, shortLabel: `${short(start)}-${short(end)}`, hours, custom: true };
+        return { value: 'CUSTOM|' + label, label, shortLabel: `${short(start)}-${short(end)}`, hours, custom: true, startMins: start, endMins: end };
+    }
+
+    // Custom shift picker (Marvin: "pwede bang kapag custom meron ng selection
+    // ng oras saka kung am or pm? mahirap kasi kapag wala") -- replaces the old
+    // type-it-in prompt() with hour / minute / AM-PM dropdowns for the start and
+    // end of the shift. Calls onSave(shiftObject) on Save; onCancel() otherwise.
+    function openScheduleCustomShiftDialog(prefill, onSave, onCancel) {
+        const old = document.getElementById('sched-custom-shift-overlay');
+        if (old) old.remove();
+        const hourOpts = (sel) => Array.from({ length: 12 }, (_, i) => { const h = i + 1; return `<option value="${h}"${h === sel ? ' selected' : ''}>${h}</option>`; }).join('');
+        const minOpts = (sel) => Array.from({ length: 12 }, (_, i) => { const m = i * 5; const t = ('0' + m).slice(-2); return `<option value="${t}"${m === sel ? ' selected' : ''}>${t}</option>`; }).join('');
+        const apOpts = (sel) => ['AM', 'PM'].map(ap => `<option value="${ap}"${ap === sel ? ' selected' : ''}>${ap}</option>`).join('');
+        const split = (mins, defH, defM, defAp) => {
+            if (typeof mins !== 'number') return { h: defH, m: defM, ap: defAp };
+            const h24 = Math.floor(mins / 60) % 24;
+            return { h: h24 % 12 === 0 ? 12 : h24 % 12, m: Math.round((mins % 60) / 5) * 5 % 60, ap: h24 >= 12 ? 'PM' : 'AM' };
+        };
+        const s = split(prefill && prefill.startMins, 9, 0, 'AM');
+        const e = split(prefill && prefill.endMins, 6, 0, 'PM');
+        const selStyle = 'padding: 8px 6px; border-radius: 6px; background: var(--bg-dark); color: var(--text-main, #e2e8f0); border: 1px solid rgba(255,255,255,0.15); font-size: 1em;';
+        const overlay = document.createElement('div');
+        overlay.id = 'sched-custom-shift-overlay';
+        overlay.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 10000; display: flex; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;';
+        overlay.innerHTML = `
+            <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; width: 100%; max-width: 380px; padding: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
+                <h3 style="margin: 0 0 14px; color: #a78bfa; font-size: 1.1em;"><i class="fas fa-clock"></i> Custom na Oras ng Duty</h3>
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px;">Simula (Start)</div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <select id="sched-custom-start-h" style="${selStyle}">${hourOpts(s.h)}</select><span>:</span>
+                        <select id="sched-custom-start-m" style="${selStyle}">${minOpts(s.m)}</select>
+                        <select id="sched-custom-start-ap" style="${selStyle}">${apOpts(s.ap)}</select>
+                    </div>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px;">Tapos (End)</div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <select id="sched-custom-end-h" style="${selStyle}">${hourOpts(e.h)}</select><span>:</span>
+                        <select id="sched-custom-end-m" style="${selStyle}">${minOpts(e.m)}</select>
+                        <select id="sched-custom-end-ap" style="${selStyle}">${apOpts(e.ap)}</select>
+                    </div>
+                </div>
+                <div id="sched-custom-shift-preview" style="margin-bottom: 8px; color: #10b981; font-weight: 600; font-size: 0.95em;"></div>
+                <div id="sched-custom-shift-error" style="margin-bottom: 8px; color: #fca5a5; font-size: 0.85em; display: none;"></div>
+                <div style="display: flex; gap: 10px; margin-top: 12px;">
+                    <button type="button" id="sched-custom-shift-save" class="submit-btn" style="margin: 0; flex: 1;"><span class="btn-text"><i class="fas fa-check"></i> OK</span></button>
+                    <button type="button" id="sched-custom-shift-cancel" style="flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: var(--text-muted); border-radius: 8px; cursor: pointer; padding: 10px;">Cancel</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overlay);
+        const $ = (id) => overlay.querySelector('#' + id);
+        const buildText = () => `${$('sched-custom-start-h').value}:${$('sched-custom-start-m').value} ${$('sched-custom-start-ap').value}-${$('sched-custom-end-h').value}:${$('sched-custom-end-m').value} ${$('sched-custom-end-ap').value}`;
+        const refreshPreview = () => {
+            const shift = parseCustomShiftInput(buildText());
+            const pv = $('sched-custom-shift-preview');
+            const er = $('sched-custom-shift-error');
+            if (shift) { pv.textContent = `${shift.label.replace(' (Custom)', '')} (${shift.hours} oras)`; er.style.display = 'none'; }
+            else { pv.textContent = ''; er.textContent = 'Pareho ang simula at tapos na oras. Magkaiba dapat.'; er.style.display = 'block'; }
+            return shift;
+        };
+        overlay.querySelectorAll('select').forEach(sel => sel.addEventListener('change', refreshPreview));
+        refreshPreview();
+        const close = () => overlay.remove();
+        $('sched-custom-shift-save').addEventListener('click', () => {
+            const shift = refreshPreview();
+            if (!shift) return;
+            close();
+            onSave(shift);
+        });
+        $('sched-custom-shift-cancel').addEventListener('click', () => { close(); if (onCancel) onCancel(); });
     }
 
     function buildScheduleDates(startDate, endDate) {
@@ -11810,6 +11880,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 r.style.background = '';
             });
         }
+        // A hand edit invalidates the generator's coverage check, so say so.
+        function noteScheduleEdited() {
+            const warningsEl = document.getElementById('sched-warnings');
+            if (warningsEl && lastGeneratedSchedule && !lastGeneratedSchedule.manual && !document.getElementById('sched-edit-note')) {
+                const note = document.createElement('div');
+                note.id = 'sched-edit-note';
+                note.style.cssText = 'margin-top: 8px; background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 8px 14px; color: #fcd34d; font-size: 0.85em;';
+                note.innerHTML = '<i class="fas fa-pen"></i> May mga cell na na-edit nang manual -- hindi na auto-checked ang coverage ng schedule na ito.';
+                warningsEl.appendChild(note);
+            }
+        }
         // Fix 122: editing a single cell via its dropdown
         schedPreviewContainerEl.addEventListener('change', (e) => {
             const sel = e.target.closest ? e.target.closest('.sched-cell-select') : null;
@@ -11824,13 +11905,18 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (v === 'OFF') {
                 row.cells[ci] = { status: 'Day Off', shift: null };
             } else if (v === SCHEDULE_CUSTOM_CHOICE) {
-                const typed = prompt('Ilagay ang oras ng duty (halimbawa: 8AM-5PM o 9PM-6AM):', '');
-                const custom = typed ? parseCustomShiftInput(typed) : null;
-                if (custom) {
+                // Fix 122b: pick the times with dropdowns (hour / minute / AM-PM) instead of typing
+                const existing = row.cells[ci] && row.cells[ci].shift && row.cells[ci].shift.custom ? row.cells[ci].shift : null;
+                openScheduleCustomShiftDialog(existing, (custom) => {
                     row.cells[ci] = { status: 'Duty', shift: custom };
-                } else if (typed) {
-                    alert('Hindi maintindihan ang oras. Gamitin ang ganitong format: 8AM-5PM, 8:30AM-5:30PM, o 9PM-6AM.');
-                }
+                    const keep = schedPreviewContainerEl.scrollLeft;
+                    renderSchedulePreviewTable();
+                    schedPreviewContainerEl.scrollLeft = keep;
+                    noteScheduleEdited();
+                }, () => {
+                    renderSchedulePreviewTable(); // put the dropdown back to the cell's real value
+                });
+                return;
             } else {
                 const known = (SHIFT_TIME_OPTIONS[row.staff.branch] || []).find(sh => sh.value === v);
                 if (known) row.cells[ci] = { status: 'Duty', shift: known };
@@ -11839,15 +11925,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const keepScroll = schedPreviewContainerEl.scrollLeft;
             renderSchedulePreviewTable();
             schedPreviewContainerEl.scrollLeft = keepScroll;
-            // A hand edit invalidates the generator's coverage check, so say so.
-            const warningsEl = document.getElementById('sched-warnings');
-            if (warningsEl && !lastGeneratedSchedule.manual && !document.getElementById('sched-edit-note')) {
-                const note = document.createElement('div');
-                note.id = 'sched-edit-note';
-                note.style.cssText = 'margin-top: 8px; background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3); border-radius: 8px; padding: 8px 14px; color: #fcd34d; font-size: 0.85em;';
-                note.innerHTML = '<i class="fas fa-pen"></i> May mga cell na na-edit nang manual -- hindi na auto-checked ang coverage ng schedule na ito.';
-                warningsEl.appendChild(note);
-            }
+            noteScheduleEdited();
         });
         schedPreviewContainerEl.addEventListener('dragstart', (e) => {
             const cell = e.target.closest('.sched-staff-name-cell');
