@@ -13928,6 +13928,32 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${paid}`;
     }
 
+    // Fix 127: per-day Time In / Time Out + the saved schedule, shown under the
+    // Late cell so Marvin can verify WHY a day is (not) late.
+    function payslipFmtClock(t) {
+        const m = String(t || '').trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?$/i);
+        if (!m) return String(t || '').trim();
+        let h = parseInt(m[1], 10);
+        const mm = m[2];
+        let ap = m[3] ? m[3].toUpperCase() : null;
+        if (!ap) { ap = h >= 12 ? 'PM' : 'AM'; h = h % 12; if (h === 0) h = 12; }
+        return `${h}:${mm} ${ap}`;
+    }
+    function payslipFormatLateExtra(d, small) {
+        if (!d || !d.attendanceStatus) return '';
+        const inTxt = d.timeIn ? payslipFmtClock(d.timeIn) : '';
+        const outTxt = d.timeOut ? payslipFmtClock(d.timeOut) : '';
+        const parts = [];
+        if (inTxt || outTxt) parts.push(`In ${inTxt || '?'} \u2192 Out ${outTxt || '?'}`);
+        const isMarvs = String(d.branch || '').toLowerCase().indexOf('marvspcstufz') > -1;
+        if (!isMarvs) {
+            if (d.schedStatus === 'Duty' && d.schedShift) parts.push(`Sched: ${payslipEscapeHtml(d.schedShift)}`);
+            else if (d.schedStatus) parts.push(`Sched: ${payslipEscapeHtml(d.schedStatus)}`);
+            else parts.push('Walang schedule');
+        }
+        return parts.map((x) => `<div style="font-size:${small}; opacity:0.7;">${x}</div>`).join('');
+    }
+
     // Late Deduction display helper (2026-08-30): shows the logged Late
     // duration + its peso deduction so Marvin can see WHY a day's Base Pay
     // differs from a plain hours-based proration, instead of it just
@@ -14382,7 +14408,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="padding: 7px 9px;">${d.date}</td>
                         <td style="padding: 7px 9px;">${payslipFormatHoursCell(d, '10px')}</td>
                         <td style="padding: 7px 9px;">${holidayLabel}</td>
-                        <td style="padding: 7px 9px;">${payslipFormatLateCell(d)}</td>
+                        <td style="padding: 7px 9px;">${payslipFormatLateCell(d)}${payslipFormatLateExtra(d, '10px')}</td>
                         <td style="padding: 7px 9px;">${d.otHours}</td>
                         <td style="padding: 7px 9px;">${payslipFormatPeso(d.otPay)}</td>
                         <td style="padding: 7px 9px;">${payslipFormatPeso(d.basePay)}</td>
