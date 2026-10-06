@@ -13917,6 +13917,17 @@ document.addEventListener('DOMContentLoaded', () => {
         return '₱' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    // Fix 126: Hours cell shows the ACTUAL time worked (e.g. 9.14); the capped
+    // hours that are really paid (max 9 / 12) appear as a small note.
+    function payslipFormatHoursCell(d, small) {
+        const paid = Number(d.hoursWorked) || 0;
+        const actual = d.actualHours !== undefined ? Number(d.actualHours) || 0 : paid;
+        if (actual > paid + 0.004) {
+            return `${actual}<div style="font-size:${small}; opacity:0.7;">bayad: ${paid}</div>`;
+        }
+        return `${paid}`;
+    }
+
     // Late Deduction display helper (2026-08-30): shows the logged Late
     // duration + its peso deduction so Marvin can see WHY a day's Base Pay
     // differs from a plain hours-based proration, instead of it just
@@ -14369,7 +14380,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return `
                     <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                         <td style="padding: 7px 9px;">${d.date}</td>
-                        <td style="padding: 7px 9px;">${d.hoursWorked}</td>
+                        <td style="padding: 7px 9px;">${payslipFormatHoursCell(d, '10px')}</td>
                         <td style="padding: 7px 9px;">${holidayLabel}</td>
                         <td style="padding: 7px 9px;">${payslipFormatLateCell(d)}</td>
                         <td style="padding: 7px 9px;">${d.otHours}</td>
@@ -15602,7 +15613,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return `
                 <tr>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.date}</td>
-                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.hoursWorked}</td>
+                    <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${payslipFormatHoursCell(d, '9px')}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${holidayLabel}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${payslipFormatLateCell(d)}</td>
                     <td style="padding:5px 8px; border-bottom:1px solid #e5e7eb; font-size:10.5px;">${d.otHours}</td>
