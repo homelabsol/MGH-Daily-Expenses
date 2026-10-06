@@ -10968,6 +10968,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const SCHEDULE_MANUAL_MAX_DAYS = 31;
     const SCHEDULE_CUSTOM_CHOICE = '__CUSTOM__';
 
+    // "12:00 PM - 7:00 PM (Custom)" -> "12PM-7PM", "8:30 AM - 5:30 PM" -> "8:30AM-5:30PM".
+    // Keeps AM/PM visible (Marvin: a custom cell showing "12-7" was unclear).
+    // Returns null if the label does not start with two readable clock times.
+    function compactShiftClockLabel(label) {
+        const m = String(label || '').match(/^\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM|NN)\s*(?:-|\u2013|to)\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM|NN)/i);
+        if (!m) return null;
+        const fmt = (h, mm, ap) => parseInt(h, 10) + (mm && mm !== '00' ? ':' + mm : '') + ap.toUpperCase();
+        return `${fmt(m[1], m[2], m[3])}-${fmt(m[4], m[5], m[6])}`;
+    }
+
     function scheduleClock12(totalMins) {
         const h24 = Math.floor(totalMins / 60) % 24;
         const m = totalMins % 60;
@@ -10999,8 +11009,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (start < 0 || end < 0 || start === end) return null;
         const hours = Math.round((((end - start) + 1440) % 1440) / 60 * 100) / 100;
         const label = `${scheduleClock12(start)} - ${scheduleClock12(end)} (Custom)`;
-        const short = (mins) => { const h = Math.floor(mins / 60) % 12 || 12; const mi = mins % 60; return mi ? `${h}:${('0' + mi).slice(-2)}` : `${h}`; };
-        return { value: 'CUSTOM|' + label, label, shortLabel: `${short(start)}-${short(end)}`, hours, custom: true, startMins: start, endMins: end };
+        return { value: 'CUSTOM|' + label, label, shortLabel: compactShiftClockLabel(label) || label, hours, custom: true, startMins: start, endMins: end };
     }
 
     // Custom shift picker (Marvin: "pwede bang kapag custom meron ng selection
@@ -11100,7 +11109,7 @@ document.addEventListener('DOMContentLoaded', () => {
         opts += `<option value="${SCHEDULE_CUSTOM_CHOICE}">Custom…</option>`;
         const color = isDuty ? '#10b981' : (isOff ? '#64748b' : '#f59e0b');
         const title = isDuty ? cell.shift.label : (isOff ? 'Day Off' : 'Wala pang naka-assign');
-        return `<select class="sched-cell-select" data-row="${rowIdx}" data-col="${colIdx}" title="${title}" style="background: transparent; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: ${color}; font-weight: ${isDuty ? '600' : '400'}; font-size: 1em; padding: 2px 0; max-width: 64px; cursor: pointer;">${opts}</select>`;
+        return `<select class="sched-cell-select" data-row="${rowIdx}" data-col="${colIdx}" title="${title}" style="background: transparent; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: ${color}; font-weight: ${isDuty ? '600' : '400'}; font-size: 1em; padding: 2px 0; max-width: ${(isDuty && cell.shift.custom) ? 112 : 64}px; cursor: pointer;">${opts}</select>`;
     }
 
     function updateScheduleDateFieldsForRotationMode() {
@@ -12150,7 +12159,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function getStaffScheduleShortShiftLabel(branch, fullLabel) {
         const opts = SHIFT_TIME_OPTIONS[branch] || [];
         const match = opts.find(o => o.label === fullLabel);
-        return match ? match.shortLabel : (fullLabel || 'Duty');
+        if (match) return match.shortLabel;
+        // Fix 122c: a saved Custom shift (e.g. "12:00 PM - 7:00 PM (Custom)") has no
+        // entry in SHIFT_TIME_OPTIONS -- show it compactly WITH AM/PM ("12PM-7PM").
+        // (only Custom ones -- other unmatched/old labels keep showing the full label, per Fix 111)
+        if (/\(Custom\)\s*$/i.test(fullLabel || '')) return compactShiftClockLabel(fullLabel) || fullLabel;
+        return fullLabel || 'Duty';
     }
 
     // Groups the cached full history into the Staff x Date pivot shape for
