@@ -14396,10 +14396,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (payslipFoodAllowanceInput) {
             const autoFoodAllowance = Number(data.autoFoodAllowance) || 0;
             payslipFoodAllowanceInput.value = autoFoodAllowance.toFixed(2);
+            // Fix 125: MGH Parang / MGH Concepcion -> Food Allowance is always 0 and locked.
+            payslipFoodAllowanceInput.disabled = !!data.mealAllowanceBlocked;
         }
         if (payslipFoodAllowanceHint) {
-            const daysPresent = data.daysPresent !== undefined ? data.daysPresent : 0;
-            payslipFoodAllowanceHint.textContent = `Auto-compute: ${daysPresent} araw na present x ₱80.00 = ${payslipFormatPeso(data.autoFoodAllowance || 0)} -- pwede mo pang baguhin.`;
+            if (data.mealAllowanceBlocked) {
+                payslipFoodAllowanceHint.textContent = 'Walang Meal/Food Allowance sa MGH Parang at MGH Concepcion -- laging ₱0.00.';
+            } else {
+                const foodDays = data.foodEligibleDays !== undefined ? data.foodEligibleDays : (data.daysPresent !== undefined ? data.daysPresent : 0);
+                payslipFoodAllowanceHint.textContent = `Auto-compute: ${foodDays} araw na present x ₱80.00 = ${payslipFormatPeso(data.autoFoodAllowance || 0)} -- pwede mo pang baguhin.`;
+            }
             payslipFoodAllowanceHint.classList.remove('hidden');
         }
         if (payslipCashAdvanceInput) {
