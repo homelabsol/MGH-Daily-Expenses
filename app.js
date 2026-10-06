@@ -11109,7 +11109,7 @@ document.addEventListener('DOMContentLoaded', () => {
         opts += `<option value="${SCHEDULE_CUSTOM_CHOICE}">Custom…</option>`;
         const color = isDuty ? '#10b981' : (isOff ? '#64748b' : '#f59e0b');
         const title = isDuty ? cell.shift.label : (isOff ? 'Day Off' : 'Wala pang naka-assign');
-        return `<select class="sched-cell-select" data-row="${rowIdx}" data-col="${colIdx}" title="${title}" style="background: transparent; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: ${color}; font-weight: ${isDuty ? '600' : '400'}; font-size: 1em; padding: 2px 0; max-width: ${(isDuty && cell.shift.custom) ? 112 : 64}px; cursor: pointer;">${opts}</select>`;
+        return `<select class="sched-cell-select" data-row="${rowIdx}" data-col="${colIdx}" title="${title}" style="background: transparent; border: 1px solid rgba(255,255,255,0.12); border-radius: 4px; color: ${color}; font-weight: ${isDuty ? '600' : '400'}; font-size: 1em; padding: 2px 0; max-width: ${(isDuty && cell.shift.custom) ? 112 : 78}px; cursor: pointer;">${opts}</select>`;
     }
 
     function updateScheduleDateFieldsForRotationMode() {
@@ -11165,9 +11165,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // saved text wherever it's read back -- only NEWLY generated
         // schedules from here on use the new Mid/Night times.
         'MGH Parang': [
-            { value: '6AM-3PM', label: '6:00 AM - 3:00 PM (Morning)', shortLabel: '6-3', hours: 9, minCoverage: 2 },
-            { value: '12NN-9PM', label: '12:00 NN - 9:00 PM (Mid)', shortLabel: '12-9', hours: 9, minCoverage: 2 },
-            { value: '9PM-6AM', label: '9:00 PM - 6:00 AM (Night)', shortLabel: '9-6', hours: 9, minCoverage: 2, isNight: true }
+            { value: '6AM-3PM', label: '6:00 AM - 3:00 PM (Morning)', shortLabel: '6AM-3PM', hours: 9, minCoverage: 2 },
+            { value: '12NN-9PM', label: '12:00 NN - 9:00 PM (Mid)', shortLabel: '12NN-9PM', hours: 9, minCoverage: 2 },
+            { value: '9PM-6AM', label: '9:00 PM - 6:00 AM (Night)', shortLabel: '9PM-6AM', hours: 9, minCoverage: 2, isNight: true }
         ],
         'MGH Concepcion': [
             // Fix 111 (2026-09-26): shifted from 6AM-6PM/6PM-6AM to
@@ -11188,7 +11188,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { value: '9PM-9AM', label: '9:00 PM - 9:00 AM (Night)', shortLabel: '9PM-9AM', hours: 12, minCoverage: 2, isNight: true }
         ],
         'MarvsPCStufz': [
-            { value: '9AM-6PM', label: '9:00 AM - 6:00 PM', shortLabel: '9-6', hours: 9, minCoverage: 1 }
+            { value: '9AM-6PM', label: '9:00 AM - 6:00 PM', shortLabel: '9AM-6PM', hours: 9, minCoverage: 1 }
         ]
     };
 
