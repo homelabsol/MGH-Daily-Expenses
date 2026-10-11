@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=13">
+    <link rel="stylesheet" href="style.css?v=14">
     <!-- Fix 48: html2pdf.bundle.min.js, chart.js, and xlsx.full.min.js used to be
          loaded here as plain blocking <script> tags -- meaning every page open,
          even the login screen, waited on all three heavy libraries before the
@@ -231,6 +231,8 @@
                             <p class="sub">Customers with parts releasing not yet completed</p>
                         </div>
                     </div>
+                    <!-- Fix 132: open the Build Queue popup on demand -->
+                    <button type="button" class="dash-sort-btn" id="dash-build-queue-btn" title="Buksan ang Build Queue">🛠️ Build Queue</button>
                 </div>
 
                 <div class="card-grid">
@@ -6232,7 +6234,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=193"></script>
+    <script src="app.js?v=194"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -6800,6 +6802,38 @@
             </form>
         </div>
     </div>
+
+
+    <!-- Fix 132: Build Queue popup (MarvsPCStufz). View-only: built from the same
+         Customer Information Sheet rows the MarvsPCStufz dashboard card reads
+         (Parts Releasing not "Item Released"). Nothing here is written back to
+         any sheet. Opened automatically every 5 minutes (app.js) or by the
+         "Build Queue" button on the MarvsPCStufz dashboard card. -->
+    <div class="bq-overlay" id="bq-overlay" role="dialog" aria-modal="true" aria-labelledby="bq-title">
+        <div class="bq-modal">
+            <div class="bq-head">
+                <div class="bq-icon">🛠️</div>
+                <div>
+                    <h2 id="bq-title">Build Queue</h2>
+                    <p class="bq-sub">Mga customer na kailangan i-build &middot; ayusin ang priority</p>
+                </div>
+                <button type="button" class="bq-close-x" id="bq-close-x" aria-label="Close" title="Close">&times;</button>
+            </div>
+            <div class="bq-chips">
+                <span class="bq-chip"><b id="bq-c-count">0</b> customers</span>
+                <span class="bq-chip"><b id="bq-c-builds">0</b> builds</span>
+                <span class="bq-chip red"><b id="bq-c-pending">0</b> Pending</span>
+                <span class="bq-chip amber"><b id="bq-c-partial">0</b> Partially Released</span>
+            </div>
+            <div class="bq-hint">I-drag ang <b>⋮⋮</b> o gamitin ang <b>▲ ▼</b> para ilipat ang priority. Pindutin ang <b>Completed</b> kapag tapos na ang build.</div>
+            <div class="bq-list" id="bq-list"></div>
+            <div class="bq-foot">
+                <span class="bq-next-pop">Lalabas ulit sa loob ng <b id="bq-foot-countdown">05:00</b></span>
+                <button type="button" class="bq-close-btn" id="bq-close">Close</button>
+            </div>
+        </div>
+    </div>
+    <div class="bq-toast" id="bq-toast"><span id="bq-toast-msg"></span><button type="button" id="bq-toast-undo">Undo</button></div>
 
     <!-- AI Support Chatbot: global floating button, visible on every screen once logged in.
          Not inside a .container div on purpose so hideAllContainers() (used for every

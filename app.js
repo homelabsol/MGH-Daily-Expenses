@@ -216,6 +216,28 @@ document.addEventListener('DOMContentLoaded', () => {
     let csUrgentAlertPollInterval = null;
     const CS_URGENT_ALERT_POLL_MS = 60 * 1000;
 
+
+    // Fix 132: Build Queue popup (MarvsPCStufz) state -- declared above the
+    // auto-login check for the same reason as the timers above (showApp()
+    // can run synchronously on page load). VIEW-ONLY: nothing is ever written
+    // to a sheet. "Completed" just hides a customer inside this popup; the
+    // hidden keys + the tech-chosen priority order live only in this
+    // browser's localStorage (try/catch'd, in-memory fallback).
+    const BQ_POPUP_MS = 5 * 60 * 1000;
+    const BQ_LS_COMPLETED = 'bq_completed_v1';
+    const BQ_LS_ORDER = 'bq_order_v1';
+    let bqTimer = null;
+    let bqCountdownTimer = null;
+    let bqNextAt = 0;
+    let bqUiReady = false;
+    let bqSession = 0;
+    let bqItems = [];
+    let bqCompleted = {};
+    let bqOrder = [];
+    let bqLastRemoved = null;
+    let bqToastTimer = null;
+    let bqDragKey = null;
+
     // Check if user is already logged in
     const sessionUser = sessionStorage.getItem('loggedInUser');
     if (sessionUser) {
@@ -517,6 +539,336 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(csUrgentAlertPollInterval);
             csUrgentAlertPollInterval = null;
         }
+
+        // Fix 132: Build Queue popup -- MarvsPCStufz card viewers only
+        // (same store gate as the card), never for Rider.
+        startBuildQueue();
+    }
+
+    // ===== Build Queue popup (Fix 132) =====
+    // Source = the same Customer Information Sheet rows the MarvsPCStufz
+    // dashboard card uses (column 23 Parts Releasing, blank == "Pending",
+    // anything but "Item Released" is still to build). Default order is
+    // oldest order first; techs can re-prioritise (drag / up-down) and
+    // "Completed" hides the customer from this popup only. The popup
+    // re-fetches every 5 minutes, so a customer whose Parts Releasing became
+    // "Item Released" in the sheet also disappears by itself.
+    function bqEligible() {
+        const role = sessionStorage.getItem('userRole') || '';
+        const store = sessionStorage.getItem('userStore') || '';
+        return role !== 'Rider' && (store === 'All' || store === 'MarvsPCStufz');
+    }
+
+    function bqLsGet(key, fallback) {
+        try {
+            const raw = localStorage.getItem(key);
+            return raw ? JSON.parse(raw) : fallback;
+        } catch (e) { return fallback; }
+    }
+
+    function bqLsSet(key, value) {
+        try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* in-memory only */ }
+    }
+
+    function bqEsc(t) {
+        const d = document.createElement('div');
+        d.textContent = (t === null || t === undefined) ? '' : String(t);
+        return d.innerHTML;
+    }
+
+    function bqFmt(sec) {
+        sec = Math.max(0, Math.round(sec));
+        return String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0');
+    }
+
+    function bqRowKey(row) {
+        // last element = sheet row number appended by the backend
+        return String(row[row.length - 1]) + '|' + (row[0] || '') + '|' + (row[1] || '');
+    }
+
+    function buildBuildQueueItems(rows) {
+        const incomplete = (rows || []).filter(row => (row[23] || 'Pending') !== 'Item Released');
+        const items = incomplete.map(row => ({
+            key: bqRowKey(row),
+            name: row[1] || '(no name)',
+            builds: Number(row[4]) || 1,
+            date: row[0] || '',
+            status: row[23] || 'Pending'
+        }));
+        const liveKeys = {};
+        items.forEach(it => { liveKeys[it.key] = true; });
+
+        // forget "completed" marks for customers that are gone from the list
+        // (Item Released in the sheet, or row removed) so storage never grows.
+        let completedChanged = false;
+        Object.keys(bqCompleted).forEach(k => {
+            if (!liveKeys[k]) { delete bqCompleted[k]; completedChanged = true; }
+        });
+        if (completedChanged) bqLsSet(BQ_LS_COMPLETED, bqCompleted);
+
+        const visible = items.filter(it => !bqCompleted[it.key]);
+        const pos = {};
+        bqOrder.forEach((k, i) => { pos[k] = i; });
+        const known = visible.filter(it => pos[it.key] !== undefined).sort((a, b) => pos[a.key] - pos[b.key]);
+        const fresh = visible.filter(it => pos[it.key] === undefined)
+            .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.key.localeCompare(b.key));
+        const result = known.concat(fresh);
+        bqOrder = result.map(it => it.key);
+        bqLsSet(BQ_LS_ORDER, bqOrder);
+        return result;
+    }
+
+    function bqIsOpen() {
+        const ov = document.getElementById('bq-overlay');
+        return !!(ov && ov.classList.contains('show'));
+    }
+
+    function renderBuildQueue() {
+        const list = document.getElementById('bq-list');
+        if (!list) return;
+        if (!bqItems.length) {
+            list.innerHTML = '<div class="bq-empty"><div class="big">🎉</div><div>Wala nang i-build. Tapos na lahat!</div></div>';
+        } else {
+            list.innerHTML = bqItems.map((c, i) => {
+                const k = bqEsc(c.key);
+                const pill = c.status === 'Partially Released' ? 'partial' : 'pending';
+                return '<div class="bq-row' + (i === 0 ? ' next' : '') + '" draggable="true" data-key="' + k + '">' +
+                    '<span class="bq-handle" title="I-drag para ilipat">⋮⋮</span>' +
+                    '<span class="bq-rank">' + (i + 1) + '</span>' +
+                    '<div class="bq-who"><div class="bq-name">' + bqEsc(c.name) + (i === 0 ? '<span class="bq-next-tag">NEXT</span>' : '') + '</div>' +
+                    '<div class="bq-meta">' + c.builds + ' build' + (c.builds === 1 ? '' : 's') + ' · ' + bqEsc(c.date) + '</div></div>' +
+                    '<span class="status-pill ' + pill + '">' + bqEsc(c.status) + '</span>' +
+                    '<div class="bq-movers">' +
+                    '<button type="button" class="bq-mv" data-act="up" data-key="' + k + '"' + (i === 0 ? ' disabled' : '') + ' title="Itaas">▲</button>' +
+                    '<button type="button" class="bq-mv" data-act="down" data-key="' + k + '"' + (i === bqItems.length - 1 ? ' disabled' : '') + ' title="Ibaba">▼</button></div>' +
+                    '<button type="button" class="bq-done-btn" data-act="done" data-key="' + k + '">✓ Completed</button>' +
+                    '</div>';
+            }).join('');
+        }
+        const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        const pending = bqItems.filter(c => c.status !== 'Partially Released').length;
+        setText('bq-c-count', bqItems.length);
+        setText('bq-c-builds', bqItems.reduce((s, c) => s + c.builds, 0));
+        setText('bq-c-pending', pending);
+        setText('bq-c-partial', bqItems.length - pending);
+    }
+
+    function bqSaveOrder() {
+        bqOrder = bqItems.map(it => it.key);
+        bqLsSet(BQ_LS_ORDER, bqOrder);
+    }
+
+    function bqMove(key, dir) {
+        const i = bqItems.findIndex(c => c.key === key), j = i + dir;
+        if (i < 0 || j < 0 || j >= bqItems.length) return;
+        const tmp = bqItems[i]; bqItems[i] = bqItems[j]; bqItems[j] = tmp;
+        bqSaveOrder();
+        renderBuildQueue();
+    }
+
+    function bqShowToast(msg) {
+        const t = document.getElementById('bq-toast');
+        const m = document.getElementById('bq-toast-msg');
+        if (!t || !m) return;
+        m.textContent = msg;
+        t.classList.add('show');
+        clearTimeout(bqToastTimer);
+        bqToastTimer = setTimeout(() => t.classList.remove('show'), 6000);
+    }
+
+    function bqComplete(key) {
+        const i = bqItems.findIndex(c => c.key === key);
+        if (i < 0) return;
+        const rowEl = Array.from(document.querySelectorAll('#bq-list .bq-row')).find(r => r.dataset.key === key);
+        const finish = () => {
+            const idx = bqItems.findIndex(c => c.key === key);
+            if (idx < 0) return;
+            const item = bqItems[idx];
+            bqItems.splice(idx, 1);
+            bqCompleted[key] = true;
+            bqLsSet(BQ_LS_COMPLETED, bqCompleted);
+            bqSaveOrder();
+            bqLastRemoved = { item: item, index: idx };
+            renderBuildQueue();
+            bqShowToast('Completed: ' + item.name);
+        };
+        if (rowEl) { rowEl.classList.add('leaving'); setTimeout(finish, 230); } else finish();
+    }
+
+    function bqUndo() {
+        if (!bqLastRemoved) return;
+        const r = bqLastRemoved;
+        bqLastRemoved = null;
+        delete bqCompleted[r.item.key];
+        bqLsSet(BQ_LS_COMPLETED, bqCompleted);
+        bqItems.splice(Math.min(r.index, bqItems.length), 0, r.item);
+        bqSaveOrder();
+        const t = document.getElementById('bq-toast');
+        if (t) t.classList.remove('show');
+        renderBuildQueue();
+    }
+
+    function initBuildQueueUi() {
+        if (bqUiReady) return;
+        const list = document.getElementById('bq-list');
+        const overlay = document.getElementById('bq-overlay');
+        if (!list || !overlay) return;
+        bqUiReady = true;
+
+        list.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-act]');
+            if (!b) return;
+            const key = b.dataset.key;
+            if (b.dataset.act === 'up') bqMove(key, -1);
+            else if (b.dataset.act === 'down') bqMove(key, +1);
+            else if (b.dataset.act === 'done') bqComplete(key);
+        });
+
+        list.addEventListener('dragstart', (e) => {
+            const row = e.target.closest ? e.target.closest('.bq-row') : null;
+            if (!row) return;
+            bqDragKey = row.dataset.key;
+            row.classList.add('dragging');
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                try { e.dataTransfer.setData('text/plain', bqDragKey); } catch (err) { /* ignore */ }
+            }
+        });
+        list.addEventListener('dragend', () => { bqDragKey = null; renderBuildQueue(); });
+        list.addEventListener('dragover', (e) => {
+            const row = e.target.closest('.bq-row');
+            if (!row || bqDragKey === null) return;
+            e.preventDefault();
+            list.querySelectorAll('.bq-row.dragover').forEach(r => r.classList.remove('dragover'));
+            row.classList.add('dragover');
+        });
+        list.addEventListener('drop', (e) => {
+            const row = e.target.closest('.bq-row');
+            if (!row || bqDragKey === null) return;
+            e.preventDefault();
+            const from = bqItems.findIndex(c => c.key === bqDragKey);
+            const to = bqItems.findIndex(c => c.key === row.dataset.key);
+            if (from > -1 && to > -1 && from !== to) {
+                const moved = bqItems.splice(from, 1)[0];
+                bqItems.splice(to, 0, moved);
+                bqSaveOrder();
+            }
+            bqDragKey = null;
+            renderBuildQueue();
+        });
+
+        document.getElementById('bq-close').addEventListener('click', closeBuildQueue);
+        document.getElementById('bq-close-x').addEventListener('click', closeBuildQueue);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeBuildQueue(); });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && bqIsOpen()) closeBuildQueue(); });
+        const undoBtn = document.getElementById('bq-toast-undo');
+        if (undoBtn) undoBtn.addEventListener('click', bqUndo);
+        const openBtn = document.getElementById('dash-build-queue-btn');
+        if (openBtn) openBtn.addEventListener('click', () => { bqOpenWithFreshData(); });
+    }
+
+    function bqUpdateCountdown() {
+        const el = document.getElementById('bq-foot-countdown');
+        if (el) el.textContent = bqFmt(BQ_POPUP_MS / 1000);
+    }
+
+    function openBuildQueue() {
+        initBuildQueueUi();
+        const overlay = document.getElementById('bq-overlay');
+        if (!overlay) return;
+        renderBuildQueue();
+        bqUpdateCountdown();
+        overlay.classList.add('show');
+        // while open, the periodic tick only refreshes the list
+        if (bqTimer) { clearTimeout(bqTimer); bqTimer = null; }
+        bqScheduleNext(BQ_POPUP_MS);
+    }
+
+    function closeBuildQueue() {
+        const overlay = document.getElementById('bq-overlay');
+        if (overlay) overlay.classList.remove('show');
+        const t = document.getElementById('bq-toast');
+        if (t) t.classList.remove('show');
+        // next automatic appearance = 5 minutes after closing
+        bqScheduleNext(BQ_POPUP_MS);
+    }
+
+    function bqScheduleNext(ms) {
+        if (bqTimer) clearTimeout(bqTimer);
+        const session = bqSession;
+        bqNextAt = Date.now() + ms;
+        bqTimer = setTimeout(() => { if (session === bqSession) bqTick(); }, ms);
+    }
+
+    async function bqFetchItems() {
+        const todayStr = dashFmtDate(new Date());
+        const result = await postToScriptWithRetry({
+            action: 'getExpenseRecords',
+            sheetName: 'Customer Information Sheet',
+            startDate: '2000-01-01',
+            endDate: todayStr,
+            branch: 'All',
+            noCache: true
+        });
+        if (!result || result.status !== 'success') throw new Error((result && result.message) || 'Build Queue fetch failed');
+        return buildBuildQueueItems(result.data || []);
+    }
+
+    async function bqRefresh() {
+        const session = bqSession;
+        const items = await bqFetchItems();
+        if (session !== bqSession) return false; // logged out meanwhile
+        bqItems = items;
+        if (bqIsOpen() && bqDragKey === null) renderBuildQueue();
+        return true;
+    }
+
+    async function bqTick() {
+        const session = bqSession;
+        if (!bqEligible()) return;
+        try {
+            const ok = await bqRefresh();
+            if (!ok) return;
+        } catch (err) {
+            console.error('Build Queue refresh failed:', err);
+            if (session === bqSession) bqScheduleNext(60 * 1000); // retry in a minute
+            return;
+        }
+        if (session !== bqSession) return;
+        if (bqIsOpen()) { bqScheduleNext(BQ_POPUP_MS); return; }
+        if (bqItems.length && !document.hidden) { openBuildQueue(); return; }
+        bqScheduleNext(bqItems.length && document.hidden ? 60 * 1000 : BQ_POPUP_MS);
+    }
+
+    async function bqOpenWithFreshData() {
+        initBuildQueueUi();
+        try { await bqRefresh(); } catch (err) { console.error('Build Queue refresh failed:', err); }
+        openBuildQueue();
+    }
+
+    function startBuildQueue() {
+        stopBuildQueue();
+        const card = document.getElementById('dash-build-queue-btn');
+        const eligible = bqEligible();
+        if (card) card.style.display = eligible ? '' : 'none';
+        if (!eligible) return;
+        bqCompleted = bqLsGet(BQ_LS_COMPLETED, {}) || {};
+        bqOrder = bqLsGet(BQ_LS_ORDER, []) || [];
+        if (!Array.isArray(bqOrder)) bqOrder = [];
+        initBuildQueueUi();
+        // first check right after login, then every 5 minutes
+        bqScheduleNext(0);
+    }
+
+    function stopBuildQueue() {
+        bqSession++;
+        if (bqTimer) { clearTimeout(bqTimer); bqTimer = null; }
+        if (bqCountdownTimer) { clearInterval(bqCountdownTimer); bqCountdownTimer = null; }
+        bqItems = [];
+        const overlay = document.getElementById('bq-overlay');
+        if (overlay) overlay.classList.remove('show');
+        const t = document.getElementById('bq-toast');
+        if (t) t.classList.remove('show');
     }
 
     // ===== Main Menu Dashboard (Fix 75) =====
@@ -1434,6 +1786,9 @@ document.addEventListener('DOMContentLoaded', () => {
             clearInterval(menuDashboardRefreshInterval);
             menuDashboardRefreshInterval = null;
         }
+
+        // Fix 132: stop the Build Queue popup + its 5-minute timer on logout.
+        stopBuildQueue();
 
         // Fix 88 follow-up (2026-09-03, fifth round): stop the urgent
         // Client Support alert poll on logout too, for the same reason as
