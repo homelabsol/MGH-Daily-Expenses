@@ -12708,7 +12708,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadEmployeeRates() {
         if (!employeeRatesTableBody) return;
-        employeeRatesTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        employeeRatesTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
@@ -12717,12 +12717,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (result.status !== 'success') {
-                employeeRatesTableBody.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load employees.'}</td></tr>`;
+                employeeRatesTableBody.innerHTML = `<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${result.message || 'Failed to load employees.'}</td></tr>`;
                 return;
             }
             const employees = result.data || [];
             if (employees.length === 0) {
-                employeeRatesTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">No employee accounts found.</td></tr>';
+                employeeRatesTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">No employee accounts found.</td></tr>';
                 return;
             }
             const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
@@ -12745,7 +12745,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }).join('');
         } catch (error) {
             console.error('Error loading employee rates:', error);
-            employeeRatesTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            employeeRatesTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
         }
     }
 
@@ -12806,6 +12806,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const otRequestDateInput = document.getElementById('ot-request-date');
     const otRequestBranchInput = document.getElementById('ot-request-branch');
     const otRequestReasonInput = document.getElementById('ot-request-reason');
+    const otRequestHoursInput = document.getElementById('ot-request-hours');
     const otRequestForm = document.getElementById('ot-request-form');
     const otRequestStatusMessage = document.getElementById('ot-request-status-message');
     const otPendingApprovalsSection = document.getElementById('ot-pending-approvals-section');
@@ -12824,7 +12825,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadPendingOtRequests() {
         if (!otPendingApprovalsTableBody) return;
-        otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
@@ -12833,12 +12834,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (result.status !== 'success') {
-                otPendingApprovalsTableBody.innerHTML = `<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${otEscapeHtml(result.message) || 'Failed to load requests.'}</td></tr>`;
+                otPendingApprovalsTableBody.innerHTML = `<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${otEscapeHtml(result.message) || 'Failed to load requests.'}</td></tr>`;
                 return;
             }
             const requestsList = result.data || [];
             if (requestsList.length === 0) {
-                otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">Walang pending OT request sa ngayon.</td></tr>';
+                otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">Walang pending OT request sa ngayon.</td></tr>';
                 return;
             }
             const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
@@ -12849,8 +12850,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="${cellStyle}">${otEscapeHtml(reqRow.date)}</td>
                         <td style="${cellStyle} font-weight: 500;">${otEscapeHtml(reqRow.employee)}</td>
                         <td style="${cellStyle}">${otEscapeHtml(reqRow.branch)}</td>
+                        <td style="${cellStyle}">${otEscapeHtml(String(reqRow.requestedHours === undefined ? '' : reqRow.requestedHours))}</td>
                         <td style="${cellStyle}">${otEscapeHtml(reqRow.reason)}</td>
                         <td style="padding: 8px 10px; white-space: nowrap;">
+                            <input type="number" class="ot-approved-hours" min="0.5" max="24" step="0.5" value="${otEscapeHtml(String(reqRow.requestedHours === undefined ? '' : reqRow.requestedHours))}" placeholder="hrs" title="Approved OT hours (puwede mong baguhin)" style="width: 58px; padding: 4px 6px; margin-right: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: inherit;">
                             <button type="button" class="btn-ot-decide" data-row-index="${rowIndex}" data-decision="Approved" style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 4px;"><i class="fas fa-check"></i> Approve</button>
                             <button type="button" class="btn-ot-decide" data-row-index="${rowIndex}" data-decision="Rejected" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-times"></i> Reject</button>
                         </td>
@@ -12859,7 +12862,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }).join('');
         } catch (error) {
             console.error('Error loading pending OT requests:', error);
-            otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
         }
     }
 
@@ -12871,6 +12874,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (otRequestDateInput) otRequestDateInput.value = todayDateStr();
             if (otRequestBranchInput) otRequestBranchInput.value = sessionStorage.getItem('userStore') || '';
             if (otRequestReasonInput) otRequestReasonInput.value = '';
+            if (otRequestHoursInput) otRequestHoursInput.value = '';
             const isApprover = otIsApproverRole();
             if (otPendingApprovalsSection) otPendingApprovalsSection.classList.toggle('hidden', !isApprover);
             if (isApprover) loadPendingOtRequests();
@@ -12892,6 +12896,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const date = otRequestDateInput ? otRequestDateInput.value : '';
             const branch = otRequestBranchInput ? otRequestBranchInput.value : '';
             const reason = otRequestReasonInput ? otRequestReasonInput.value.trim() : '';
+            const otHoursValue = otRequestHoursInput ? parseFloat(otRequestHoursInput.value) : NaN;
 
             if (!employee) {
                 showMessage(otRequestStatusMessage, 'Kailangan naka-login para maka-file ng OT request.', 'error');
@@ -12909,6 +12914,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 showMessage(otRequestStatusMessage, 'Ilagay ang Reason para sa OT request.', 'error');
                 return;
             }
+            if (isNaN(otHoursValue) || otHoursValue <= 0) {
+                showMessage(otRequestStatusMessage, 'Ilagay kung ilang oras ang OT (hal. 2).', 'error');
+                return;
+            }
 
             if (btnText) btnText.classList.add('hidden');
             if (spinner) spinner.classList.remove('hidden');
@@ -12918,12 +12927,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: 'submitOtRequest', employee, date, branch, reason })
+                    body: JSON.stringify({ action: 'submitOtRequest', employee, date, branch, reason, hours: otHoursValue })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
                     showMessage(otRequestStatusMessage, 'Naisumite na ang OT request mo. Aabisuhan ang mga approver sa Telegram.', 'success');
                     if (otRequestReasonInput) otRequestReasonInput.value = '';
+                    if (otRequestHoursInput) otRequestHoursInput.value = '';
                     if (otIsApproverRole()) loadPendingOtRequests();
                 } else {
                     showMessage(otRequestStatusMessage, `Error: ${result.message || 'Hindi na-submit ang request.'}`, 'error');
@@ -12947,6 +12957,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const decision = decideBtn.getAttribute('data-decision');
             const decidedBy = sessionStorage.getItem('loggedInUser') || '';
             const tr = decideBtn.closest('tr');
+            const approvedHoursInput = tr ? tr.querySelector('.ot-approved-hours') : null;
+            const approvedHours = approvedHoursInput ? parseFloat(approvedHoursInput.value) : NaN;
+            if (decision === 'Approved' && (isNaN(approvedHours) || approvedHours <= 0)) {
+                showMessage(otPendingApprovalsStatusMessage, 'Ilagay muna ang approved OT hours (hal. 2) bago mag-Approve.', 'error');
+                return;
+            }
             const rowBtns = tr ? tr.querySelectorAll('.btn-ot-decide') : [];
             const originalHtml = decideBtn.innerHTML;
             rowBtns.forEach(b => { b.disabled = true; });
@@ -12955,7 +12971,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ action: 'decideOtRequest', rowIndex, decision, decidedBy })
+                    body: JSON.stringify({ action: 'decideOtRequest', rowIndex, decision, decidedBy, approvedHours: decision === 'Approved' ? approvedHours : undefined })
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
@@ -13954,6 +13970,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return parts.map((x) => `<div style="font-size:${small}; opacity:0.7;">${x}</div>`).join('');
     }
 
+    // Fix 129: when the day HAS OT hours but no Approved OT Request, say so under the 0.
+    function payslipFormatOtCell(d, small) {
+        const paid = Number(d.otHours) || 0;
+        const potential = Number(d.otPotential) || 0;
+        const over = Number(d.otOverLimit) || 0;
+        if (d.otApproved && over > 0) {
+            return `${paid}<div style="font-size:${small}; opacity:0.85; color:#f59e0b;">approved ${d.otApprovedHours} hrs lang -- lampas ${over} hrs hindi isinama</div>`;
+        }
+        if (!d.otApproved && potential > 0) {
+            return `${paid}<div style="font-size:${small}; opacity:0.7; color:#f59e0b;">may ${potential} hrs OT -- walang Approved OT request</div>`;
+        }
+        return `${paid}`;
+    }
+
     // Late Deduction display helper (2026-08-30): shows the logged Late
     // duration + its peso deduction so Marvin can see WHY a day's Base Pay
     // differs from a plain hours-based proration, instead of it just
@@ -14409,7 +14439,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="padding: 7px 9px;">${payslipFormatHoursCell(d, '10px')}</td>
                         <td style="padding: 7px 9px;">${holidayLabel}</td>
                         <td style="padding: 7px 9px;">${payslipFormatLateCell(d)}${payslipFormatLateExtra(d, '10px')}</td>
-                        <td style="padding: 7px 9px;">${d.otHours}</td>
+                        <td style="padding: 7px 9px;">${payslipFormatOtCell(d, '10px')}</td>
                         <td style="padding: 7px 9px;">${payslipFormatPeso(d.otPay)}</td>
                         <td style="padding: 7px 9px;">${payslipFormatPeso(d.basePay)}</td>
                         <td style="padding: 7px 9px; font-weight: 600;">${payslipFormatPeso(d.dayTotal)}</td>
@@ -18791,7 +18821,7 @@ document.addEventListener('DOMContentLoaded', () => {
             btnText.classList.add('hidden');
             spinner.classList.remove('hidden');
             
-            tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">Loading...</td></tr>';
 
             try {
                 const formData = {
@@ -18820,7 +18850,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     
                     if (filteredData.length === 0) {
-                         tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this filter.</td></tr>';
+                         tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this filter.</td></tr>';
                          if (surveyChartInstance) { surveyChartInstance.destroy(); }
                          return;
                     }
@@ -18830,12 +18860,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.renderSurveyReport();
 
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this date.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this date.</td></tr>';
                     if (surveyChartInstance) { surveyChartInstance.destroy(); }
                 }
             } catch (error) {
                 console.error('Error fetching survey report:', error);
-                tbody.innerHTML = '<tr><td colspan="5" style="padding: 15px; text-align: center; color: #ef4444;">Error fetching data. Please try again.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error fetching data. Please try again.</td></tr>';
                 if (surveyChartInstance) { surveyChartInstance.destroy(); }
             } finally {
                 submitBtn.disabled = false;
