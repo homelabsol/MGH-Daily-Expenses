@@ -14336,6 +14336,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!d.otApproved && potential > 0) {
             return `${paid}<div style="font-size:${small}; opacity:0.7; color:#f59e0b;">may ${potential} hrs OT -- walang Approved OT request</div>`;
         }
+        // Fix 132: show that approved OT includes the early-in time (before the shift start)
+        const earlyH = Number(d.otEarlyHours) || 0;
+        const endH = Number(d.otEndHours) || 0;
+        if (d.otApproved && paid > 0 && earlyH > 0) {
+            return `${paid}<div style="font-size:${small}; opacity:0.75;">early in ${earlyH} + after shift ${endH}</div>`;
+        }
         return `${paid}`;
     }
 
