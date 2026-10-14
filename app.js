@@ -547,12 +547,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ===== Build Queue popup (Fix 132) =====
     // Source = the same Customer Information Sheet rows the MarvsPCStufz
-    // dashboard card uses (column 23 Parts Releasing, blank == "Pending",
-    // anything but "Item Released" is still to build). Default order is
+    // dashboard card uses (Fix 134: column S Build Status; anything but "Completed" is still to build). Default order is
     // oldest order first; techs can re-prioritise (drag / up-down) and
     // "Completed" hides the customer from this popup only. The popup
-    // re-fetches every 5 minutes, so a customer whose Parts Releasing became
-    // "Item Released" in the sheet also disappears by itself.
+    // re-fetches every 5 minutes, so a customer whose Build Status became
+    // "Completed" in the sheet also disappears by itself.
     function bqEligible() {
         const role = sessionStorage.getItem('userRole') || '';
         const store = sessionStorage.getItem('userStore') || '';
@@ -587,13 +586,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function buildBuildQueueItems(rows) {
-        const incomplete = (rows || []).filter(row => (row[23] || 'Pending') !== 'Item Released');
+        // Fix 134: source column is now Build Status (column S, index 18) -- anything
+        // that is not "Completed" (blank/Pending, "Ongoing Build", ...) is still to build.
+        const incomplete = (rows || []).filter(row => !String(row[18] || '').toLowerCase().includes('complet'));
         const items = incomplete.map(row => ({
             key: bqRowKey(row),
             name: row[1] || '(no name)',
             builds: Number(row[4]) || 1,
             date: row[0] || '',
-            status: row[23] || 'Pending'
+            status: String(row[18] || '').trim() || 'Pending'
         }));
         const liveKeys = {};
         items.forEach(it => { liveKeys[it.key] = true; });
@@ -618,6 +619,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return result;
     }
 
+    function bqIsOngoing(status) {
+        return String(status || '').toLowerCase().includes('ongoing');
+    }
+
     function bqIsOpen() {
         const ov = document.getElementById('bq-overlay');
         return !!(ov && ov.classList.contains('show'));
@@ -631,7 +636,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             list.innerHTML = bqItems.map((c, i) => {
                 const k = bqEsc(c.key);
-                const pill = c.status === 'Partially Released' ? 'partial' : 'pending';
+                const pill = bqIsOngoing(c.status) ? 'partial' : 'pending';
                 return '<div class="bq-row' + (i === 0 ? ' next' : '') + '" draggable="true" data-key="' + k + '">' +
                     '<span class="bq-handle" title="I-drag para ilipat">⋮⋮</span>' +
                     '<span class="bq-rank">' + (i + 1) + '</span>' +
@@ -646,7 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }).join('');
         }
         const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-        const pending = bqItems.filter(c => c.status !== 'Partially Released').length;
+        const pending = bqItems.filter(c => !bqIsOngoing(c.status)).length;
         setText('bq-c-count', bqItems.length);
         setText('bq-c-builds', bqItems.reduce((s, c) => s + c.builds, 0));
         setText('bq-c-pending', pending);

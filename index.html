@@ -6234,7 +6234,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=195"></script>
+    <script src="app.js?v=196"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -6806,7 +6806,7 @@
 
     <!-- Fix 132: Build Queue popup (MarvsPCStufz). View-only: built from the same
          Customer Information Sheet rows the MarvsPCStufz dashboard card reads
-         (Parts Releasing not "Item Released"). Nothing here is written back to
+         (Build Status column S not "Completed"). Nothing here is written back to
          any sheet. Opened automatically every 5 minutes (app.js) or by the
          "Build Queue" button on the MarvsPCStufz dashboard card. -->
     <div class="bq-overlay" id="bq-overlay" role="dialog" aria-modal="true" aria-labelledby="bq-title">
@@ -6823,7 +6823,7 @@
                 <span class="bq-chip"><b id="bq-c-count">0</b> customers</span>
                 <span class="bq-chip"><b id="bq-c-builds">0</b> builds</span>
                 <span class="bq-chip red"><b id="bq-c-pending">0</b> Pending</span>
-                <span class="bq-chip amber"><b id="bq-c-partial">0</b> Partially Released</span>
+                <span class="bq-chip amber"><b id="bq-c-partial">0</b> Ongoing Build</span>
             </div>
             <div class="bq-hint">I-drag ang <b>⋮⋮</b> o gamitin ang <b>▲ ▼</b> para ilipat ang priority. Pindutin ang <b>Completed</b> kapag tapos na ang build.</div>
             <div class="bq-list" id="bq-list"></div>
