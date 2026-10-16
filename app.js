@@ -905,13 +905,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function dashSetDelta(el, pct) {
         if (!el) return;
         if (pct > 0) {
-            el.textContent = `▲ ${pct}% vs last week`;
+            el.textContent = `▲ ${pct}% vs prev 7 days`;
             el.className = 'delta up';
         } else if (pct < 0) {
-            el.textContent = `▼ ${Math.abs(pct)}% vs last week`;
+            el.textContent = `▼ ${Math.abs(pct)}% vs prev 7 days`;
             el.className = 'delta down';
         } else {
-            el.textContent = 'No change vs last week';
+            el.textContent = 'No change vs prev 7 days';
             el.className = 'delta';
         }
     }
@@ -1000,7 +1000,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const end = new Date();
         const start = new Date();
-        start.setDate(end.getDate() - 13); // 14-day window: 7 prior days + 7 current days
+        // Fix 135: the chart/stats use the 14 COMPLETE days ending YESTERDAY
+        // (today is still being logged, so counting it made "this week" look
+        // ~half a day short vs last week). The request still ends today
+        // (footTrafficEnd) because the backend also uses that date for the
+        // Customer Information Sheet cards; today's rows are simply not part
+        // of the 14 days rendered below.
+        start.setDate(end.getDate() - 14); // 14 complete days: today-14 .. yesterday
         const footTrafficStart = dashFmtDate(start);
         const footTrafficEnd = dashFmtDate(end);
 
@@ -1074,6 +1080,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
+            const subEl = document.getElementById('dash-traffic-sub');
+            if (subEl) subEl.textContent = `Foot traffic per branch, ${dashShortLabel(days[0])} - ${dashShortLabel(days[13])} (kumpleto na ang araw, hindi kasama ang ngayon)`;
             const prev7 = days.slice(0, 7);
             const last7 = days.slice(7);
             const sumRange = (branch, range) => range.reduce((acc, d) => acc + sums[branch][d], 0);
@@ -1105,7 +1113,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     insightEl.className = 'insight-bar ' + (isUp ? 'positive' : 'negative');
                     const arrow = isUp ? '▲' : '▼';
                     const driver = Math.abs(parangPct) >= Math.abs(concepcionPct) ? 'MGH Parang' : 'MGH Concepcion';
-                    insightEl.innerHTML = `<span class="arrow">${arrow}</span><span>Overall foot traffic is <b>${isUp ? 'up' : 'down'} ${Math.abs(totalPct)}%</b> this week vs last week (${thisWeekTotal} vs ${lastWeekTotal}) — mostly driven by ${driver}.</span>`;
+                    insightEl.innerHTML = `<span class="arrow">${arrow}</span><span>Overall foot traffic is <b>${isUp ? 'up' : 'down'} ${Math.abs(totalPct)}%</b> in the last 7 days (${dashShortLabel(last7[0])} - ${dashShortLabel(last7[6])}) vs the 7 days before (${thisWeekTotal} vs ${lastWeekTotal}) — mostly driven by ${driver}.</span>`;
                 }
             }
 
