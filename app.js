@@ -238,6 +238,19 @@ document.addEventListener('DOMContentLoaded', () => {
     let bqToastTimer = null;
     let bqDragKey = null;
 
+
+    // Fix 136: hourly Foot Traffic (Daily Survey) lapse reminder -- state declared
+    // above the auto-login check like the other timers (showApp() can run on
+    // page load). For MGH Parang / MGH Concepcion staff only.
+    const FT_ALERT_MS = 15 * 60 * 1000;   // re-check / re-remind every 15 minutes
+    const FT_GRACE_MIN = 15;              // an hour slot is "missed" 15 min after it ended
+    const FT_CLOSE_HOUR = 22;             // no reminders for slots ending after 10 PM
+    const FT_NOENTRY_HOUR = 12;           // no entry at all today -> remind from 12 NN
+    let ftTimer = null;
+    let ftSession = 0;
+    let ftUiReady = false;
+    let ftMissing = [];
+
     // Check if user is already logged in
     const sessionUser = sessionStorage.getItem('loggedInUser');
     if (sessionUser) {
@@ -543,6 +556,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Fix 132: Build Queue popup -- MarvsPCStufz card viewers only
         // (same store gate as the card), never for Rider.
         startBuildQueue();
+
+        // Fix 136: hourly Foot Traffic input reminder (branch staff only)
+        startFootTrafficAlert();
     }
 
     // ===== Build Queue popup (Fix 132) =====
@@ -874,6 +890,188 @@ document.addEventListener('DOMContentLoaded', () => {
         if (overlay) overlay.classList.remove('show');
         const t = document.getElementById('bq-toast');
         if (t) t.classList.remove('show');
+    }
+
+
+    // ===== Foot Traffic (Daily Survey) hourly lapse reminder (Fix 136) =====
+    // Marvin: the Daily Survey is meant to be logged HOURLY; "kapag meron kang
+    // nakitang walang input ex 10:00am to 11:00am ... mag alert ka na walang
+    // input na foot traffic ng ganong oras at need nila lagyan". Rules (locked
+    // via AskUserQuestion): only the staff of that branch (userStore ===
+    // 'MGH Parang' / 'MGH Concepcion'), re-check + re-remind every 15 minutes
+    // while a lapse exists, an hour slot H:00-H:59 counts as missed once it is
+    // 15 minutes past. Slots are judged from the first entry of today up to the
+    // last finished hour (no entry at all today -> one reminder from 12 NN).
+    // View-only reminder: nothing is written anywhere.
+    function ftBranch() {
+        const store = sessionStorage.getItem('userStore') || '';
+        const role = sessionStorage.getItem('userRole') || '';
+        if (role === 'Rider') return '';
+        return (store === 'MGH Parang' || store === 'MGH Concepcion') ? store : '';
+    }
+
+    // Hour (0-23) of a Daily Survey Time cell: "10:30", "10:30:00", "1899-12-30T10:30:00.000Z",
+    // "10:30 AM"/"2:05 PM". Same "text after the T / space" convention the Survey Report uses.
+    function ftHourOf(rowTime) {
+        if (rowTime === null || rowTime === undefined || rowTime === '') return null;
+        const raw = String(rowTime).trim();
+        const ap = raw.match(/(am|pm)\s*$/i);
+        let t = raw;
+        if (t.includes('T')) t = t.split('T')[1];
+        else if (t.includes(' ') && !ap) t = t.split(' ')[1];
+        const m = String(t || '').match(/(\d{1,2}):(\d{2})/);
+        if (!m) return null;
+        let h = parseInt(m[1], 10);
+        if (isNaN(h) || h > 23) return null;
+        if (ap) {
+            const pm = ap[1].toLowerCase() === 'pm';
+            if (pm && h < 12) h += 12;
+            if (!pm && h === 12) h = 0;
+        }
+        return h;
+    }
+
+    function ftSlotLabel(h) {
+        const f = (x) => {
+            const hh = x % 24;
+            const apm = hh >= 12 ? 'PM' : 'AM';
+            const h12 = (hh % 12) || 12;
+            return h12 + ':00 ' + apm;
+        };
+        return f(h) + ' - ' + f(h + 1);
+    }
+
+    // rows = today's Daily Survey rows of this branch; now = Date. Returns the list of missed hours.
+    function ftComputeMissingHours(rows, now) {
+        const have = {};
+        (rows || []).forEach(r => {
+            const h = ftHourOf(r[2]);
+            if (h !== null) have[h] = true;
+        });
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        const lastDue = Math.floor((nowMin - FT_GRACE_MIN) / 60) - 1; // last slot hour that is already overdue
+        const hours = Object.keys(have).map(Number);
+        if (!hours.length) {
+            // nothing logged at all today: remind (as one lapse) from 12 NN
+            if (now.getHours() >= FT_NOENTRY_HOUR) return [{ none: true }];
+            return [];
+        }
+        const first = Math.min.apply(null, hours);
+        const lastSlot = Math.min(lastDue, FT_CLOSE_HOUR - 1);
+        const missing = [];
+        for (let h = first; h <= lastSlot; h++) {
+            if (!have[h]) missing.push(h);
+        }
+        return missing;
+    }
+
+    function ftRender() {
+        const list = document.getElementById('ft-alert-list');
+        const branchEl = document.getElementById('ft-alert-branch');
+        if (branchEl) branchEl.textContent = ftBranch();
+        if (!list) return;
+        if (ftMissing.length === 1 && ftMissing[0] && ftMissing[0].none) {
+            list.innerHTML = '<li>Wala pang na-input na foot traffic ngayong araw.</li>';
+        } else {
+            list.innerHTML = ftMissing.map(h => '<li><b>' + bqEsc(ftSlotLabel(h)) + '</b></li>').join('');
+        }
+    }
+
+    function ftIsOpen() {
+        const ov = document.getElementById('ft-alert-overlay');
+        return !!(ov && ov.classList.contains('show'));
+    }
+
+    function openFootTrafficAlert() {
+        initFootTrafficAlertUi();
+        const ov = document.getElementById('ft-alert-overlay');
+        if (!ov) return;
+        ftRender();
+        ov.classList.add('show');
+    }
+
+    function closeFootTrafficAlert() {
+        const ov = document.getElementById('ft-alert-overlay');
+        if (ov) ov.classList.remove('show');
+    }
+
+    function initFootTrafficAlertUi() {
+        if (ftUiReady) return;
+        const ov = document.getElementById('ft-alert-overlay');
+        if (!ov) return;
+        ftUiReady = true;
+        const later = document.getElementById('ft-alert-later');
+        if (later) later.addEventListener('click', closeFootTrafficAlert);
+        const x = document.getElementById('ft-alert-x');
+        if (x) x.addEventListener('click', closeFootTrafficAlert);
+        const go = document.getElementById('ft-alert-go');
+        if (go) go.addEventListener('click', () => {
+            const firstMissing = (ftMissing.length && typeof ftMissing[0] === 'number') ? ftMissing[0] : null;
+            closeFootTrafficAlert();
+            const btn = document.getElementById('menu-survey-btn');
+            if (btn) btn.click();
+            const branchSel = document.getElementById('survey-branch');
+            if (branchSel) branchSel.value = ftBranch();
+            const timeEl = document.getElementById('survey-time');
+            if (timeEl && firstMissing !== null) timeEl.value = String(firstMissing).padStart(2, '0') + ':00';
+        });
+    }
+
+    function ftSchedule(ms) {
+        if (ftTimer) clearTimeout(ftTimer);
+        const session = ftSession;
+        ftTimer = setTimeout(() => { if (session === ftSession) ftTick(); }, ms);
+    }
+
+    async function ftTick() {
+        const session = ftSession;
+        const branch = ftBranch();
+        if (!branch) return;
+        let rows = [];
+        try {
+            const todayStr = dashFmtDate(new Date());
+            const result = await postToScriptWithRetry({
+                action: 'getExpenseRecords',
+                sheetName: 'Daily Survey',
+                startDate: todayStr,
+                endDate: todayStr,
+                branch: branch,
+                noCache: true
+            });
+            if (!result || result.status !== 'success') throw new Error((result && result.message) || 'Daily Survey fetch failed');
+            rows = (result.data || []).filter(r => String(r[1] || '').trim() === branch && String(r[0] || '').split('T')[0].split(' ')[0] === todayStr);
+        } catch (err) {
+            console.error('Foot traffic reminder check failed:', err);
+            if (session === ftSession) ftSchedule(60 * 1000);
+            return;
+        }
+        if (session !== ftSession) return;
+        ftMissing = ftComputeMissingHours(rows, new Date());
+        if (!ftMissing.length) {
+            if (ftIsOpen()) closeFootTrafficAlert();
+        } else if (ftIsOpen()) {
+            ftRender();
+        } else {
+            const surveyBox = document.getElementById('daily-survey-container');
+            const surveyOpen = !!(surveyBox && !surveyBox.classList.contains('hidden'));
+            if (!document.hidden && !surveyOpen) openFootTrafficAlert();
+        }
+        ftSchedule(FT_ALERT_MS);
+    }
+
+    function startFootTrafficAlert() {
+        stopFootTrafficAlert();
+        if (!ftBranch()) return;
+        initFootTrafficAlertUi();
+        ftSchedule(0);
+    }
+
+    function stopFootTrafficAlert() {
+        ftSession++;
+        if (ftTimer) { clearTimeout(ftTimer); ftTimer = null; }
+        ftMissing = [];
+        const ov = document.getElementById('ft-alert-overlay');
+        if (ov) ov.classList.remove('show');
     }
 
     // ===== Main Menu Dashboard (Fix 75) =====
@@ -1802,6 +2000,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Fix 132: stop the Build Queue popup + its 5-minute timer on logout.
         stopBuildQueue();
+        stopFootTrafficAlert(); // Fix 136
 
         // Fix 88 follow-up (2026-09-03, fifth round): stop the urgent
         // Client Support alert poll on logout too, for the same reason as
@@ -7472,7 +7671,8 @@ document.addEventListener('DOMContentLoaded', () => {
             hideAllContainers();
             dailySurveyContainer.classList.remove('hidden');
             document.getElementById('survey-date').valueAsDate = new Date();
-            document.getElementById('report-survey-date').valueAsDate = new Date();
+            const reportSurveyDateEl = document.getElementById('report-survey-date'); // Fix 136: element no longer exists -> was throwing on every open
+            if (reportSurveyDateEl) reportSurveyDateEl.valueAsDate = new Date();
         });
     }
 

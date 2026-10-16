@@ -6234,7 +6234,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=197"></script>
+    <script src="app.js?v=198"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
@@ -6834,6 +6834,29 @@
         </div>
     </div>
     <div class="bq-toast" id="bq-toast"><span id="bq-toast-msg"></span><button type="button" id="bq-toast-undo">Undo</button></div>
+
+
+    <!-- Fix 136: hourly Foot Traffic (Daily Survey) reminder popup for MGH Parang / MGH Concepcion
+         staff -- shown by app.js when an hour slot has no Daily Survey entry. View-only reminder. -->
+    <div class="bq-overlay ft-alert-overlay" id="ft-alert-overlay" role="alertdialog" aria-modal="true" aria-labelledby="ft-alert-title" style="z-index: 9992;">
+        <div class="bq-modal" style="width: min(460px, 100%);">
+            <div class="bq-head">
+                <div class="bq-icon" style="background: rgba(239,68,68,.2);">⚠️</div>
+                <div>
+                    <h2 id="ft-alert-title">Walang Foot Traffic Input</h2>
+                    <p class="bq-sub"><span id="ft-alert-branch"></span> &middot; kailangan i-input sa Daily Survey</p>
+                </div>
+                <button type="button" class="bq-close-x" id="ft-alert-x" aria-label="Close" title="Mamaya na">&times;</button>
+            </div>
+            <div class="bq-hint" style="padding-top: 14px;">Walang na-input na foot traffic sa mga oras na ito. Pakilagyan po (piliin sa <b>Time</b> ang oras na kulang):</div>
+            <ul id="ft-alert-list" style="margin: 0; padding: 4px 18px 14px 38px; line-height: 1.8; color: var(--text-main); max-height: 40vh; overflow-y: auto;"></ul>
+            <div class="bq-foot">
+                <span class="bq-next-pop">Lalabas ulit kada 15 minuto hangga't kulang</span>
+                <button type="button" class="bq-close-btn" id="ft-alert-later">Mamaya</button>
+                <button type="button" class="bq-done-btn" id="ft-alert-go" style="margin-left: 0;">Mag-input ngayon</button>
+            </div>
+        </div>
+    </div>
 
     <!-- AI Support Chatbot: global floating button, visible on every screen once logged in.
          Not inside a .container div on purpose so hideAllContainers() (used for every
