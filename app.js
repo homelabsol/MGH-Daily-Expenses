@@ -13393,7 +13393,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadPendingOtRequests() {
         if (!otPendingApprovalsTableBody) return;
-        otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+        const canDecide = otIsApproverRole();
+        const colCount = canDecide ? 6 : 5;
+        // Staff (non-approvers) get a view-only list: no Action column, no hours input, no Approve/Reject.
+        const actionTh = document.getElementById('ot-pending-action-th');
+        if (actionTh) actionTh.classList.toggle('hidden', !canDecide);
+        const viewOnlyNote = document.getElementById('ot-pending-viewonly-note');
+        if (viewOnlyNote) viewOnlyNote.classList.toggle('hidden', canDecide);
+        otPendingApprovalsTableBody.innerHTML = `<tr><td colspan="${colCount}" style="padding: 15px; text-align: center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>`;
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
@@ -13402,12 +13409,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const result = await response.json();
             if (result.status !== 'success') {
-                otPendingApprovalsTableBody.innerHTML = `<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${otEscapeHtml(result.message) || 'Failed to load requests.'}</td></tr>`;
+                otPendingApprovalsTableBody.innerHTML = `<tr><td colspan="${colCount}" style="padding: 15px; text-align: center; color: #ef4444;">Error: ${otEscapeHtml(result.message) || 'Failed to load requests.'}</td></tr>`;
                 return;
             }
             const requestsList = result.data || [];
             if (requestsList.length === 0) {
-                otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">Walang pending OT request sa ngayon.</td></tr>';
+                otPendingApprovalsTableBody.innerHTML = `<tr><td colspan="${colCount}" style="padding: 15px; text-align: center; color: var(--text-muted);">Walang pending OT request sa ngayon.</td></tr>`;
                 return;
             }
             const cellStyle = 'padding: 8px 10px; word-break: break-word; overflow-wrap: break-word;';
@@ -13420,17 +13427,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td style="${cellStyle}">${otEscapeHtml(reqRow.branch)}</td>
                         <td style="${cellStyle}">${otEscapeHtml(String(reqRow.requestedHours === undefined ? '' : reqRow.requestedHours))}</td>
                         <td style="${cellStyle}">${otEscapeHtml(reqRow.reason)}</td>
+${canDecide ? `
                         <td style="padding: 8px 10px; white-space: nowrap;">
                             <input type="number" class="ot-approved-hours" min="0.5" max="24" step="0.5" value="${otEscapeHtml(String(reqRow.requestedHours === undefined ? '' : reqRow.requestedHours))}" placeholder="hrs" title="Approved OT hours (puwede mong baguhin)" style="width: 58px; padding: 4px 6px; margin-right: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: inherit;">
                             <button type="button" class="btn-ot-decide" data-row-index="${rowIndex}" data-decision="Approved" style="background: rgba(34,197,94,0.2); color: #22c55e; border: 1px solid rgba(34,197,94,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em; margin-right: 4px;"><i class="fas fa-check"></i> Approve</button>
                             <button type="button" class="btn-ot-decide" data-row-index="${rowIndex}" data-decision="Rejected" style="background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-times"></i> Reject</button>
                         </td>
+`: ''}
                     </tr>
                 `;
             }).join('');
         } catch (error) {
             console.error('Error loading pending OT requests:', error);
-            otPendingApprovalsTableBody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>';
+            otPendingApprovalsTableBody.innerHTML = `<tr><td colspan="${colCount}" style="padding: 15px; text-align: center; color: #ef4444;">Network error. Please try again.</td></tr>`;
         }
     }
 
@@ -13443,9 +13452,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (otRequestBranchInput) otRequestBranchInput.value = sessionStorage.getItem('userStore') || '';
             if (otRequestReasonInput) otRequestReasonInput.value = '';
             if (otRequestHoursInput) otRequestHoursInput.value = '';
-            const isApprover = otIsApproverRole();
-            if (otPendingApprovalsSection) otPendingApprovalsSection.classList.toggle('hidden', !isApprover);
-            if (isApprover) loadPendingOtRequests();
+            // Everyone can see the pending list; only approvers get the Approve/Reject controls.
+            if (otPendingApprovalsSection) otPendingApprovalsSection.classList.remove('hidden');
+            loadPendingOtRequests();
         });
     }
 
@@ -13502,7 +13511,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     showMessage(otRequestStatusMessage, 'Naisumite na ang OT request mo. Aabisuhan ang mga approver sa Telegram.', 'success');
                     if (otRequestReasonInput) otRequestReasonInput.value = '';
                     if (otRequestHoursInput) otRequestHoursInput.value = '';
-                    if (otIsApproverRole()) loadPendingOtRequests();
+                    loadPendingOtRequests();
                 } else {
                     showMessage(otRequestStatusMessage, `Error: ${result.message || 'Hindi na-submit ang request.'}`, 'error');
                 }

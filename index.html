@@ -742,7 +742,8 @@
             </form>
             <div id="ot-request-status-message" class="hidden" style="margin-top: 15px;"></div>
 
-            <!-- Gated to Supervisor/Manager/Owner in app.js (otIsApproverRole) --
+            <!-- Visible to everyone (view-only for staff). Action column + Approve/Reject are rendered only
+                 for Supervisor/Manager/Owner in app.js (otIsApproverRole) --
                  the backend re-checks the deciding user's role independently on
                  every decideOtRequest call, so this client-side hide is a UX
                  convenience only, never the real security boundary. -->
@@ -752,6 +753,7 @@
                     <h2 style="margin: 0;">Pending Approvals</h2>
                     <button type="button" id="btn-ot-requests-refresh" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); color: #cbd5e1; border-radius: 6px; padding: 6px 12px; font-size: 0.8em; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;"><i class="fas fa-rotate"></i> Refresh</button>
                 </div>
+                <p id="ot-pending-viewonly-note" class="hidden" style="margin: 0 0 10px 0; font-size: 0.8em; color: var(--text-muted);"><i class="fas fa-eye"></i> View-only: listahan ng mga OT request na naghihintay pa ng approval. Supervisor/Manager/Owner lang ang puwedeng mag-approve o mag-reject.</p>
                 <div style="overflow-x: auto; border: 1px solid var(--glass-border); border-radius: 10px;">
                     <table style="width: 100%; border-collapse: collapse; font-size: 0.85em;">
                         <thead>
@@ -761,7 +763,7 @@
                                 <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Branch</th>
                                 <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">OT Hrs</th>
                                 <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Reason</th>
-                                <th style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Action</th>
+                                <th id="ot-pending-action-th" style="text-align: left; padding: 9px 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.72em; letter-spacing: 0.4px;">Action</th>
                             </tr>
                         </thead>
                         <tbody id="ot-pending-approvals-table-body">
@@ -6234,7 +6236,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=200"></script>
+    <script src="app.js?v=201"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">
