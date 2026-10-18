@@ -14547,13 +14547,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return `${paid}<div style="font-size:${small}; opacity:0.85; color:#f59e0b;">approved ${d.otApprovedHours} hrs lang -- lampas ${over} hrs hindi isinama</div>`;
         }
         if (!d.otApproved && potential > 0) {
-            return `${paid}<div style="font-size:${small}; opacity:0.7; color:#f59e0b;">may ${potential} hrs OT -- walang Approved OT request</div>`;
+            const reqNote = d.otRequestNote ? `<div style="font-size:${small}; color:#60a5fa;">${String(d.otRequestNote).replace(/</g, '&lt;')}</div>` : '';
+            return `${paid}<div style="font-size:${small}; opacity:0.7; color:#f59e0b;">may ${potential} hrs OT -- walang Approved OT request</div>${reqNote}`;
         }
         // Fix 132: show that approved OT includes the early-in time (before the shift start)
         const earlyH = Number(d.otEarlyHours) || 0;
         const endH = Number(d.otEndHours) || 0;
-        if (d.otApproved && paid > 0 && earlyH > 0) {
-            return `${paid}<div style="font-size:${small}; opacity:0.75;">early in ${earlyH} + after shift ${endH}</div>`;
+        const inShiftH = Number(d.otInShiftHours) || 0; // Fix 137: beyond the 9h/12h duty cap inside a longer shift
+        if (d.otApproved && paid > 0 && (earlyH > 0 || inShiftH > 0)) {
+            const parts = [];
+            if (earlyH > 0) parts.push(`early in ${earlyH}`);
+            if (inShiftH > 0) parts.push(`sa loob ng shift ${inShiftH}`);
+            parts.push(`after shift ${endH}`);
+            return `${paid}<div style="font-size:${small}; opacity:0.75;">${parts.join(' + ')}</div>`;
         }
         return `${paid}`;
     }
