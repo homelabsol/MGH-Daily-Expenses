@@ -13449,7 +13449,15 @@ ${canDecide ? `
             if (otRequestsContainer) otRequestsContainer.classList.remove('hidden');
             if (otRequestEmployeeInput) otRequestEmployeeInput.value = sessionStorage.getItem('loggedInUser') || '';
             if (otRequestDateInput) otRequestDateInput.value = todayDateStr();
-            if (otRequestBranchInput) otRequestBranchInput.value = sessionStorage.getItem('userStore') || '';
+            if (otRequestBranchInput) {
+                // Owner/Manager accounts may have a store value that is not one of the 3 branches
+                // (e.g. "All") -- assigning it would leave the select visibly blank, so only
+                // preselect when it matches a real option, otherwise show the placeholder.
+                const _otStore = sessionStorage.getItem('userStore') || '';
+                const _otHasOpt = Array.from(otRequestBranchInput.options).some(o => o.value === _otStore && _otStore !== '');
+                otRequestBranchInput.value = _otHasOpt ? _otStore : '';
+                if (!_otHasOpt) otRequestBranchInput.selectedIndex = 0;
+            }
             if (otRequestReasonInput) otRequestReasonInput.value = '';
             if (otRequestHoursInput) otRequestHoursInput.value = '';
             // Everyone can see the pending list; only approvers get the Approve/Reject controls.
@@ -13552,7 +13560,7 @@ ${canDecide ? `
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
-                    showMessage(otPendingApprovalsStatusMessage, decision === 'Approved' ? 'Na-approve na ang OT request.' : 'Na-reject ang OT request.', 'success');
+                    showMessage(otPendingApprovalsStatusMessage, decision === 'Approved' ? ('Na-approve na ang OT request' + (result.attendanceRecorded ? ' at naisulat sa Attendance (OTHours).' : '.')) : 'Na-reject ang OT request.', 'success');
                     loadPendingOtRequests();
                 } else {
                     showMessage(otPendingApprovalsStatusMessage, `Error: ${result.message || 'Hindi na-process ang decision.'}`, 'error');
@@ -14554,6 +14562,15 @@ ${canDecide ? `
         const over = Number(d.otOverLimit) || 0;
         if (d.otApproved && over > 0) {
             return `${paid}<div style="font-size:${small}; opacity:0.85; color:#f59e0b;">approved ${d.otApprovedHours} hrs lang -- lampas ${over} hrs hindi isinama</div>`;
+        }
+        // Fix 139: approved hours are paid in full, even the part Attendance does not show
+        const grantedExtra = Number(d.otGrantedExtra) || 0;
+        const dupReq = Number(d.otDuplicateRequests) || 0;
+        if (d.otApproved && (grantedExtra > 0 || dupReq > 0)) {
+            const lines = [];
+            if (grantedExtra > 0) lines.push(`<div style="font-size:${small}; opacity:0.85; color:#22c55e;">binayaran ang buong approved ${d.otApprovedHours} hrs (${grantedExtra} hrs ay wala sa Attendance)</div>`);
+            if (dupReq > 0) lines.push(`<div style="font-size:${small}; opacity:0.85; color:#f59e0b;">${dupReq} duplicate na approved request -- isang beses lang binilang</div>`);
+            return `${paid}${lines.join('')}`;
         }
         if (!d.otApproved && potential > 0) {
             const reqNote = d.otRequestNote ? `<div style="font-size:${small}; color:#60a5fa;">${String(d.otRequestNote).replace(/</g, '&lt;')}</div>` : '';
