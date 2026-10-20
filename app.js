@@ -13384,7 +13384,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function otIsApproverRole() {
         const role = sessionStorage.getItem('userRole') || '';
-        return role === 'Supervisor' || role === 'Manager' || role === 'Owner';
+        // Fix 142: extra OT approvers by NAME (must match OT_EXTRA_APPROVERS in the backend,
+        // which is the real check). Susan Paraiso is an RMA Admin who may approve OT.
+        const OT_EXTRA_APPROVERS = ['susan paraiso'];
+        const who = (sessionStorage.getItem('loggedInUser') || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        return role === 'Supervisor' || role === 'Manager' || role === 'Owner' || OT_EXTRA_APPROVERS.includes(who);
     }
 
     function otEscapeHtml(str) {
