@@ -244,8 +244,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // page load). For MGH Parang / MGH Concepcion staff only.
     const FT_ALERT_MS = 15 * 60 * 1000;   // re-check / re-remind every 15 minutes
     const FT_GRACE_MIN = 15;              // an hour slot is "missed" 15 min after it ended
-    const FT_CLOSE_HOUR = 22;             // no reminders for slots ending after 10 PM
+    const FT_CLOSE_HOUR = 24;             // Fix 144: branches log around the clock -> remind through 11 PM-12 AM
     const FT_NOENTRY_HOUR = 12;           // no entry at all today -> remind from 12 NN
+    // Fix 144: in July (older form behaviour) entries made 12 AM - 8 AM were often dated the PREVIOUS day.
+    // For slots on days BEFORE this date the audit accepts an early-morning entry dated either day;
+    // from this date on it is strict (calendar date + hour).
+    const SURVEY_STRICT_FROM = '2026-08-01'; // checked against the real sheet: since August the early-morning rows are dated by calendar day
+    const SURVEY_EARLY_HOURS = 8;
     let ftTimer = null;
     let ftSession = 0;
     let ftUiReady = false;
@@ -941,6 +946,155 @@ document.addEventListener('DOMContentLoaded', () => {
         return f(h) + ' - ' + f(h + 1);
     }
 
+    // ======= Fix 144: Hourly Survey Audit (Reports > Daily Survey) =======
+    // Every branch must log ONE survey per clock hour, around the clock (24 slots a day).
+    // Pure function: rows = Daily Survey rows [date, branch, time, count, loggedin]
+    // (should include the day BEFORE startDate), returns per branch / per day:
+    //  - missing hours (slots with no entry) -- for today only the hours that are already overdue
+    //  - duplicates (more than one entry in the same date + branch + hour)
+    // Legacy leniency: for days before SURVEY_STRICT_FROM a 12 AM - 8 AM slot of day C also counts as
+    // covered by an entry dated C-1 at that hour (old form pre-filled the UTC date).
+    function surveyAuditPrevDay(ds) {
+        const d = new Date(ds + 'T00:00:00');
+        d.setDate(d.getDate() - 1);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    function surveyAuditCompute(rows, startDate, endDate, branches, now) {
+        const byKey = {};
+        (rows || []).forEach(r => {
+            const h = ftHourOf(r[2]);
+            if (h === null) return;
+            const k = r[1] + '|' + r[0] + '|' + h;
+            (byKey[k] = byKey[k] || []).push({ time: String(r[2]).replace(/^'/, ''), count: r[3], by: String(r[4] || '').trim() });
+        });
+        const pad = n => String(n).padStart(2, '0');
+        const todayStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+        const nowMin = now.getHours() * 60 + now.getMinutes();
+        const lastDueToday = Math.floor((nowMin - FT_GRACE_MIN) / 60) - 1;
+
+        const days = [];
+        for (let d = new Date(startDate + 'T00:00:00'), end = new Date(endDate + 'T00:00:00'); d <= end; d.setDate(d.getDate() + 1)) {
+            days.push(d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()));
+        }
+        const result = { branches: {}, days: days };
+        branches.forEach(branch => {
+            const out = { expected: 0, covered: 0, missing: 0, duplicates: 0, perDay: [] , staffDupes: {} };
+            days.forEach(ds => {
+                if (ds > todayStr) return;
+                const lastHour = ds === todayStr ? Math.min(23, lastDueToday) : 23;
+                const entriesAt = (date, h) => byKey[branch + '|' + date + '|' + h] || [];
+                const lenient = ds < SURVEY_STRICT_FROM;
+                const coveredAt = (h) => entriesAt(ds, h).length > 0 || (lenient && h < SURVEY_EARLY_HOURS && entriesAt(surveyAuditPrevDay(ds), h).length > 0);
+                const missingHours = [];
+                for (let h = 0; h <= lastHour; h++) {
+                    out.expected++;
+                    if (coveredAt(h)) out.covered++; else { out.missing++; missingHours.push(h); }
+                }
+                // group consecutive missing hours into ranges, with who logged just before / after
+                const ranges = [];
+                missingHours.forEach(h => {
+                    const last = ranges[ranges.length - 1];
+                    if (last && last.to === h - 1) last.to = h; else ranges.push({ from: h, to: h });
+                });
+                const nameAt = (date, h) => { const e = entriesAt(date, h); return e.length ? e[e.length - 1].by : ''; };
+                ranges.forEach(rg => {
+                    rg.before = rg.from > 0 ? nameAt(ds, rg.from - 1) : nameAt(surveyAuditPrevDay(ds), 23);
+                    rg.after = rg.to < 23 ? nameAt(ds, rg.to + 1) : '';
+                });
+                const dupes = [];
+                for (let h = 0; h < 24; h++) {
+                    const e = entriesAt(ds, h);
+                    if (e.length > 1) {
+                        dupes.push({ hour: h, entries: e });
+                        out.duplicates += e.length - 1;
+                        e.slice(1).forEach(x => { const n = x.by || '(walang pangalan)'; out.staffDupes[n] = (out.staffDupes[n] || 0) + 1; });
+                    }
+                }
+                out.perDay.push({ date: ds, slots: lastHour + 1, missingHours: missingHours, ranges: ranges, dupes: dupes });
+            });
+            result.branches[branch] = out;
+        });
+        return result;
+    }
+
+    function surveyAuditRender(audit, container) {
+        if (!container) return;
+        const esc = bqEsc;
+        const branchNames = Object.keys(audit.branches);
+        const cardStyle = 'flex:1; min-width:200px; background: rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px 14px;';
+        let html = '<div style="margin: 6px 0 12px 0; font-size:0.85em; color: var(--text-muted);">Hourly audit: dapat may <b>1 survey bawat oras, 24 oras</b> (12 AM - 11 PM) sa bawat branch, at bawal ang duplicate. Ang oras ngayon ay binibilang lang kapag lampas na ng 15 minuto. Para sa mga petsang bago mag-' + SURVEY_STRICT_FROM + ', tinatanggap ang 12 AM - 8 AM na entry kahit naka-date sa nakaraang araw (luma pang date ng form).</div>';
+        html += '<div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:14px;">';
+        branchNames.forEach(b => {
+            const o = audit.branches[b];
+            const pct = o.expected ? Math.round((o.covered / o.expected) * 1000) / 10 : 100;
+            const color = (o.missing === 0 && o.duplicates === 0) ? '#22c55e' : (pct >= 90 ? '#f59e0b' : '#ef4444');
+            const staffD = Object.keys(o.staffDupes).map(n => esc(n) + ' (' + o.staffDupes[n] + ')').join(', ');
+            html += '<div style="' + cardStyle + '"><div style="font-weight:600; margin-bottom:6px;">' + esc(b) + '</div>'
+                + '<div style="font-size:1.6em; font-weight:700; color:' + color + ';">' + pct + '%</div>'
+                + '<div style="font-size:0.8em; color: var(--text-muted);">' + o.covered + ' / ' + o.expected + ' oras na may survey</div>'
+                + '<div style="font-size:0.85em; margin-top:6px;"><span style="color:' + (o.missing ? '#ef4444' : '#22c55e') + ';">Lumiban: <b>' + o.missing + '</b> oras</span> &middot; '
+                + '<span style="color:' + (o.duplicates ? '#f59e0b' : '#22c55e') + ';">Duplicate: <b>' + o.duplicates + '</b></span></div>'
+                + (staffD ? '<div style="font-size:0.75em; margin-top:4px; color: var(--text-muted);">Duplicate kay: ' + staffD + '</div>' : '')
+                + '</div>';
+        });
+        html += '</div>';
+
+        const problemRows = [];
+        let okDays = 0;
+        branchNames.forEach(b => {
+            audit.branches[b].perDay.forEach(d => {
+                if (!d.ranges.length && !d.dupes.length) { okDays++; return; }
+                problemRows.push({ branch: b, d: d });
+            });
+        });
+        problemRows.sort((x, y) => x.d.date < y.d.date ? -1 : x.d.date > y.d.date ? 1 : (x.branch < y.branch ? -1 : 1));
+        if (!problemRows.length) {
+            html += '<div style="padding:14px; text-align:center; color:#22c55e;">Kumpleto ang lahat ng oras at walang duplicate sa napiling panahon.</div>';
+        } else {
+            const th = 'padding:8px 10px; font-weight:500; text-align:left;';
+            html += '<div style="overflow-x:auto; background: rgba(0,0,0,0.2); border-radius:8px; border:1px solid rgba(255,255,255,0.05);">'
+                + '<table style="width:100%; border-collapse:collapse; font-size:0.85em;"><thead><tr style="border-bottom:1px solid rgba(255,255,255,0.1); color: var(--text-muted);">'
+                + '<th style="' + th + '">Date</th><th style="' + th + '">Branch</th><th style="' + th + '">Lumiban na oras</th><th style="' + th + '">Duplicate</th></tr></thead><tbody>';
+            problemRows.forEach(pr => {
+                const missingTxt = pr.d.ranges.map(rg => {
+                    const label = rg.from === rg.to ? ftSlotLabel(rg.from) : ftSlotLabel(rg.from).split(' - ')[0] + ' - ' + ftSlotLabel(rg.to).split(' - ')[1];
+                    const hrs = rg.to - rg.from + 1;
+                    const who = [rg.before ? 'bago: ' + esc(rg.before) : '', rg.after ? 'pagkatapos: ' + esc(rg.after) : ''].filter(Boolean).join(', ');
+                    return '<div><b style="color:#ef4444;">' + esc(label) + '</b> (' + hrs + ' oras)' + (who ? ' <span style="color: var(--text-muted); font-size:0.9em;">' + who + '</span>' : '') + '</div>';
+                }).join('') || '<span style="color:#22c55e;">&mdash;</span>';
+                const dupTxt = pr.d.dupes.map(dp => '<div><b style="color:#f59e0b;">' + esc(ftSlotLabel(dp.hour)) + '</b>: '
+                    + dp.entries.map(e => esc(e.time) + ' = ' + esc(String(e.count)) + (e.by ? ' (' + esc(e.by) + ')' : '')).join(' / ') + '</div>').join('') || '<span style="color:#22c55e;">&mdash;</span>';
+                html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05); vertical-align:top;"><td style="padding:8px 10px; white-space:nowrap;">' + esc(pr.d.date) + '</td><td style="padding:8px 10px;">' + esc(pr.branch) + '</td><td style="padding:8px 10px;">' + missingTxt + '</td><td style="padding:8px 10px;">' + dupTxt + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+            if (okDays) html += '<div style="margin-top:8px; font-size:0.8em; color: var(--text-muted);">' + okDays + ' araw/branch ay kumpleto at walang duplicate (hindi na nakalista).</div>';
+        }
+        container.innerHTML = html;
+    }
+
+    async function surveyAuditRun(startDate, endDate, selectedBranch) {
+        const panel = document.getElementById('survey-audit-panel');
+        if (!panel) return;
+        panel.innerHTML = '<div style="padding:12px; text-align:center; color: var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Sinusuri ang hourly survey...</div>';
+        try {
+            const from = surveyAuditPrevDay(startDate); // day before: night-shift entries dated the previous day
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify({ action: 'getExpenseRecords', sheetName: 'Daily Survey', startDate: from, endDate: endDate, branch: 'All', noCache: true })
+            });
+            const result = await response.json();
+            if (result.status !== 'success') { panel.innerHTML = '<div style="padding:12px; color:#ef4444;">Hindi ma-load ang data para sa audit.</div>'; return; }
+            const branches = (selectedBranch && selectedBranch !== 'All') ? [selectedBranch] : ['MGH Parang', 'MGH Concepcion'];
+            surveyAuditRender(surveyAuditCompute(result.data || [], startDate, endDate, branches, new Date()), panel);
+        } catch (err) {
+            console.error('Survey audit error:', err);
+            panel.innerHTML = '<div style="padding:12px; color:#ef4444;">Network error sa audit. Subukan ulit.</div>';
+        }
+    }
+    window.surveyAuditRun = surveyAuditRun;
+
     // rows = today's Daily Survey rows of this branch; now = Date. Returns the list of missed hours.
     function ftComputeMissingHours(rows, now) {
         const have = {};
@@ -1269,16 +1423,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const sums = {};
             BRANCHES.forEach(b => { sums[b] = {}; days.forEach(d => { sums[b][d] = 0; }); });
 
-            // Fix 143: the same survey row submitted twice (same date, branch, time, count and
-            // staff -- e.g. a double tap on Submit) is counted ONCE.
-            const seenSurveyRows = new Set();
+            // Fix 143/144: the hourly survey allows ONE entry per branch per clock hour. If an hour
+            // has more than one row (duplicate / double submit), only the LAST one is counted.
+            // A row whose time cannot be read is kept as-is (deduped only when identical).
+            const lastPerHour = new Map();
+            const unreadable = [];
             rows.forEach(row => {
+                const hr = ftHourOf(row[2]);
+                if (hr === null) { unreadable.push(row); return; }
+                lastPerHour.set([row[0], row[1], hr].join('|'), row);
+            });
+            const seenUnreadable = new Set();
+            const countedRows = Array.from(lastPerHour.values());
+            unreadable.forEach(row => {
+                const k = [row[0], row[1], String(row[2]), Number(row[3]) || 0, String(row[4] || '').trim().toLowerCase()].join('|');
+                if (seenUnreadable.has(k)) return;
+                seenUnreadable.add(k);
+                countedRows.push(row);
+            });
+            countedRows.forEach(row => {
                 const rDate = row[0];
                 const rBranch = row[1];
                 const rCount = Number(row[3]) || 0;
-                const dupKey = [rDate, rBranch, String(row[2] === undefined ? '' : row[2]).replace(/^'/, '').trim(), rCount, String(row[4] === undefined ? '' : row[4]).trim().toLowerCase()].join('|');
-                if (seenSurveyRows.has(dupKey)) return;
-                seenSurveyRows.add(dupKey);
                 if (sums[rBranch] && Object.prototype.hasOwnProperty.call(sums[rBranch], rDate)) {
                     sums[rBranch][rDate] += rCount;
                 }
@@ -7676,7 +7842,7 @@ document.addEventListener('DOMContentLoaded', () => {
         menuSurveyBtn.addEventListener('click', () => {
             hideAllContainers();
             dailySurveyContainer.classList.remove('hidden');
-            document.getElementById('survey-date').valueAsDate = new Date();
+            document.getElementById('survey-date').value = todayDateStr(); // Fix 144: LOCAL date (valueAsDate used the UTC date = yesterday from 12AM-8AM in Manila)
             const reportSurveyDateEl = document.getElementById('report-survey-date'); // Fix 136: element no longer exists -> was throwing on every open
             if (reportSurveyDateEl) reportSurveyDateEl.valueAsDate = new Date();
         });
@@ -19404,9 +19570,9 @@ ${canDecide ? `
                 if (result.status === 'success') {
                     showMessage(statusMessage, 'Daily survey saved successfully!', 'success');
                     dailySurveyForm.reset();
-                    document.getElementById('survey-date').valueAsDate = new Date();
+                    document.getElementById('survey-date').value = todayDateStr(); // Fix 144: local date, not UTC
                 } else {
-                    showMessage(statusMessage, 'Failed to save survey. Please try again.', 'error');
+                    showMessage(statusMessage, result.duplicate && result.message ? result.message : 'Failed to save survey. Please try again.', 'error');
                 }
             } catch (error) {
                 console.error('Error saving survey:', error);
@@ -19468,16 +19634,19 @@ ${canDecide ? `
                     if (filteredData.length === 0) {
                          tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this filter.</td></tr>';
                          if (surveyChartInstance) { surveyChartInstance.destroy(); }
+                         surveyAuditRun(startDate, endDate, selectedBranch);
                          return;
                     }
 
                     window.currentSurveyRecords = filteredData;
                     window.surveySortDesc = true; // default to newest first or whatever, actually default false
                     window.renderSurveyReport();
+                    surveyAuditRun(startDate, endDate, selectedBranch);
 
                 } else {
                     tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: var(--text-muted);">No surveys found for this date.</td></tr>';
                     if (surveyChartInstance) { surveyChartInstance.destroy(); }
+                    surveyAuditRun(startDate, endDate, selectedBranch);
                 }
             } catch (error) {
                 console.error('Error fetching survey report:', error);
