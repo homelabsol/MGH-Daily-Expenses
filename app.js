@@ -1269,10 +1269,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const sums = {};
             BRANCHES.forEach(b => { sums[b] = {}; days.forEach(d => { sums[b][d] = 0; }); });
 
+            // Fix 143: the same survey row submitted twice (same date, branch, time, count and
+            // staff -- e.g. a double tap on Submit) is counted ONCE.
+            const seenSurveyRows = new Set();
             rows.forEach(row => {
                 const rDate = row[0];
                 const rBranch = row[1];
                 const rCount = Number(row[3]) || 0;
+                const dupKey = [rDate, rBranch, String(row[2] === undefined ? '' : row[2]).replace(/^'/, '').trim(), rCount, String(row[4] === undefined ? '' : row[4]).trim().toLowerCase()].join('|');
+                if (seenSurveyRows.has(dupKey)) return;
+                seenSurveyRows.add(dupKey);
                 if (sums[rBranch] && Object.prototype.hasOwnProperty.call(sums[rBranch], rDate)) {
                     sums[rBranch][rDate] += rCount;
                 }
