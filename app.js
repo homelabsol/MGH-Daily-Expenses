@@ -1421,17 +1421,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const BRANCHES = ['MGH Parang', 'MGH Concepcion'];
             const sums = {};
-            BRANCHES.forEach(b => { sums[b] = {}; days.forEach(d => { sums[b][d] = 0; }); });
+            const counts = {}; // Fix 145: number of (de-duplicated) hourly entries per branch/day
+            BRANCHES.forEach(b => { sums[b] = {}; counts[b] = {}; days.forEach(d => { sums[b][d] = 0; counts[b][d] = 0; }); });
 
-            // Fix 143/144: the hourly survey allows ONE entry per branch per clock hour. If an hour
-            // has more than one row (duplicate / double submit), only the LAST one is counted.
+            // Fix 143/144/146: the hourly survey allows ONE entry per branch per clock hour. If an hour
+            // has more than one row (duplicate / double submit), only the SMALLEST count of that hour is used.
             // A row whose time cannot be read is kept as-is (deduped only when identical).
             const lastPerHour = new Map();
             const unreadable = [];
             rows.forEach(row => {
                 const hr = ftHourOf(row[2]);
                 if (hr === null) { unreadable.push(row); return; }
-                lastPerHour.set([row[0], row[1], hr].join('|'), row);
+                const hk = [row[0], row[1], hr].join('|');
+                const prev = lastPerHour.get(hk);
+                // Fix 146: several rows in the same hour -> keep the SMALLEST count
+                if (!prev || (Number(row[3]) || 0) < (Number(prev[3]) || 0)) lastPerHour.set(hk, row);
             });
             const seenUnreadable = new Set();
             const countedRows = Array.from(lastPerHour.values());
@@ -1447,21 +1451,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 const rCount = Number(row[3]) || 0;
                 if (sums[rBranch] && Object.prototype.hasOwnProperty.call(sums[rBranch], rDate)) {
                     sums[rBranch][rDate] += rCount;
+                    counts[rBranch][rDate] += 1;
                 }
             });
 
             const subEl = document.getElementById('dash-traffic-sub');
-            if (subEl) subEl.textContent = `Foot traffic per branch, ${dashShortLabel(days[0])} - ${dashShortLabel(days[13])} (kumpleto na ang araw, hindi kasama ang ngayon)`;
+            // Fix 145: the survey Count is a SNAPSHOT (people in the shop at that hour), so adding the
+            // hours up is not a customer count. The dashboard now shows the AVERAGE number of people in
+            // the shop per logged hour (sum of counts / number of hourly entries), which does not change
+            // when an hour is missed or logged twice.
+            if (subEl) subEl.textContent = `Average na bilang ng tao sa shop kada oras, ${dashShortLabel(days[0])} - ${dashShortLabel(days[13])} (kumpleto na ang araw, hindi kasama ang ngayon)`;
             const prev7 = days.slice(0, 7);
             const last7 = days.slice(7);
             const sumRange = (branch, range) => range.reduce((acc, d) => acc + sums[branch][d], 0);
+            const cntRange = (branch, range) => range.reduce((acc, d) => acc + counts[branch][d], 0);
+            const r1 = (x) => Math.round(x * 10) / 10;
+            const avgOf = (s, n) => n > 0 ? r1(s / n) : 0;
 
-            const thisWeekParang = sumRange('MGH Parang', last7);
-            const lastWeekParang = sumRange('MGH Parang', prev7);
-            const thisWeekConcepcion = sumRange('MGH Concepcion', last7);
-            const lastWeekConcepcion = sumRange('MGH Concepcion', prev7);
-            const thisWeekTotal = thisWeekParang + thisWeekConcepcion;
-            const lastWeekTotal = lastWeekParang + lastWeekConcepcion;
+            const thisWeekParang = avgOf(sumRange('MGH Parang', last7), cntRange('MGH Parang', last7));
+            const lastWeekParang = avgOf(sumRange('MGH Parang', prev7), cntRange('MGH Parang', prev7));
+            const thisWeekConcepcion = avgOf(sumRange('MGH Concepcion', last7), cntRange('MGH Concepcion', last7));
+            const lastWeekConcepcion = avgOf(sumRange('MGH Concepcion', prev7), cntRange('MGH Concepcion', prev7));
+            const thisWeekTotal = avgOf(sumRange('MGH Parang', last7) + sumRange('MGH Concepcion', last7), cntRange('MGH Parang', last7) + cntRange('MGH Concepcion', last7));
+            const lastWeekTotal = avgOf(sumRange('MGH Parang', prev7) + sumRange('MGH Concepcion', prev7), cntRange('MGH Parang', prev7) + cntRange('MGH Concepcion', prev7));
 
             if (totalEl) totalEl.textContent = thisWeekTotal;
             if (parangEl) parangEl.textContent = thisWeekParang;
@@ -1483,13 +1495,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     insightEl.className = 'insight-bar ' + (isUp ? 'positive' : 'negative');
                     const arrow = isUp ? '▲' : '▼';
                     const driver = Math.abs(parangPct) >= Math.abs(concepcionPct) ? 'MGH Parang' : 'MGH Concepcion';
-                    insightEl.innerHTML = `<span class="arrow">${arrow}</span><span>Overall foot traffic is <b>${isUp ? 'up' : 'down'} ${Math.abs(totalPct)}%</b> in the last 7 days (${dashShortLabel(last7[0])} - ${dashShortLabel(last7[6])}) vs the 7 days before (${thisWeekTotal} vs ${lastWeekTotal}) — mostly driven by ${driver}.</span>`;
+                    insightEl.innerHTML = `<span class="arrow">${arrow}</span><span>Ang average na tao sa shop kada oras ay <b>${isUp ? 'tumaas' : 'bumaba'} ng ${Math.abs(totalPct)}%</b> sa last 7 days (${dashShortLabel(last7[0])} - ${dashShortLabel(last7[6])}) kumpara sa 7 araw bago nito (${thisWeekTotal} vs ${lastWeekTotal} katao) — pinakamalaki ang epekto ng ${driver}.</span>`;
                 }
             }
 
             const chartLabels = days.map(dashShortLabel);
-            const chartParang = days.map(d => sums['MGH Parang'][d]);
-            const chartConcepcion = days.map(d => sums['MGH Concepcion'][d]);
+            const chartParang = days.map(d => counts['MGH Parang'][d] > 0 ? r1(sums['MGH Parang'][d] / counts['MGH Parang'][d]) : null);
+            const chartConcepcion = days.map(d => counts['MGH Concepcion'][d] > 0 ? r1(sums['MGH Concepcion'][d] / counts['MGH Concepcion'][d]) : null);
 
             await loadHeavyLib('Chart');
             if (typeof Chart === 'undefined') return; // CDN unreachable -- fail quietly, stats above still show
@@ -1510,6 +1522,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             backgroundColor: 'rgba(59, 130, 246, 0.15)',
                             tension: 0.35,
                             fill: true,
+                            spanGaps: true,
                             pointRadius: 2,
                             pointBackgroundColor: '#3b82f6'
                         },
@@ -1520,6 +1533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             backgroundColor: 'rgba(139, 92, 246, 0.15)',
                             tension: 0.35,
                             fill: true,
+                            spanGaps: true,
                             pointRadius: 2,
                             pointBackgroundColor: '#8b5cf6'
                         }
