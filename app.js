@@ -5183,10 +5183,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 return html;
             }
 
+            // Fix 148: diagonal, tiled watermark ("strictly for MarvsPCStufz only") so
+            // a printed quotation can't be reused by someone else. It is a repeating
+            // SVG background on the print wrapper itself, so it tiles over the WHOLE
+            // rendered height (page 1 AND the warranty-terms page, however many pages
+            // html2pdf slices it into) with no per-page positioning, and it adds no
+            // elements that could change the page-count logic below.
+            const MQ_WATERMARK_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="460" height="280">' +
+                '<g transform="rotate(-28 230 140)" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" fill="#4f46e5" fill-opacity="0.075">' +
+                '<text x="230" y="137" font-size="32" letter-spacing="2">MARVSPCSTUFZ</text>' +
+                '<text x="230" y="161" font-size="11.5" letter-spacing="1.5">STRICTLY FOR MARVSPCSTUFZ ONLY</text>' +
+                '</g></svg>';
+            const MQ_WATERMARK_BG = "url('data:image/svg+xml;utf8," + encodeURIComponent(MQ_WATERMARK_SVG) + "')";
+
             function buildMqHtmlString(fontPx, padVPx, padHPx) {
                 const itemsRowsHtml = buildMqItemsRowsHtml(fontPx, padVPx, padHPx);
                 return `
-                    <div id="mq-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background:#ffffff; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
+                    <div id="mq-print-wrapper" style="font-family: Arial, Helvetica, sans-serif; color:#111827; background-color:#ffffff; background-image:${MQ_WATERMARK_BG}; background-repeat:repeat; background-position:0 0; padding: 40px 44px; max-width: 800px; margin: 0 auto;">
                     <div id="mq-page1">
                         <table style="width:100%; border-collapse:collapse; border-bottom:3px solid #4f46e5; padding-bottom:16px; margin-bottom:20px;">
                             <tr>
