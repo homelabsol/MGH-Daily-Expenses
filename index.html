@@ -513,6 +513,24 @@
                         <span style="font-weight: 700;">Total Amount</span>
                         <span id="mq-total-final" style="font-weight: 800; font-size: 1.2em; color: #10b981;">₱0.00</span>
                     </div>
+                    <!-- Fix 147: "isang buong presyo lang sa print" -->
+                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.15);">
+                        <label for="mq-lump-sum" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9em; font-weight: 600;">
+                            <input type="checkbox" id="mq-lump-sum" style="width: auto; margin: 0;">
+                            Isang buong presyo lang sa print
+                        </label>
+                        <div id="mq-lump-sum-fields" class="hidden" style="margin-top: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 0.9em;">
+                                <span style="color: var(--text-muted);">Markup (₱)</span>
+                                <input type="number" id="mq-markup" min="0" step="0.01" value="0" style="width: 130px; text-align: right;">
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 8px; margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <span style="font-weight: 700;">Total na lalabas sa print</span>
+                                <span id="mq-print-total" style="font-weight: 800; font-size: 1.2em; color: #f59e0b;">₱0.00</span>
+                            </div>
+                            <div style="font-size: 0.78em; color: var(--text-muted); margin-top: 6px;">Sa print, isang Total Amount lang ang makikita (items + markup, minus discount). Walang presyo ng items, subtotal, discount o markup.</div>
+                        </div>
+                    </div>
                 </div>
 
                 <button type="submit" class="submit-btn" id="mq-submit-btn" style="margin-top: 16px;">
@@ -6242,7 +6260,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=207"></script>
+    <script src="app.js?v=208"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

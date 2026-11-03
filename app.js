@@ -4757,6 +4757,28 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('mq-total-qty').textContent = totalQty;
         document.getElementById('mq-total-before').textContent = '₱' + formatCurrency(totalBeforeDiscount);
         document.getElementById('mq-total-final').textContent = '₱' + formatCurrency(finalTotal);
+        // Fix 147: price that will be printed in "isang buong presyo" mode
+        const lumpEl = document.getElementById('mq-lump-sum');
+        const lumpFields = document.getElementById('mq-lump-sum-fields');
+        const lumpOn = !!(lumpEl && lumpEl.checked);
+        if (lumpFields) lumpFields.classList.toggle('hidden', !lumpOn);
+        const markupVal = Math.max(parseFloat((document.getElementById('mq-markup') || {}).value) || 0, 0);
+        const printTotalEl = document.getElementById('mq-print-total');
+        if (printTotalEl) printTotalEl.textContent = '₱' + formatCurrency(finalTotal + markupVal);
+    }
+
+    // Fix 147: reads the "isang buong presyo" checkbox + markup for save/update.
+    function mqGetLumpSum() {
+        const lumpEl = document.getElementById('mq-lump-sum');
+        const on = !!(lumpEl && lumpEl.checked);
+        const markup = on ? Math.max(parseFloat((document.getElementById('mq-markup') || {}).value) || 0, 0) : 0;
+        return { on: on, markup: markup };
+    }
+    function mqSetLumpSum(on, markup) {
+        const lumpEl = document.getElementById('mq-lump-sum');
+        if (lumpEl) lumpEl.checked = !!on;
+        const markupEl = document.getElementById('mq-markup');
+        if (markupEl) markupEl.value = on ? (parseFloat(markup) || 0) : 0;
     }
 
     function mqResetForm() {
@@ -4768,6 +4790,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mobileEl) mobileEl.value = '';
         const discountEl = document.getElementById('mq-discount');
         if (discountEl) discountEl.value = '0';
+        mqSetLumpSum(false, 0);
         const tbody = document.getElementById('mq-items-body');
         if (tbody) tbody.innerHTML = '';
         mqAddItemRow(null); // start with one blank item row
@@ -4841,6 +4864,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const discountEl = document.getElementById('mq-discount');
         if (discountEl) discountEl.value = parseFloat(row[9]) || 0;
+        mqSetLumpSum(row[12] === 'Yes', row[13]); // Fix 147
         mqRecompute();
 
         const statusMsg = document.getElementById('mq-status-message');
@@ -4904,6 +4928,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const discountEl = document.getElementById('mq-discount');
         if (discountEl) discountEl.value = parseFloat(row[9]) || 0;
+        mqSetLumpSum(row[12] === 'Yes', row[13]); // Fix 147
         mqRecompute();
 
         const statusMsg = document.getElementById('mq-status-message');
@@ -4965,6 +4990,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateStr = (row[1] || '').toString().split(/[T ]/)[0];
             const totalQty = row[7] || 0;
             const totalAmount = parseFloat(row[10]) || 0;
+            // Fix 147: lump-sum quotations print a different (marked-up) price
+            const listLump = row[12] === 'Yes';
+            const listPrintTotal = totalAmount + (parseFloat(row[13]) || 0);
             return `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
                     <td style="${cellStyle} font-weight: 600; color: var(--primary);">${row[0] || ''}</td>
@@ -4973,7 +5001,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <td style="${cellStyle}">${row[3] || ''}</td>
                     <td style="${cellStyle}">${row[4] || ''}</td>
                     <td style="${cellStyle}">${totalQty}</td>
-                    <td style="${cellStyle} font-weight: 600;">₱${formatCurrency(totalAmount)}</td>
+                    <td style="${cellStyle} font-weight: 600;">₱${formatCurrency(totalAmount)}${listLump ? `<div style="font-size:0.78em; font-weight:500; color:#f59e0b;">Print: ₱${formatCurrency(listPrintTotal)} (isang presyo)</div>` : ''}</td>
                     <td style="${cellStyle}">${row[11] || ''}</td>
                     <td style="padding: 8px 10px; white-space: nowrap;">
                         <button type="button" class="btn-mq-print-row" data-mq-row-index="${idx}" style="background: rgba(255,255,255,0.1); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85em;"><i class="fas fa-print"></i> Print</button>
@@ -5088,6 +5116,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const discount = parseFloat(row[9]) || 0;
             const totalAmount = parseFloat(row[10]) || 0;
             const encodedBy = row[11] || '';
+            // Fix 147: "isang buong presyo lang" print mode. Items are listed with
+            // description + qty only; the single Total Amount = (items - discount) + markup.
+            const lumpSum = row[12] === 'Yes';
+            const lumpMarkup = lumpSum ? (parseFloat(row[13]) || 0) : 0;
+            const lumpPrintTotal = totalAmount + lumpMarkup;
 
             const dateFormatted = dateStr ? new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
 
@@ -5142,8 +5175,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <tr>
                             <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937;">${it.desc || ''}</td>
                             <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">${qty}</td>
-                            <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(amount)}</td>
-                            <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(qty * amount)}</td>
+                            ${lumpSum ? '' : `<td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(amount)}</td>
+                            <td style="padding:${padVPx}px ${padHPx}px; font-size:${fontPx}px; border-bottom:1px solid #f0f1f3; color:#1f2937; text-align:right;">₱${formatCurrency(qty * amount)}</td>`}
                         </tr>
                     `;
                 });
@@ -5198,8 +5231,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <tr style="background:#f3f4f6;">
                                     <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:left; border-bottom:2px solid #e5e7eb;">Description</th>
                                     <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Qty</th>
-                                    <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Unit Price</th>
-                                    <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Amount</th>
+                                    ${lumpSum ? '' : `<th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Unit Price</th>
+
+                                    <th style="padding:9px 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:0.04em; color:#374151; text-align:right; border-bottom:2px solid #e5e7eb;">Amount</th>`}
                                 </tr>
                             </thead>
                             <tbody id="mq-items-tbody">
@@ -5210,9 +5244,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="mq-avoid-break">
                             <table style="width:260px; margin-left:auto; margin-top:6px;">
                                 <tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Total Qty</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">${totalQty}</td></tr>
-                                <tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Subtotal</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">₱${formatCurrency(totalBeforeDiscount)}</td></tr>
-                                <tr><td style="padding:5px 0; font-size:13.5px; color:#b91c1c;">Discount</td><td style="padding:5px 0; font-size:13.5px; color:#b91c1c; text-align:right;">− ₱${formatCurrency(discount)}</td></tr>
-                                <tr><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5;">Total Amount</td><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5; text-align:right;">₱${formatCurrency(totalAmount)}</td></tr>
+                                ${lumpSum ? '' : `<tr><td style="padding:5px 0; font-size:13.5px; color:#374151;">Subtotal</td><td style="padding:5px 0; font-size:13.5px; color:#374151; text-align:right;">₱${formatCurrency(totalBeforeDiscount)}</td></tr>
+                                <tr><td style="padding:5px 0; font-size:13.5px; color:#b91c1c;">Discount</td><td style="padding:5px 0; font-size:13.5px; color:#b91c1c; text-align:right;">− ₱${formatCurrency(discount)}</td></tr>`}
+                                <tr><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5;">Total Amount</td><td style="padding:10px 0 5px; font-size:16px; font-weight:800; color:#1f2937; border-top:2px solid #4f46e5; text-align:right;">₱${formatCurrency(lumpSum ? lumpPrintTotal : totalAmount)}</td></tr>
                             </table>
 
                             <div style="margin-top:22px; padding:14px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px;">
@@ -5502,6 +5536,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (mqDiscountInput) {
         mqDiscountInput.addEventListener('input', mqRecompute);
     }
+    const mqLumpSumInput = document.getElementById('mq-lump-sum');
+    if (mqLumpSumInput) mqLumpSumInput.addEventListener('change', mqRecompute);
+    const mqMarkupInput = document.getElementById('mq-markup');
+    if (mqMarkupInput) mqMarkupInput.addEventListener('input', mqRecompute);
 
     const manualQuotationForm = document.getElementById('manual-quotation-form');
     if (manualQuotationForm) {
@@ -5575,7 +5613,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         totalBeforeDiscount,
                         discountVal,
                         totalAmountVal,
-                        originalEncodedByVal
+                        originalEncodedByVal,
+                        mqGetLumpSum().on ? 'Yes' : '',
+                        mqGetLumpSum().markup
                     ],
                     encodedBy: currentUserVal
                 };
@@ -5589,6 +5629,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     address: document.getElementById('mq-address').value,
                     items: JSON.stringify(items),
                     discount: parseFloat(document.getElementById('mq-discount').value) || 0,
+                    lumpSum: mqGetLumpSum().on ? 'Yes' : '',
+                    markup: mqGetLumpSum().markup,
                     encodedBy: currentUserVal
                 };
             }
