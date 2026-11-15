@@ -6062,6 +6062,20 @@
                 </div>
             </div>
 
+            <!-- Fix 149: Total Daily Rate (rate x days present) vs Net Pay -->
+            <div id="payroll-report-rate-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-bottom: 18px;">
+                <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px;">
+                    <span style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase;">Total Daily Rate (rate × araw na present)</span><br>
+                    <strong id="payroll-report-stat-dailyrate" style="font-size: 1.2em; color: #60a5fa;">₱0.00</strong>
+                    <div id="payroll-report-stat-dailyrate-sub" style="font-size: 0.75em; color: var(--text-muted); margin-top: 4px; line-height: 1.5;"></div>
+                </div>
+                <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 8px; padding: 12px;">
+                    <span style="font-size: 0.75em; color: var(--text-muted); text-transform: uppercase;">Difference (Net Pay − Total Daily Rate)</span><br>
+                    <strong id="payroll-report-stat-diff" style="font-size: 1.2em;">₱0.00</strong>
+                    <div id="payroll-report-stat-diff-sub" style="font-size: 0.75em; color: var(--text-muted); margin-top: 4px; line-height: 1.5;"></div>
+                </div>
+            </div>
+
             <div style="overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
                 <table id="payroll-report-table" style="width: 100%; min-width: 900px; white-space: nowrap; border-collapse: collapse; font-size: 0.9em; text-align: left;">
                     <thead>
@@ -6260,7 +6274,7 @@
         </div>
     </div>
 
-    <script src="app.js?v=209"></script>
+    <script src="app.js?v=210"></script>
     <!-- Item Replacement Container -->
     <div class="container hidden" id="item-replacement-container" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; max-width: none; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; justify-content: center; align-items: center; padding: 16px; box-sizing: border-box; backdrop-filter: blur(5px);">
         <div style="background: var(--bg-dark); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; width: 100%; max-width: 1100px; height: 90vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.5);">

@@ -10574,6 +10574,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('payroll-report-stat-gross').textContent = '₱0.00';
         document.getElementById('payroll-report-stat-deductions').textContent = '₱0.00';
         document.getElementById('payroll-report-stat-net').textContent = '₱0.00';
+        payrollReportUpdateStats([]);
         lastPayrollReportData = [];
     });
 
@@ -20246,6 +20247,57 @@ ${canDecide ? `
         document.getElementById('payroll-report-stat-gross').textContent = '₱' + formatCurrency(totalGross);
         document.getElementById('payroll-report-stat-deductions').textContent = '₱' + formatCurrency(totalDeductions);
         document.getElementById('payroll-report-stat-net').textContent = '₱' + formatCurrency(totalNet);
+        payrollReportUpdateRateStats(rows);
+    }
+
+    // Fix 149: "Total Daily Rate" = sum over EMPLOYEE payslips of dailyRate x daysPresent
+    // (the same days-present count shown in the Days P/A column), compared with those same
+    // employees' Net Pay. Riders have no daily rate (they're paid per delivery), so they are
+    // left out of BOTH sides of this comparison -- otherwise their net pay would inflate the
+    // difference. Positive difference = net pay is HIGHER than plain daily rate x days
+    // (OT, commission, food allowance, Sunday/holiday premium); negative = LOWER (late
+    // deductions, partial/short days, tax/SSS/cash advance deductions).
+    // Pure helper (also used by Print PDF + Export Excel so all three always agree).
+    function payrollReportRateTotals(rows) {
+        const emp = rows.filter(r => !payrollReportIsRider(r));
+        const perBranch = {};
+        let totalRate = 0, totalEmpNet = 0;
+        emp.forEach(r => {
+            const rate = (Number(r.dailyRate) || 0) * (Number(r.daysPresent) || 0);
+            const net = Number(r.netPay) || 0;
+            totalRate += rate; totalEmpNet += net;
+            const b = r.branch || '—';
+            if (!perBranch[b]) perBranch[b] = { rate: 0, net: 0 };
+            perBranch[b].rate += rate; perBranch[b].net += net;
+        });
+        return { totalRate, totalEmpNet, diff: totalEmpNet - totalRate, perBranch, riderCount: rows.length - emp.length, branches: Object.keys(perBranch).sort() };
+    }
+    function payrollReportFmtDiff(v) {
+        return (v > 0.004 ? '+' : (v < -0.004 ? '−' : '')) + '₱' + formatCurrency(Math.abs(v));
+    }
+
+    function payrollReportUpdateRateStats(rows) {
+        const t = payrollReportRateTotals(rows);
+        const colorDiff = (v) => v > 0.004 ? '#4ade80' : (v < -0.004 ? '#f87171' : 'var(--text-light, #e2e8f0)');
+        const rateEl = document.getElementById('payroll-report-stat-dailyrate');
+        const diffEl = document.getElementById('payroll-report-stat-diff');
+        const rateSub = document.getElementById('payroll-report-stat-dailyrate-sub');
+        const diffSub = document.getElementById('payroll-report-stat-diff-sub');
+        if (!rateEl || !diffEl) return;
+        rateEl.textContent = '₱' + formatCurrency(t.totalRate);
+        diffEl.textContent = payrollReportFmtDiff(t.diff);
+        diffEl.style.color = colorDiff(t.diff);
+        const multi = t.branches.length > 1;
+        const riderNote = t.riderCount > 0 ? `<div>Employee payslips lang (${t.riderCount} rider payslip hindi kasama — walang daily rate)</div>` : '';
+        if (rateSub) {
+            rateSub.innerHTML = (multi ? t.branches.map(b => `<div>${payrollReportEscapeHtml(b)}: ₱${formatCurrency(t.perBranch[b].rate)}</div>`).join('') : '') + riderNote;
+        }
+        if (diffSub) {
+            diffSub.innerHTML = `<div>Net Pay ng mga employee: ₱${formatCurrency(t.totalEmpNet)}</div>` + (multi ? t.branches.map(b => {
+                const d = t.perBranch[b].net - t.perBranch[b].rate;
+                return `<div>${payrollReportEscapeHtml(b)}: <span style="color:${colorDiff(d)};">${payrollReportFmtDiff(d)}</span></div>`;
+            }).join('') : '') + `<div style="opacity:0.8;">+ = mas mataas ang net kaysa daily rate (OT, commission, allowance) · − = mas mababa (late, kulang na oras, deductions)</div>`;
+        }
     }
 
     const generatePayrollReportForm = document.getElementById('generate-payroll-report-form');
@@ -20338,6 +20390,37 @@ ${canDecide ? `
                     </tr>
                 `).join('');
 
+                // Fix 149: Total Daily Rate vs Net Pay summary (employees only; riders have no daily rate)
+                const rt = payrollReportRateTotals(lastPayrollReportData);
+                const diffColor = rt.diff > 0.004 ? '#16a34a' : (rt.diff < -0.004 ? '#dc2626' : '#334155');
+                const branchLines = rt.branches.length > 1 ? rt.branches.map(b => {
+                    const d = rt.perBranch[b].net - rt.perBranch[b].rate;
+                    return `<tr><td style="padding: 3px 8px; color: #64748b;">${payrollReportEscapeHtml(b)}</td><td style="padding: 3px 8px; text-align: right;">₱${formatCurrency(rt.perBranch[b].rate)}</td><td style="padding: 3px 8px; text-align: right;">₱${formatCurrency(rt.perBranch[b].net)}</td><td style="padding: 3px 8px; text-align: right; color: ${d > 0.004 ? '#16a34a' : (d < -0.004 ? '#dc2626' : '#334155')};">${payrollReportFmtDiff(d)}</td></tr>`;
+                }).join('') : '';
+                const rateSummaryHtml = `
+                        <div style="margin-top: 22px; page-break-inside: avoid;">
+                            <table style="border-collapse: collapse; font-size: 11px; min-width: 520px;">
+                                <thead>
+                                    <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
+                                        <th style="padding: 6px 8px; text-align: left; color: #334155;">Daily Rate vs Net Pay (employees lang)</th>
+                                        <th style="padding: 6px 8px; text-align: right; color: #334155;">Total Daily Rate (rate × araw present)</th>
+                                        <th style="padding: 6px 8px; text-align: right; color: #334155;">Net Pay</th>
+                                        <th style="padding: 6px 8px; text-align: right; color: #334155;">Difference</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${branchLines}
+                                    <tr style="border-top: 2px solid #cbd5e1; font-weight: 700;">
+                                        <td style="padding: 6px 8px;">TOTAL</td>
+                                        <td style="padding: 6px 8px; text-align: right;">₱${formatCurrency(rt.totalRate)}</td>
+                                        <td style="padding: 6px 8px; text-align: right;">₱${formatCurrency(rt.totalEmpNet)}</td>
+                                        <td style="padding: 6px 8px; text-align: right; color: ${diffColor};">${payrollReportFmtDiff(rt.diff)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            ${rt.riderCount > 0 ? `<p style="margin: 6px 0 0; font-size: 10px; color: #94a3b8;">${rt.riderCount} rider payslip hindi kasama sa Daily Rate comparison (per delivery ang bayad). Ang TOTAL Net Pay sa taas ay kasama ang riders.</p>` : ''}
+                        </div>`;
+
                 const htmlString = `
                     <div style="font-family: sans-serif; color: #333; padding: 20px; background: white; max-width: 1000px; margin: 0 auto;">
                         <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #3b82f6; padding-bottom: 15px;">
@@ -20371,6 +20454,7 @@ ${canDecide ? `
                                 </tr>
                             </tfoot>
                         </table>
+                        ${rateSummaryHtml}
                         <div style="margin-top: 30px; text-align: right; font-size: 11px; color: #94a3b8;">
                             <p>Generated on ${new Date().toLocaleString()}</p>
                         </div>
@@ -20460,7 +20544,8 @@ ${canDecide ? `
                     'Type', 'Employee', 'Branch', 'Start Date', 'End Date', 'Days Present', 'Days Absent',
                     'Delivery Count', 'Daily Rate', 'Base Pay', 'OT Hours', 'OT Pay', 'Commission',
                     'Food Allowance', 'Meal Allowance', 'Gross Pay', 'Withholding Tax', 'SSS', 'PhilHealth',
-                    'Pag-IBIG', 'Cash Advance', 'Total Deductions', 'Net Pay', 'Generated By'
+                    'Pag-IBIG', 'Cash Advance', 'Total Deductions', 'Net Pay', 'Generated By',
+                    'Daily Rate x Days Present', 'Net Pay - (Daily Rate x Days Present)'
                 ];
                 const aoa = [header];
                 lastPayrollReportData.forEach(r => {
@@ -20473,9 +20558,22 @@ ${canDecide ? `
                         Number(r.mealAllowance) || 0,
                         Number(r.grossPay) || 0, Number(r.withholdingTax) || 0, Number(r.sss) || 0,
                         Number(r.philhealth) || 0, Number(r.pagibig) || 0, Number(r.cashAdvance) || 0,
-                        Number(r.totalDeductions) || 0, Number(r.netPay) || 0, r.generatedBy || ''
+                        Number(r.totalDeductions) || 0, Number(r.netPay) || 0, r.generatedBy || '',
+                        // Fix 149: employees only -- riders have no daily rate, so these stay blank
+                        payrollReportIsRider(r) ? '' : Math.round((Number(r.dailyRate) || 0) * (Number(r.daysPresent) || 0) * 100) / 100,
+                        payrollReportIsRider(r) ? '' : Math.round(((Number(r.netPay) || 0) - (Number(r.dailyRate) || 0) * (Number(r.daysPresent) || 0)) * 100) / 100
                     ]);
                 });
+                // Fix 149: summary rows (Total Daily Rate vs Net Pay), employees only
+                const rtx = payrollReportRateTotals(lastPayrollReportData);
+                const r2 = (v) => Math.round(v * 100) / 100;
+                aoa.push([]);
+                aoa.push(['DAILY RATE vs NET PAY (employees lang)', 'Total Daily Rate (rate x days present)', 'Net Pay', 'Difference']);
+                if (rtx.branches.length > 1) {
+                    rtx.branches.forEach(b => aoa.push([b, r2(rtx.perBranch[b].rate), r2(rtx.perBranch[b].net), r2(rtx.perBranch[b].net - rtx.perBranch[b].rate)]));
+                }
+                aoa.push(['TOTAL', r2(rtx.totalRate), r2(rtx.totalEmpNet), r2(rtx.diff)]);
+                if (rtx.riderCount > 0) aoa.push([rtx.riderCount + ' rider payslip(s) not included above (no daily rate).']);
                 const ws = XLSX.utils.aoa_to_sheet(aoa);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, "Payroll Report");
